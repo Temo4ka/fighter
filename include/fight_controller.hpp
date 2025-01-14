@@ -26,6 +26,8 @@ class FightController {
 
     Fight currentFight;
 
+    Menu pauseMenu;
+
     uint8_t currentRoundNum;
 
     EventManager& eventMan;
