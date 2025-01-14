@@ -1,20 +1,14 @@
 #pragma <once>
 
 #include <cstdint>
+#include <string>
+
 #include "fighters.hpp"
 #include "event.hpp"
 
-class Fight {
-  public:
-
-  private:
-    Fighter* rightPlayer;
-    Fighter*  leftPlayer;
-};
-
 class FightController {
   public:
-    FightController() {}
+    FightController() = delete;
 
   private:
     enum Status {
@@ -31,4 +25,18 @@ class FightController {
     uint8_t currentRoundNum;
 
     EventManager& eventMan;
+};
+
+class Fight {
+  public:
+    Fight() = default;
+
+    void startFight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo)
+    leftPlayer(leftPlayerInfo),
+    rightPlayer(rightPlayerInfo)
+    {}
+
+  private:
+    Fighter rightPlayer;
+    Fighter  leftPlayer;
 };
