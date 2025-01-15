@@ -10,3 +10,6 @@ all:
 
 mac:
 	clang++ -std=c++23 $(MAC_SFML_DIR)  ./source/main.cpp -lm -o react $(MAC_SFMLFLAGS)
+
+vova:
+	$(CC) -ID:\SFML-2.5.1\include -LD:\SFML-2.5.1\lib ./source/main.cpp -lm -o run.exe $(SFMLFLAGS)
