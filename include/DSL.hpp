@@ -31,7 +31,7 @@
     fclose(logFile);                                                                                                       \
 }
 
-#define MESSAGE_CLEAR() {                                                                                               \
+#define MESSAGE_CLEAR() {                                                                                                \
     FILE *logFile = fopen("./logs/logFile.txt", "w");                                                                     \
     fclose(logFile);                                                                                                       \
 }

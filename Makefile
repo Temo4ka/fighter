@@ -1,6 +1,6 @@
 CC = g++ -std=c++23
 SFML_DIR += -IC:\SFML-2.5.1\include -LC:\SFML-2.5.1\lib
-MAC_SFML_DIR += -I/opt/homebrew/Cellar/sfml/2.6.1/include -L/opt/homebrew/Cellar/sfml/2.6.1/lib
+MAC_SFML_DIR += -I/opt/homebrew/Cellar/sfml/3.0.0/include -L/opt/homebrew/Cellar/sfml/3.0.0/lib
 LDFLAGS += -lmingw32
 SFMLFLAGS += -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio -lsfml-main -mwindows
 MAC_SFMLFLAGS += -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio

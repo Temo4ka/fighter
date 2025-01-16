@@ -3,12 +3,23 @@
 #include <cstdint>
 #include <string>
 
-#include "fighters.hpp"
 #include "event.hpp"
+#include "fighters.hpp"
+#include "gui.hpp"
 
 class FightController {
   public:
     FightController() = delete;
+
+    void startFight(FighterInfo &fighter1, FighterInfo &fighter2);
+
+    void restartFight();
+
+    void stopFight();
+
+    //--------Events-------------------
+
+    //=================================
 
   private:
     enum Status {
@@ -20,21 +31,27 @@ class FightController {
 
     Fight currentFight;
 
-    Menu pauseMenu;
+    Menu PauseMenu;
+    Menu FinalMenu;
 
     uint8_t currentRoundNum;
 
     EventManager& eventMan;
+
 };
 
 class Fight {
   public:
     Fight() = default;
 
-    void startFight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo)
+    Fight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo)
     leftPlayer(leftPlayerInfo),
     rightPlayer(rightPlayerInfo)
     {}
+
+    //--------Events-------------------
+
+    //=================================
 
   private:
     Fighter rightPlayer;
