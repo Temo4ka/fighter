@@ -1,4 +1,4 @@
-#pragma <once>
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -8,7 +8,7 @@
 struct FighterInfo {
     FighterInfo() = delete;
 
-    FighterInfo(uint8_t &strength_, uint8_t &dexterity_, uint8_t &constitution) 
+    FighterInfo(uint8_t &strength_, uint8_t &dexterity_, uint8_t &constitution_):
     strength(strength_),
     dexterity(dexterity_),
     constitution(constitution_)

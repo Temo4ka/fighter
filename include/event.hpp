@@ -1,4 +1,4 @@
-#pragma <once>
+#pragma once
 
 #include <iostream>
 #include <list>
@@ -73,7 +73,6 @@ class Event {
 using MouseEvent = Event<MouseContext>;
 using KeyboardEvent = Event<KeyboardContext>;
 using TimeEvent = Event<double>;
-
 
 class EventManager {
     public:
