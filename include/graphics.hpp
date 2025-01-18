@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "vec2.hpp"
+#include "geometry.hpp"
 
 struct SpriteInfo {
     uint64_t textureID;
@@ -20,7 +21,7 @@ struct SpriteInfo {
 };
 
 class Drawable {
-    public:
+  public:
 
     explicit Drawable(SpriteInfo &info, Vec2 &pos_, Vec2 &size_):
     visible (true),
@@ -47,7 +48,7 @@ class Drawable {
     void setVisible(bool vis) {visible = vis;}
     bool getVisible() const {return visible;}
 
-    private:
+  private:
     bool visible;
     SpriteInfo spriteInfo;
     Vec2 pos;

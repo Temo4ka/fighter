@@ -44,7 +44,7 @@ class Fight {
   public:
     Fight() = default;
 
-    Fight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo)
+    Fight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo):
     leftPlayer(leftPlayerInfo),
     rightPlayer(rightPlayerInfo)
     {}
