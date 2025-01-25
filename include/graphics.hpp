@@ -7,7 +7,12 @@
 #include "geometry.hpp"
 #include "spriteManager.hpp"
 
-struct SpriteInfo {
+struct InfoBase {
+
+    virtual void draw(sf::RenderWindow &screen);
+}
+
+struct SpriteInfo : public InfoBase {
     uint64_t textureID;
     Vec2 spritePos;
     Vec2 spriteSize;
@@ -59,7 +64,9 @@ class Drawable {
 class GraphicsModule {
   public:
 
-    explicit GraphicsModule(ы)
+    explicit GraphicsModule() = default;
+
+    void draw();
 
     void insertObject(Drawable *obj) { drawingQueue.push_back(obj); }
 
