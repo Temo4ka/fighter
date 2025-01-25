@@ -32,6 +32,4 @@ class FightInfo  {
   private:
     FighterInfo  leftPlayerInfo;
     FighterInfo rightPlayerInfo;
-
-    std::string asset_path;
 }

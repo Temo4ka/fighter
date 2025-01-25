@@ -19,19 +19,19 @@ struct FighterInfo {
     uint8_t constitution;
     //uint8_t intelligence; ?
 
-    std::string asset_path;
-
     //TODO: Inventary mb?
 };
 
 class Fighter : public Drawable {
   public:
-    Fighter() {}
+    Fighter() = delete;
     
-    Fighter(FighterInfo &info) {}
+    Fighter(FighterInfo &info);
 
     //void draw();
 
   private:
-    
+    Vec2 position;
+
+    uint8_t hp;
 };

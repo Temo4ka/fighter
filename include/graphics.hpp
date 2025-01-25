@@ -54,3 +54,29 @@ class Drawable {
     Vec2 pos;
     Vec2 size;
 };
+
+class GraphicsModule {
+  public:
+
+    void insertObject(Drawable *obj) { drawingQueue.push_back(obj); }
+
+    void insertObject(Drawable *obj, size_t ind) { 
+        size_t position = std::min(drawingQueue.size(), ind);
+        drawingQueue.insert(drawingQueue.begin() + position, obj);
+    }
+
+    void eraseObject(Drawable *obj) { 
+        for (auto iter = drawingQueue.begin(); iter != drawingQueue.end(); iter++)
+            if (*iter == obj) {
+                drawingQueue.erase(iter);
+            }
+    }
+
+    void eraseObject(size_t ind) {
+        size_t position = std::min(drawingQueue.size(), ind);
+        drawingQueue.erase(drawingQueue.begin() + position);
+    }
+
+ private:
+    std::vector<Drawable*> drawingQueue;
+};
