@@ -5,6 +5,7 @@
 
 #include "vec2.hpp"
 #include "geometry.hpp"
+#include "spriteManager.hpp"
 
 struct SpriteInfo {
     uint64_t textureID;
@@ -58,6 +59,8 @@ class Drawable {
 class GraphicsModule {
   public:
 
+    explicit GraphicsModule(ы)
+
     void insertObject(Drawable *obj) { drawingQueue.push_back(obj); }
 
     void insertObject(Drawable *obj, size_t ind) { 
@@ -79,4 +82,8 @@ class GraphicsModule {
 
  private:
     std::vector<Drawable*> drawingQueue;
+
+    sf::RenderTexture screen;
+    SpriteManager& sprite_man;
+    sf::Font fnt;
 };

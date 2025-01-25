@@ -26,7 +26,7 @@ class Fighter : public Drawable {
   public:
     Fighter() = delete;
     
-    Fighter(FighterInfo &info);
+    Fighter(SpriteInfo &spInfo, FighterInfo &fgtrInfo);
 
     //void draw();
 
