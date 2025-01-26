@@ -40,20 +40,3 @@ class FightController {
 
 };
 
-class Fight {
-  public:
-    Fight() = default;
-
-    Fight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo):
-    leftPlayer(leftPlayerInfo),
-    rightPlayer(rightPlayerInfo)
-    {}
-
-    //--------Events-------------------
-
-    //=================================
-
-  private:
-    Fighter rightPlayer;
-    Fighter  leftPlayer;
-};

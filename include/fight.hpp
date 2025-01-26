@@ -20,6 +20,7 @@ class Fight {
     Fighter  leftPlayer;
 };
 
+
 class FightInfo  {
   public:
     FightInfo() = delete;
@@ -33,3 +34,4 @@ class FightInfo  {
     FighterInfo  leftPlayerInfo;
     FighterInfo rightPlayerInfo;
 }
+

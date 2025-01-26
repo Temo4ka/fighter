@@ -10,12 +10,12 @@
 struct InfoBase {
 
     virtual void draw(sf::RenderWindow &screen);
+    Vec2 Pos;
+    Vec2 Size;
 }
 
 struct SpriteInfo : public InfoBase {
     uint64_t textureID;
-    Vec2 spritePos;
-    Vec2 spriteSize;
     Vec2 frame;
 
     explicit SpriteInfo(uint64_t &textureID_, Vec2 &spritePos_, Vec2 &spriteSize_):
