@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 class SpriteManager {
-    public:
+  public:
 
     explicit SpriteManager() = default;
 
@@ -25,9 +25,10 @@ class SpriteManager {
 
     // gets number of loaded Sprites
     size_t getSize() const; 
-    
 
-    private:
+    sf::Texture getTexture(uint64_t id) {return textures[id];}
+
+  private:
     std::unordered_map<uint64_t, sf::Texture> textures;
     unsigned int screen_w;
     unsigned int screen_h;
