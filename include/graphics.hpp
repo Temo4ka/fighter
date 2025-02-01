@@ -19,7 +19,7 @@ class Drawable {
 
   private:
     bool visible;
-}
+};
 
 
 class DrawableSprite : public Drawable {
@@ -38,6 +38,8 @@ class DrawableSprite : public Drawable {
 
 class DrawableText : public Drawable {
   public:
+    DrawableText(const sf::Font &font): text(font) {}
+
     sf::Text getText() const {return text;}
 
     void draw(sf::RenderWindow &window) {window.draw(text);}
