@@ -54,6 +54,13 @@ void Rect::move (const Vec2& vec) {
     y += vec.y;
 }
 
+bool Rect::checkRectCollision(const Rect& rect1, const Rect& rect2) {
+    return !(rect1.right() <= rect2.left()  || 
+             rect1.bot()   <= rect2.top()   || 
+             rect1.left()  >= rect2.right() || 
+             rect1.top()   >= rect2.bot()   ); 
+}
+
 bool Intersect (const Rect& rect1, const Rect& rect2) {
     return (rect1.left() <= rect2.right() &&
             rect2.left() <= rect1.right() &&

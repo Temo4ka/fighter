@@ -54,6 +54,8 @@ struct Rect {
     void print() const;
 
     void move(const Vec2& vec);
+
+    static bool checkRectCollision(const Rect& rect1, const Rect& rect2);
 };
 
 bool Intersect (const Rect& rect1, const Rect& rect2);
@@ -62,5 +64,3 @@ bool HaveCommonSide (const Rect& rect1, const Rect& rect2);
 
 Vec2 GetCollisionTime(Rect fixed, Rect moving, Vec2 vel);
 
-
-#endif

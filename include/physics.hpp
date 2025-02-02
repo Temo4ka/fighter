@@ -36,7 +36,7 @@ class Entity {
     Vec2 position;
     Vec2 velocity;
 
-}
+};
 
 class PhysicsModule {
   public:
@@ -52,5 +52,5 @@ class PhysicsModule {
 
   private:
     std::vector<Entity*> all_objects; //interactable ofc
-}
+};
 

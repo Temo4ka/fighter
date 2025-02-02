@@ -64,7 +64,6 @@ class GraphicsModule {
 
  private:
     std::vector<Drawable*> drawingQueue;
-
     sf::RenderTexture screen;
     SpriteManager& sprite_man;
     sf::Font fnt;
