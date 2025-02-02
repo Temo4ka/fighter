@@ -1,6 +1,6 @@
 #include "../include/graphics.hpp"
 
-void Graphics::draw() {
+void GraphicsModule::draw() {
     for (Drawable *drawable : drawingQueue) {
         drawable->draw();
     }

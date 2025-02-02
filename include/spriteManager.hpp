@@ -20,13 +20,13 @@ class SpriteManager {
 
     // sf::Sprite getSprite(const Drawable& obj, const Camera& cam);
 
-    // gets a rectangular shape with help of SpriteInfo
-    sf::Sprite getSprite(const Rect& rect, const SpriteInfo& sprite_info);
+    // gets a rectangular shape with help of SpriteInfo object (not needed)
+    //sf::Sprite getSprite(const Rect& rect, const SpriteInfo& sprite_info);
 
     // gets number of loaded Sprites
     size_t getSize() const; 
 
-    sf::Texture getTexture(uint64_t id) {return textures[id];}
+    sf::Texture getTexture(uint64_t id);
 
   private:
     std::unordered_map<uint64_t, sf::Texture> textures;
