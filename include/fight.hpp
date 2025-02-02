@@ -6,9 +6,9 @@ class Fight {
   public:
     Fight() = default;
 
-    explicit Fight(FighterInfo &leftPlayerInfo, FighterInfo &rightPlayerInfo):
-    leftPlayer(leftPlayerInfo),
-    rightPlayer(rightPlayerInfo)
+    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
+		lftPlayer (lftPlayerInfo),
+		rgtPlayer (rgtPlayerInfo)
     {}
 
     //--------Events-------------------
@@ -23,8 +23,8 @@ class Fight {
     //=================================
 
   private:
-    Fighter rightPlayer;
-    Fighter  leftPlayer;
+    Fighter rgtPlayer;
+    Fighter lftPlayer;
 };
 
 
@@ -32,13 +32,13 @@ class FightInfo  {
   public:
     FightInfo() = delete;
 
-    FightInfo(FighterInfo &leftPlayerInfo_, FighterInfo &rightPlayerInfo_):
-    leftPlayerInfo  (leftPlayerInfo_ ),
-    rightPlayerInfo (rightPlayerInfo_)
+    FightInfo(FighterInfo &lftPlayerInfo_, FighterInfo &rgtPlayerInfo_):
+        lftPlayerInfo (lftPlayerInfo_),
+        rgtPlayerInfo (rgtPlayerInfo_)
     {}
 
   private:
-    FighterInfo  leftPlayerInfo;
-    FighterInfo rightPlayerInfo;
+    FighterInfo  lftPlayerInfo;
+    FighterInfo rgtPlayerInfo;
 }
 
