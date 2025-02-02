@@ -72,7 +72,9 @@ class Event {
 
 using MouseEvent = Event<MouseContext>;
 using KeyboardEvent = Event<KeyboardContext>;
-using TimeEvent = Event<double>;
+
+using Time_t = double;
+using TimeEvent = Event<Time_t>;
 
 class EventManager {
     public:
@@ -104,7 +106,7 @@ class EventManager {
         if (enabled) key_release(context);
     }
 
-    void Clock(double dt) {
+    void Clock(Time_t dt) {
         if (enabled) clock(dt);
     }
 

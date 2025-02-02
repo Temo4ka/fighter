@@ -12,7 +12,14 @@ class Fight {
     {}
 
     //--------Events-------------------
+    void  mousePressed(MouseContext context);
+    void mouseReleased(MouseContext context);
+    void    mouseMoved(MouseContext context);
 
+    void  keyPressed(KeyboardContext context);
+    void keyReleased(KeyboardContext context);
+
+    void timeEvent(Time_t dt);
     //=================================
 
   private:
