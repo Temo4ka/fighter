@@ -43,7 +43,7 @@ class FighterInfo {
                                         };
 };
 
-class Fighter : public Drawable {
+class Fighter : public Drawable, public Entity {
   public:
     Fighter() = delete;
     
@@ -59,5 +59,7 @@ class Fighter : public Drawable {
     void timeEvent(Time_t dt);
 
   private:
-    uint8_t hp;
+    uint8_t hp; // percantage mb?
+
+    FighterInfo fighterStartParams;
 };
