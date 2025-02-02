@@ -1,6 +1,9 @@
 #pragma once
 
+#include <vector>
+
 #include "vec2.hpp"
+#include "event.hpp"
 
 // This is very simple PhysicsModule for Fighting
 // Parts:
@@ -32,20 +35,20 @@ class Entity {
 
     Vec2 position;
     Vec2 velocity;
-ы
+
 }
 
 class PhysicsModule {
   public:
     PhysicsModule() = default;
 
-    void addObject(const Entity* object) { all_objects.push_back(); }
+    void addObject(const Entity* object);
 
     void eraseObject(const Entity* object);
 
     void collideObjects();
 
-    void updateObkects();
+    void updateObjects(Time_t dt);
 
   private:
     std::vector<Entity*> all_objects; //interactable ofc
