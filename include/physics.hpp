@@ -1,10 +1,5 @@
 #pragma once
 
-#include <vector>
-
-#include "vec2.hpp"
-#include "event.hpp"
-
 // This is very simple PhysicsModule for Fighting
 // Parts:
 //      1. Collision Detection
@@ -12,6 +7,10 @@
 //===============================================
 // Every object will have different states
 
+#include <vector>
+
+#include "vec2.hpp"
+#include "event.hpp"
 
 class Entity {
   public:
