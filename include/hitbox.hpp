@@ -9,9 +9,11 @@ class Hitbox {
     
     void addRect(const Rect& rect) { rects.push_back(rect); }
 
-    const std::vector<Rect>& getRects() const { return rects; }
+    std::vector<Rect> getRects() const { return rects; }
 
-    static bool checkHitboxCollision(const Hitbox hitbox1, const Hitbox hitbox2);
+    std::vector<Rect>& getRects() { return rects; }
+
+    static bool checkHitboxCollision(const Hitbox& hitbox1, const Hitbox& hitbox2);
 
   private:
     std::vector<Rect> rects;

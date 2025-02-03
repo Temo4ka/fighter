@@ -11,6 +11,7 @@
 
 #include "vec2.hpp"
 #include "event.hpp"
+#include "hitbox.hpp"
 
 class Entity {
   public:
@@ -29,21 +30,31 @@ class Entity {
         velocity (vel_),
     {}
 
+    void setHitbox(const Hitbox& newHitbox) { hitbox = newHitbox; }
+
+    Hitbox& getHitbox() { return hitbox; }
+
+    State& getState() { return state; }
+
+    Vec2& getPosition() { return position; }
+
+    Vec2& getVelocity() { return velocity; }
+
+
   private:
     State state;
-
     Vec2 position;
     Vec2 velocity;
-
+    Hitbox hitbox;
 };
 
 class PhysicsModule {
   public:
     PhysicsModule() = default;
 
-    void addObject(const Entity* object);
+    void addObject(Entity* object);
 
-    void eraseObject(const Entity* object);
+    void eraseObject(Entity* object);
 
     void collideObjects();
 

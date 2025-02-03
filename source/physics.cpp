@@ -1,11 +1,12 @@
 #include "../include/physics.hpp"
+#include "../include/hitbox.hpp"
 
-void PhysicsModule::addObject(const Entity *obj) { 
+void PhysicsModule::addObject(Entity* const obj) { 
     all_objects.push_back(obj);
 }
 
-void PhysicsModule::eraseObject(const Entity* object) {
-    for (std::vector<Entity*> it = all_objects.begin(); it != all_objects.end(); it++)
+void PhysicsModule::eraseObject(Entity* const object) {
+    for (auto it = all_objects.begin(); it != all_objects.end(); it++)
         if (*it == object) {
             all_objects.erase(it);
             break;
@@ -14,7 +15,7 @@ void PhysicsModule::eraseObject(const Entity* object) {
 
 void PhysicsModule::updateObjects(Time_t dt) {
     for (auto it : all_objects) {
-        it->position += it->velocity * dt;
+        it->getPosition() += it->getVelocity() * dt;
     }
 }
 
@@ -25,9 +26,9 @@ void PhysicsModule::collideObjects() {
         for (size_t s_ind = f_ind + 1; s_ind < all_objects.size(); s_ind++) {
             auto s_obj = all_objects[s_ind];
 
-            // hui znaet kak, no collide(f_obj, s_obj)
+            if (Hitbox::checkHitboxCollision(f_obj->getHitbox(), s_obj->getHitbox())) {
+                // hui znaet chto dalshe
+            }
         }
     }
-
-    return;
 }
