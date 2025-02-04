@@ -32,13 +32,12 @@ class Entity {
 
     void setHitbox(const Hitbox& newHitbox) { hitbox = newHitbox; }
 
-    Hitbox& getHitbox() { return hitbox; }
+    Hitbox getHitbox() { return hitbox; }
 
-    State& getState() { return state; }
-
-    Vec2& getPosition() { return position; }
-
-    Vec2& getVelocity() { return velocity; }
+    State getState() { return state; }
+    
+    Vec2 getPosition() { return position; }
+    Vec2 getVelocity() { return velocity; }
 
 
   private:
