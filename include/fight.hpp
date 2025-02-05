@@ -4,14 +4,23 @@
 
 class Fight {
   public:
-    Fight() = delete;
+    Fight() = default;
 
     explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
 		lftPlayer (lftPlayerInfo),
 		rgtPlayer (rgtPlayerInfo)
-    {}
+    {
+      // Basic Scene ( objects.push_back(...); )
+    }
 
-    //TODO: Load Scene from txt file (scene should be )
+    Fight& operator=(Fight&& fight) = default;
+
+    //TODO: Load Scene from txt file
+
+    std::vector<Entity>& getObjects() const { return objects; }
+
+    Fighter& getLftFighter() const { return lftPlayer; }
+    Fighter& getRgtFighter() const { return rgtPlayer; }
 
     void setTime(Time_t time) { timer = time; }
 

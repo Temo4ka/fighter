@@ -1,5 +1,41 @@
 #include "../include/fight_controller.hpp"
 
+void FightController::startFight(const FighterInfo &fighter1, const FighterInfo &fighter2) {
+    currentFight = Fight(fighter1, fighter2);
+
+    std::vector<Entity>& obj = currentFight.getObjects();
+    for (auto it = obj.begin(); it != obj.end(); it++) {
+        physModule.addObject(&(*it));
+        graphModule.insertObject(&(*it));
+    }
+
+    physModule.addObject(currentFight.getLftFighter());
+    physModule.addObject(currentFight.getRgtFighter());
+
+    graphModule.insertObject(currentFight.getLftFighter());
+    graphModule.insertObject(currentFight.getRgtFighter());
+
+    return;
+}
+
+void FightController::stopFight() {
+    currentFight = Fight(fighter1, fighter2);
+
+    physModule.eraseObject(currentFight.getRgtFighter());
+    physModule.eraseObject(currentFight.getLftFighter());
+
+    graphModule.eraseObject(currentFight.getRgtFighter());
+    graphModule.eraseObject(currentFight.getLftFighter());
+
+    std::vector<Entity>& obj = currentFight.getObjects();
+    for (auto it = obj.begin(); it != obj.end(); it++) {
+        physModule.eraseObject(&(*it));
+        graphModule.eraseObject(&(*it));
+    }
+
+    return;
+}
+
 void FightController::mousePressed(MouseContext context) {
     switch (currentStatus) {
         

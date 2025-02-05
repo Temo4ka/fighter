@@ -9,9 +9,14 @@
 
 class FightController {
   public:
-    FightController() = delete;
+    FightController() = delete; // mb it's not essential
 
-    void startFight(FighterInfo &fighter1, FighterInfo &fighter2);
+    explicit FightController(const PhysicsModule &physModule_, const GraphicsModule &graphModule_):
+        physModule (physModule_),
+        graphModule (graphModule_)
+    {} 
+
+    void startFight(const FighterInfo &fighter1, const FighterInfo &fighter2);
 
     void restartFight();
 
@@ -43,7 +48,7 @@ class FightController {
 
     uint8_t currentRoundNum;
 
-    EventManager& eventMan;
-
+    PhysicsModule &physModule;
+    GraphicsModule &graphModule;
 };
 
