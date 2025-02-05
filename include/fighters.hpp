@@ -4,7 +4,7 @@
 #include <string>
 
 #include "event.hpp"
-
+#include "physics.hpp"
 #include "graphics.hpp"
 
 class FighterInfo {

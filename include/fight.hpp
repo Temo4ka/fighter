@@ -4,12 +4,16 @@
 
 class Fight {
   public:
-    Fight() = default;
+    Fight() = delete;
 
     explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
 		lftPlayer (lftPlayerInfo),
 		rgtPlayer (rgtPlayerInfo)
     {}
+
+    //TODO: Load Scene from txt file (scene should be )
+
+    void setTime(Time_t time) { timer = time; }
 
     //--------Events-------------------
     void  mousePressed(MouseContext context);
@@ -25,6 +29,10 @@ class Fight {
   private:
     Fighter rgtPlayer;
     Fighter lftPlayer;
+
+    std::vector<Entity> objects;
+
+    Time_t  timer;
 };
 
 

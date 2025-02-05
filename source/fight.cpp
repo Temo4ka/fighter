@@ -34,6 +34,7 @@ void Fight::keyReleased(KeyboardContext context) {
 }
 
 void Fight::timeEvent(Time_t dt) {
+    timer -= dt;
 
     return;
 }
