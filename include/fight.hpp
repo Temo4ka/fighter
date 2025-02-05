@@ -6,9 +6,10 @@ class Fight {
   public:
     Fight() = default;
 
-    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
+    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		lftPlayer (lftPlayerInfo),
-		rgtPlayer (rgtPlayerInfo)
+		rgtPlayer (rgtPlayerInfo),
+    timer     (time)
     {
       // Basic Scene ( objects.push_back(...); )
     }
@@ -19,10 +20,10 @@ class Fight {
 
     std::vector<Entity>& getObjects() const { return objects; }
 
-    Fighter& getLftFighter() const { return lftPlayer; }
-    Fighter& getRgtFighter() const { return rgtPlayer; }
+    Fighter* getLftFighter() const { return lftPlayer; }
+    Fighter* getRgtFighter() const { return rgtPlayer; }
 
-    void setTime(Time_t time) { timer = time; }
+    void restart(const Time_t time = TIME);
 
     //--------Events-------------------
     void  mousePressed(MouseContext context);

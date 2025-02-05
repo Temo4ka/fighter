@@ -1,5 +1,9 @@
 #include "../include/fight.hpp"
 
+void Fight::restart(const Time_t time) {
+    timer = time;
+}
+
 void Fight::mousePressed(MouseContext context) {
     lftPlayer.mousePressed(context);
     rgtPlayer.mousePressed(context);

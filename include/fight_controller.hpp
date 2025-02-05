@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 
+#include "config.hpp"  
 #include "event.hpp"
 #include "fighters.hpp"
 #include "gui.hpp"
