@@ -1,8 +1,8 @@
 #include "../include/fighters.hpp"
 
-Fighter::Fighter(SpriteInfo &spInfo, FighterInfo &fgtrInfo) {
-
-}
+Fighter::Fighter(SpriteInfo &spInfo, FighterInfo &fgtrInfo) :
+    spInfo(),
+    
 
 void Fighter::mousePressed(MouseContext context) {
     
@@ -27,5 +27,9 @@ void Fighter::keyPressed(KeyboardContext context) {
 
 void Fighter::keyReleased(KeyboardContext context) {
 
+    return;
+}
+
+void Fighter::timeEvent(Time_t dt) {
     return;
 }

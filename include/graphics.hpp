@@ -10,7 +10,7 @@
 
 class Drawable {  
   public:
-    Drawable() visible (true) {}
+    Drawable() : visible (true) {}
 
     virtual void draw(sf::RenderWindow &window) = 0;
 
@@ -24,7 +24,9 @@ class Drawable {
 
 class DrawableSprite : public Drawable {
   public:
-    DrawableSprite(uint64_t textureID): sprite(SpriteManager::getTexture(textureID)) {}
+    explicit DrawableSprite(const uint64_t textureID): sprite(SpriteManager::getTexture(textureID)) {}
+
+    explicit DrawableSprite(const SpriteInfo &sprite_info);
 
     sf::Sprite getSprite() const {return sprite;}
 
@@ -38,7 +40,7 @@ class DrawableSprite : public Drawable {
 
 class DrawableText : public Drawable {
   public:
-    DrawableText(const sf::Font &font): text(font) {}
+    DrawableText(const sf::Font &font) : text(font) {}
 
     sf::Text getText() const {return text;}
 

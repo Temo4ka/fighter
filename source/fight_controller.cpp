@@ -45,8 +45,6 @@ void FightController::startFight(const FighterInfo &fighter1, const FighterInfo 
 }
 
 void FightController::stopFight() {
-    currentFight = Fight(fighter1, fighter2);
-
     physModule.eraseObject(currentFight.getRgtFighter());
     physModule.eraseObject(currentFight.getLftFighter());
 

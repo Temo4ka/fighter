@@ -9,7 +9,8 @@ class Fight {
     explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		lftPlayer (lftPlayerInfo),
 		rgtPlayer (rgtPlayerInfo),
-        timer     (time)
+        timer     (time),
+        status    (ON_FIGHT)
     {
       // Basic Scene ( objects.push_back(...); )
     }

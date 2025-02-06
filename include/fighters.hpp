@@ -43,11 +43,13 @@ class FighterInfo {
                                         };
 };
 
-class Fighter : public Drawable, public Entity {
+class Fighter : public DrawableSprite, public Entity {
   public:
     Fighter() = delete;
     
-    Fighter(SpriteInfo &spInfo, FighterInfo &fgtrInfo);
+    Fighter(SpriteInfo &spInfo, FighterInfo &fgtrInfo):
+      fighterStartParams (fgtrInfo),
+      Drawable()
 
     void  mousePressed(MouseContext context);
     void mouseReleased(MouseContext context);
