@@ -9,7 +9,7 @@ class Fight {
     explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		lftPlayer (lftPlayerInfo),
 		rgtPlayer (rgtPlayerInfo),
-    timer     (time)
+        timer     (time)
     {
       // Basic Scene ( objects.push_back(...); )
     }
@@ -35,6 +35,13 @@ class Fight {
 
     void timeEvent(Time_t dt);
     //=================================
+
+    enum Status {
+        UNCONSTRUCTED,
+        ON_FIGHT,
+        FINISHED_LFT_WON,
+        FINISHED_RGT_WON
+    } status = UNCONSTRUCTED;
 
   private:
     Fighter rgtPlayer;
