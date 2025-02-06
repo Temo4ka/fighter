@@ -1,8 +1,8 @@
-#include <SFML/Graphics.hpp>
+#include "../include/fight_controller.hpp"
 
 int main()
 {
-    sf::RenderWindow window(sf::VideoMode({200, 200}), "SFML works!");
+    sf::RenderWindow window(sf::VideoMode({WINDOW_WID, WINDOW_HGT}), "RPG FIGHTER");
     sf::CircleShape shape(100.f);
     shape.setFillColor(sf::Color::Green);
 

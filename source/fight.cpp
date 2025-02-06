@@ -2,6 +2,8 @@
 
 void Fight::restart(const Time_t time) {
     timer = time;
+
+    status = ON_FIGHT;
 }
 
 void Fight::mousePressed(MouseContext context) {

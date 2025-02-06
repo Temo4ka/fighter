@@ -27,7 +27,7 @@ class Entity {
     explicit Entity(const State &state_, const Vec2& pos_, const Vec2& vel_):
         state  (state_),
         position (pos_),
-        velocity (vel_),
+        velocity (vel_)
     {}
 
     void setHitbox(const Hitbox& newHitbox) { hitbox = newHitbox; }
