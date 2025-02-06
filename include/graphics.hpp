@@ -18,7 +18,7 @@ class Drawable {
     bool getVisible() const {return visible;}
 
   private:
-    bool visible;
+    bool visible; // can be public
 };
 
 

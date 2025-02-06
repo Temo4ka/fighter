@@ -35,7 +35,7 @@ class Entity {
     Hitbox getHitbox() { return hitbox; }
 
     State getState() { return state; }
-    
+
     Vec2 getPosition() { return position; }
     Vec2 getVelocity() { return velocity; }
 
