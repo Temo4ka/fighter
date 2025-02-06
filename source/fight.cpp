@@ -40,5 +40,23 @@ void Fight::keyReleased(KeyboardContext context) {
 void Fight::timeEvent(Time_t dt) {
     timer -= dt;
 
+    if (timer <= 0) {
+        if (lftPlayer.getHP() < rgtPlayer.getHP())
+            status = FINISHED_LFT_WON;
+        else if (rgtPlayer.getHP() < lftPlayer.getHP())
+            status = FINISHED_RGT_WON;
+        else
+            status = FINISHED_DRAW;
+        
+        return;
+    }
+
+    if (lftPlayer.getHP() <= 0 && rgtPlayer.getHP())
+        status = FINISHED_DRAW;
+    else if (lftPlayer.getHP() < 0)
+        status = FINISHED_LFT_WON;
+    else if (rgtPlayer.getHP() < 0)
+        status = FINISHED_RGT_WON;
+
     return;
 }

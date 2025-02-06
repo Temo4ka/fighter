@@ -64,6 +64,8 @@ class Fighter : public DrawableSprite, public Entity {
       fighterStartParams (fgtrInfo)
     {}
 
+    uint8_t getHP() const { return hp;}
+
     //---Events---------------------------------
     void  mousePressed(MouseContext context);
     void mouseReleased(MouseContext context);
