@@ -64,9 +64,16 @@ class GraphicsModule {
 
     void eraseObject(size_t ind);
 
+    void TimeEvent(Time_t dt);
+
  private:
-    std::vector<Drawable*> drawingQueue;
-    sf::RenderTexture screen;
-    SpriteManager& sprite_man;
+    sf::RenderWindow window(sf::VideoMode({WINDOW_WID, WINDOW_HGT}), "RPG FIGHTER");
+    sf::RenderTexture screen(sf::Vector2u(WINDOW_WID, WINDOW_HGT));
     sf::Font fnt;
+
+    std::vector<Drawable*> drawingQueue;
+    
+    SpriteManager sprite_man;
+
+    Time_t timer;
 };

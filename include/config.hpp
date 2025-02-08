@@ -10,4 +10,6 @@ const double TIME = 90;
 const uint8_t WINDOW_WID = 1200;
 const uint8_t WINDOW_HGT = 800;
 
+const char* = "RPG FIGHTER";
+
 #endif
