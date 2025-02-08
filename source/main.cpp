@@ -21,7 +21,10 @@ int main()
 
     Vec2 mousePosition(0, 0);
 
-    while (window.isOpen())
+    sf::Clock clk = {};
+    uint64_t last_time = 0;
+
+    while (graphics.getWindow().isOpen())
     {
         while (const std::optional event = window.pollEvent())
         {
@@ -66,8 +69,11 @@ int main()
                 window.close();
         }
 
-        window.clear();
-        window.draw(shape);
-        window.display();
+        uint64_t current_time = clk.getElapsedTime().asMicroseconds();
+        if (current_time - last_time >= 10000) {
+            double dt = (double)(current_time - last_time) / 1000000;
+            event_manager.Clock(dt);
+            last_time = current_time;
+        }
     }
 }

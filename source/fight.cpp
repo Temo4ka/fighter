@@ -16,18 +16,21 @@ void Fight::mousePressed(MouseContext context) {
 void Fight::mouseReleased(MouseContext context) {
     lftPlayer.mouseReleased(context);
     rgtPlayer.mouseReleased(context);
+
     return;
 }
 
 void Fight::mouseMoved(MouseContext context) {
     lftPlayer.mouseMoved(context);
     rgtPlayer.mouseMoved(context);
+
     return;
 }
 
 void Fight::keyPressed(KeyboardContext context) {
     lftPlayer.keyPressed(context);
     rgtPlayer.keyPressed(context);
+    
 
     return;
 }

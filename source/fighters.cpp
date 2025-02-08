@@ -1,4 +1,5 @@
 #include "../include/fighters.hpp"
+#include "../include/config.hpp"
 
 void Fighter::mousePressed(MouseContext context) {
     switch (fighterStartParams.getCommand(context.button)) {
@@ -84,4 +85,32 @@ void Fighter::keyReleased(KeyboardContext context) {
 
 void Fighter::timeEvent(Time_t dt) {
     return;
+}
+
+void Fighter::sit() {
+
+    return;
+}
+
+void Fighter::jump() {
+    if (getState() != State::IN_AIR)
+        velocity += Vec2(0, BASE_JUMP_VEL);
+}
+
+void Fighter::move_right() {
+    if (velocity.x + BASE_ACCEL <= RUN_SPEED_LIMIT)
+        velocity.x += BASE_ACCEL;
+}
+
+void Fighter::move_left() {
+    if (velocity.x - BASE_ACCEL >= -RUN_SPEED_LIMIT)
+        velocity.x -= BASE_ACCEL;
+}
+
+void Fighter::attack_with_hand() {
+
+}
+
+void Fighter::attack_with_leg() {
+    
 }

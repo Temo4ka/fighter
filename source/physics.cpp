@@ -1,5 +1,6 @@
 #include "../include/physics.hpp"
 #include "../include/hitbox.hpp"
+#include "../include/config.hpp"
 
 void PhysicsModule::addObject(Entity* const obj) { 
     all_objects.push_back(obj);
@@ -15,7 +16,8 @@ void PhysicsModule::eraseObject(Entity* const object) {
 
 void PhysicsModule::updateObjects(Time_t dt) {
     for (auto it : all_objects) {
-        it->getPosition() += it->getVelocity() * dt;
+        it->getPosition() += it->getVelocity() * dt + Vec2(0, G) * dt * dt;
+        it->getVelocity() += Vec2(0, G) * dt;
     }
 }
 

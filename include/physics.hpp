@@ -19,15 +19,17 @@ class Entity {
         FIXED,
         STILL,
         ON_MOVE,
+        IN_AIR,
         UNSTOPPABLE
     };
 
     explicit Entity(): state(State::FIXED) {}
     
-    explicit Entity(const State &state_, const Vec2& pos_, const Vec2& vel_):
+    explicit Entity(const State &state_, const Vec2& pos_, const Vec2& vel_, const double &mass_):
         state  (state_),
         position (pos_),
-        velocity (vel_)
+        velocity (vel_),
+        mass    (mass_)
     {}
 
     void setHitbox(const Hitbox& newHitbox) { hitbox = newHitbox; }
@@ -40,10 +42,13 @@ class Entity {
     Vec2 getVelocity() { return velocity; }
 
 
-  private:
-    State state;
     Vec2 position;
     Vec2 velocity;
+    double mass;
+
+  private:
+    State state;
+
     Hitbox hitbox;
 };
 
