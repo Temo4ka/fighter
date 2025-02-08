@@ -41,7 +41,8 @@ class Fight {
         UNCONSTRUCTED,
         ON_FIGHT,
         FINISHED_LFT_WON,
-        FINISHED_RGT_WON
+        FINISHED_RGT_WON,
+        FINISHED_DRAW
     } status = UNCONSTRUCTED;
 
   private:

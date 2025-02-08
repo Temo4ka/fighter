@@ -27,28 +27,12 @@ int main()
         {
             if (event->is<sf::Event::KeyPressed>) {
                 auto sf_context = event->KeyPressed;
-                KeyboardContext context;
-
-                context.key = sf_context.key;
-
-                context.alt = sf_context.alt;
-                context.shift = sf_context.shift;
-                context.ctrl = sf_context.ctrl;
-
-                event_manager.keyPress(context);
+                event_manager.keyPress({sf_context.alt, sf_context.shift, sf_context.ctrl, sf_context.code});
             }
 
             if (event->is<sf::Event::KeyReleased>) {
                 auto sf_context = event->KeyReleased;
-                KeyboardContext context;
-
-                context.key = sf_context.code;
-
-                context.alt = sf_context.alt;
-                context.shift = sf_context.shift;
-                context.ctrl = sf_context.ctrl;
-
-                event_manager.keyRelease(context);
+                event_manager.keyRelease({sf_context.alt, sf_context.shift, sf_context.ctrl, sf_context.code});
             }
 
             if (event->is<sf::Event::MouseMoved>) {
