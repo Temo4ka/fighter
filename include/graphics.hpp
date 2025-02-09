@@ -71,6 +71,4 @@ class GraphicsModule {
     std::vector<Drawable*> drawingQueue;
     
     SpriteManager sprite_man;
-
-    Time_t timer;
 };

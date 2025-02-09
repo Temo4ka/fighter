@@ -22,3 +22,7 @@ void GraphicsModule::eraseObject(size_t ind) {
     size_t position = std::min(drawingQueue.size(), ind);
     drawingQueue.erase(drawingQueue.begin() + position);
 }
+
+void GraphicsModule::TimeEvent(Time_t dt) {
+    draw();
+}
