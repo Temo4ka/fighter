@@ -7,7 +7,6 @@
 #include "geometry.hpp"
 #include "spriteManager.hpp"
 
-
 class Drawable {  
   public:
     Drawable() : visible (true) {}
@@ -25,8 +24,6 @@ class Drawable {
 class DrawableSprite : public Drawable {
   public:
     explicit DrawableSprite(const uint64_t textureID): sprite(SpriteManager::getTexture(textureID)) {}
-
-    explicit DrawableSprite(const SpriteInfo &sprite_info);
 
     sf::Sprite getSprite() const {return sprite;}
 

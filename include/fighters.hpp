@@ -58,8 +58,8 @@ class Fighter : public DrawableSprite, public Entity {
   public:
     Fighter() = delete;
     
-    Fighter(const SpriteInfo &spInfo, const FighterInfo &fgtrInfo, const Vec2 &pos_, const Entity::State &state_):
-      DrawableSprite(spInfo),
+    Fighter(const uint64_t textureID, const FighterInfo &fgtrInfo, const Vec2 &pos_, const Entity::State &state_):
+      DrawableSprite(textureID),
       Entity (state_, pos_, Vec2(0, 0)),
       fighterStartParams (fgtrInfo)
     {}
