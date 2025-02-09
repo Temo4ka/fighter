@@ -15,12 +15,12 @@ void PhysicsModule::eraseObject(Entity* const object) {
 }
 
 void PhysicsModule::updateObjects(Time_t dt) {
-    collideObjects();
-
     for (auto it : all_objects) {
         it->position += it->velocity * dt + Vec2(0, G) * dt * dt;
         it->velocity += Vec2(0, G) * dt;
     }
+
+    collideObjects();
 }
 
 void PhysicsModule::collideObjects() {
@@ -31,7 +31,8 @@ void PhysicsModule::collideObjects() {
             auto s_obj = all_objects[s_ind];
 
             if (Hitbox::checkHitboxCollision(f_obj->getHitbox(), s_obj->getHitbox())) {
-                // hui znaet chto dalshe
+                f_obj->velocity = Vec2(0, 0);
+                s_obj->velocity = Vec2(0, 0);
             }
         }
     }
