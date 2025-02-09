@@ -38,10 +38,6 @@ class Entity {
 
     State getState() { return state; }
 
-    Vec2 getPosition() { return position; }
-    Vec2 getVelocity() { return velocity; }
-
-
     Vec2 position;
     Vec2 velocity;
     double mass;

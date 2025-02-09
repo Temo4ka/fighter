@@ -15,9 +15,11 @@ void PhysicsModule::eraseObject(Entity* const object) {
 }
 
 void PhysicsModule::updateObjects(Time_t dt) {
+    collideObjects();
+
     for (auto it : all_objects) {
-        it->getPosition() += it->getVelocity() * dt + Vec2(0, G) * dt * dt;
-        it->getVelocity() += Vec2(0, G) * dt;
+        it->position += it->velocity * dt + Vec2(0, G) * dt * dt;
+        it->velocity += Vec2(0, G) * dt;
     }
 }
 

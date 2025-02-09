@@ -71,7 +71,7 @@ int main()
 
         uint64_t current_time = clk.getElapsedTime().asMicroseconds();
         if (current_time - last_time >= 10000) {
-            double dt = (double)(current_time - last_time) / 1000000;
+            Time_t dt = (double)(current_time - last_time) / 1000000;
             event_manager.Clock(dt);
             last_time = current_time;
         }
