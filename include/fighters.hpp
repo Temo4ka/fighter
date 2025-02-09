@@ -9,20 +9,9 @@
 #include "graphics.hpp"
 
 class FighterInfo {
-    FighterInfo() = delete;
-
-    FighterInfo(uint8_t &strength_, uint8_t &dexterity_, uint8_t &constitution_):
-    strength(strength_),
-    dexterity(dexterity_),
-    constitution(constitution_)
-    {}
-
-    void setMouseControls(std::map<Key, Commands> &map) { KeyControls = map; }
-
-    void setKeyControls(std::map<MouseButton, Commands> &map) { MouseControls = map; }
-
+  public:
     enum Commands {
-        UNDEFINED = 0
+        UNDEFINED = 0,
         MOVE_LEFT,
         MOVE_RIGHT,
         JUMP,
@@ -31,10 +20,28 @@ class FighterInfo {
         ATTACK_WITH_LEG
     };
 
-    Command getCommand(const Key &key) const { return KeyControls[key]; }
-    Command getCommand(const MouseButton &m_button) const { return MouseControls[m_button]; }
+    FighterInfo() = delete;
+
+    FighterInfo(SpriteManager &sprite_man_, uint8_t &strength_, uint8_t &dexterity_, uint8_t &constitution_):
+      sprite_man(sprite_man_),
+      strength(strength_),
+      dexterity(dexterity_),
+      constitution(constitution_)
+    {}
+
+    void setMouseControls(std::map<Key, Commands> &map) { KeyControls = map; }
+
+    void setKeyControls(std::map<MouseButton, Commands> &map) { MouseControls = map; }
+
+    Commands getCommand(const Key &key) { return KeyControls[key]; }
+    Commands getCommand(const MouseButton &m_button) { return MouseControls[m_button]; }
+
+    sf::Texture getTexture() const { return sprite_man.getTexture(textureID); }
 
   private:
+    SpriteManager &sprite_man;
+    uint64_t textureID; 
+
     uint8_t strength;
     uint8_t dexterity;
     uint8_t constitution;
@@ -44,7 +51,7 @@ class FighterInfo {
 
     std::map<Key, Commands> KeyControls = { {Key::A, Commands::MOVE_LEFT }, 
                                             {Key::D, Commands::MOVE_RIGHT}, 
-                                            {Key::S, Commnads::SIT},
+                                            {Key::S, Commands::SIT},
                                             {Key::W, Commands::JUMP}, 
                                             {Key::Space, Commands::JUMP},
                                             {Key::Q, Commands::ATTACK_WITH_HAND}, 
@@ -58,9 +65,10 @@ class Fighter : public DrawableSprite, public Entity {
   public:
     Fighter() = delete;
     
-    Fighter(const uint64_t textureID, const FighterInfo &fgtrInfo, const Vec2 &pos_, const Entity::State &state_):
-      DrawableSprite(textureID),
-      Entity (state_, pos_, Vec2(0, 0)),
+    Fighter(const FighterInfo &fgtrInfo,
+                const Vec2 &pos_ = Vec2(0, 0), const Entity::State &state_ = Entity::State::STILL):
+      DrawableSprite(fgtrInfo.getTexture()),
+      Entity (state_, pos_, Vec2(0, 0), BASE_MASS),
       fighterStartParams (fgtrInfo)
     {}
 

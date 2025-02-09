@@ -5,7 +5,7 @@ int main()
     GraphicsModule graphics;
     PhysicsModule  physics;
     EventManager event_manager;
-    FightController fight_controller(physics, graphics);
+    FightController fight_controller(physics, graphics, /*Fighters*/);
 
     event_manager.enable();
 
@@ -24,49 +24,49 @@ int main()
     sf::Clock clk = {};
     uint64_t last_time = 0;
 
-    while (graphics.getWindow().isOpen())
+    while (graphics.isWindowOpen())
     {
-        while (const std::optional event = window.pollEvent())
+        while (const std::optional event = graphics.windowPollEvent())
         {
-            if (event->is<sf::Event::KeyPressed>) {
-                auto sf_context = event->KeyPressed;
-                event_manager.keyPress({sf_context.alt, sf_context.shift, sf_context.ctrl, sf_context.code});
+            if (event->is<sf::Event::KeyPressed>()) {
+                auto sf_context = event->getIf<sf::Event::KeyPressed>();
+                event_manager.keyPress({sf_context->alt, sf_context->shift, sf_context->control, (int) sf_context->code});
             }
 
-            if (event->is<sf::Event::KeyReleased>) {
-                auto sf_context = event->KeyReleased;
-                event_manager.keyRelease({sf_context.alt, sf_context.shift, sf_context.ctrl, sf_context.code});
+            if (event->is<sf::Event::KeyReleased>()) {
+                auto sf_context = event->getIf<sf::Event::KeyReleased>();
+                event_manager.keyRelease({sf_context->alt, sf_context->shift, sf_context->control, (int) sf_context->code});
             }
 
-            if (event->is<sf::Event::MouseMoved>) {
-                auto sf_context = event->MouseMoved;
+            if (event->is<sf::Event::MouseMoved>()) {
+                auto sf_context = event->getIf<sf::Event::MouseMoved>();
 
-                mousePosition.x = sf_context.position.x;
-                mousePosition.y = sf_context.position.y;
+                mousePosition.x = sf_context->position.x;
+                mousePosition.y = sf_context->position.y;
 
                 event_manager.mouseMove({mousePosition, MouseButton::Unknown});
             }
 
-            if (event->is<sf::Event::MouseButtonPressed>) {
-                auto sf_context = event->MouseButtonPressed;
+            if (event->is<sf::Event::MouseButtonPressed>()) {
+                auto sf_context = event->getIf<sf::Event::MouseButtonPressed>();
 
-                MouseButton buttonPressed = (sf_context.button == sf::Mouse::Button::Left ||
-                                             sf_context.button == sf::Mouse::Button::Right  )? sf_context.button : MouseButton::Unknown;
+                MouseButton buttonPressed = (sf_context->button == sf::Mouse::Button::Left ||
+                                             sf_context->button == sf::Mouse::Button::Right  )? sf_context->button : MouseButton::Unknown;
 
                 event_manager.mousePress({mousePosition, buttonPressed});
             }
 
-            if (event->is<sf::Event::MouseButtonReleased>) {
-                auto sf_context = event->MouseButtonReleased;
+            if (event->is<sf::Event::MouseButtonReleased>()) {
+                auto sf_context = event->getIf<sf::Event::MouseButtonReleased>();
 
-                MouseButton buttonPressed = (sf_context.button == sf::Mouse::Button::Left ||
-                                             sf_context.button == sf::Mouse::Button::Right  )? sf_context.button : MouseButton::Unknown;
+                MouseButton buttonPressed = (sf_context->button == sf::Mouse::Button::Left ||
+                                             sf_context->button == sf::Mouse::Button::Right  )? sf_context->button : MouseButton::Unknown;
 
                 event_manager.mouseRelease({mousePosition, buttonPressed});
             }
 
             if (event->is<sf::Event::Closed>())
-                window.close();
+                graphics.close();
         }
 
         uint64_t current_time = clk.getElapsedTime().asMicroseconds();

@@ -5,16 +5,18 @@
 
 #include "config.hpp"  
 #include "event.hpp"
-#include "fighters.hpp"
+#include "fight.hpp"
 #include "gui.hpp"
 
 class FightController {
   public:
     FightController() = delete; // mb it's not essential
 
-    explicit FightController(const PhysicsModule &physModule_, const GraphicsModule &graphModule_):
+    explicit FightController(PhysicsModule &physModule_, GraphicsModule &graphModule_,
+                                FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
         physModule (physModule_),
-        graphModule (graphModule_)
+        graphModule (graphModule_),
+        currentFight(lftPlayerInfo, rgtPlayerInfo)
     {} 
 
     void startFight(const FighterInfo &fighter1, const FighterInfo &fighter2);
@@ -44,8 +46,8 @@ class FightController {
 
     Fight currentFight;
 
-    Menu PauseMenu;
-    Menu FinalMenu;
+    // Menu PauseMenu;
+    // Menu FinalMenu;
 
     uint8_t currentRoundNum;
 

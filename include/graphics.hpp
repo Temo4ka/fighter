@@ -23,16 +23,15 @@ class Drawable {
 
 class DrawableSprite : public Drawable {
   public:
-    explicit DrawableSprite(const uint64_t textureID): sprite(SpriteManager::getTexture(textureID)) {}
+    explicit DrawableSprite(sf::Texture texture):
+		sprite(texture)
+	{}
 
     sf::Sprite getSprite() const {return sprite;}
 
-    uint64_t getTextureID() const {return textureID;}
-    
-    void draw(sf::RenderWindow &window) {window.draw(sprite);}
+	void draw(sf::RenderWindow &window) { window.draw(sprite); }
   private: 
     sf::Sprite sprite;
-    uint64_t textureID;
 };
 
 class DrawableText : public Drawable {
@@ -63,9 +62,17 @@ class GraphicsModule {
 
     void TimeEvent(Time_t dt);
 
+	SpriteManager getSpriteManager() const { return sprite_man; }
+
+	std::optional<sf::Event> windowPollEvent() { return window.pollEvent(); }
+
+	bool isWindowOpen() { return window.isOpen(); }
+
+	void close() { window.close(); }
+
  private:
-    sf::RenderWindow window(sf::VideoMode({WINDOW_WID, WINDOW_HGT}), "RPG FIGHTER");
-    sf::RenderTexture screen(sf::Vector2u(WINDOW_WID, WINDOW_HGT));
+    sf::RenderWindow  window = sf::RenderWindow(sf::VideoMode({WINDOW_WID, WINDOW_HGT}), "RPG FIGHTER");
+    sf::RenderTexture screen = sf::RenderTexture(sf::Vector2u(WINDOW_WID, WINDOW_HGT));
     sf::Font fnt;
 
     std::vector<Drawable*> drawingQueue;
