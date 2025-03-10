@@ -30,12 +30,12 @@ int main()
         {
             if (event->is<sf::Event::KeyPressed>()) {
                 auto sf_context = event->getIf<sf::Event::KeyPressed>();
-                event_manager.keyPress({sf_context->alt, sf_context->shift, sf_context->control, (int) sf_context->code});
+                event_manager.keyPress({sf_context->alt, sf_context->shift, sf_context->control, (Key) sf_context->code});
             }
 
             if (event->is<sf::Event::KeyReleased>()) {
                 auto sf_context = event->getIf<sf::Event::KeyReleased>();
-                event_manager.keyRelease({sf_context->alt, sf_context->shift, sf_context->control, (int) sf_context->code});
+                event_manager.keyRelease({sf_context->alt, sf_context->shift, sf_context->control, (Key) sf_context->code});
             }
 
             if (event->is<sf::Event::MouseMoved>()) {
@@ -50,8 +50,7 @@ int main()
             if (event->is<sf::Event::MouseButtonPressed>()) {
                 auto sf_context = event->getIf<sf::Event::MouseButtonPressed>();
 
-                MouseButton buttonPressed = (sf_context->button == sf::Mouse::Button::Left ||
-                                             sf_context->button == sf::Mouse::Button::Right  )? sf_context->button : MouseButton::Unknown;
+                MouseButton buttonPressed = getMouseButton((int) sf_context->button);
 
                 event_manager.mousePress({mousePosition, buttonPressed});
             }
@@ -59,8 +58,7 @@ int main()
             if (event->is<sf::Event::MouseButtonReleased>()) {
                 auto sf_context = event->getIf<sf::Event::MouseButtonReleased>();
 
-                MouseButton buttonPressed = (sf_context->button == sf::Mouse::Button::Left ||
-                                             sf_context->button == sf::Mouse::Button::Right  )? sf_context->button : MouseButton::Unknown;
+                MouseButton buttonPressed = getMouseButton((int) sf_context->button);
 
                 event_manager.mouseRelease({mousePosition, buttonPressed});
             }
