@@ -10,7 +10,7 @@ class SpriteManager {
     explicit SpriteManager() = default;
 
     // loads texture from file and inserts it into map
-    void loadTexture(const std::string& filename); 
+    uint64_t loadTexture(const std::string& filename); 
 
     // resets all loaded sprites
     void reset();
