@@ -1,15 +1,29 @@
 #include "../include/spriteManager.hpp"
 
-void SpriteManager::loadTexture(uint64_t id, const std::string& filename) {
-    if (textures.find(id) != textures.end()) {
-        throw std::runtime_error("ID in textures already exist: " + std::to_string(id));
+const HASH_CONST = 53;
+
+uint64_t hash(const std::string &string) {
+    uint64_t hsh = 0;
+
+    for (auto chr : string) {
+        hsh = hsh * HASH_CONST + chr;
     }
+
+    return hsh;
+}
+
+uint64_t SpriteManager::loadTexture(const std::string& filename) {
+    uint64_t id = hash(filename);
+
+    if (textures.find(id) != textures.end()) return id;
  
     try {
         textures[id] = sf::Texture(std::filesystem::path(filename));
     } catch (const sf::Exception) {
         throw std::runtime_error("texture not found in file: " + filename);
     }
+
+    return id;
 }
 
 void SpriteManager::setScreenSize(unsigned int screen_w_, unsigned int screen_h_) {
