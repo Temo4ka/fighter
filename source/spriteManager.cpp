@@ -15,7 +15,8 @@ uint64_t hash(const std::string &string) {
 uint64_t SpriteManager::loadTexture(const std::string& filename) {
     uint64_t id = hash(filename);
 
-    if (textures.find(id) != textures.end()) return id;
+    if (textures.find(id) != textures.end())
+        return id;
  
     try {
         textures[id] = sf::Texture(std::filesystem::path(filename));
