@@ -62,7 +62,7 @@ class GraphicsModule {
 
     void TimeEvent(Time_t dt);
 
-	SpriteManager &getSpriteManager() const { return sprite_man; }
+	SpriteManager &getSpriteManager() { return sprite_man; }
 
 	std::optional<sf::Event> windowPollEvent() { return window.pollEvent(); }
 
