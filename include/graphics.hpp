@@ -7,7 +7,7 @@
 #include "geometry.hpp"
 #include "sprite_manager.hpp"
 
-static class Drawable {  
+class Drawable {  
   public:
     Drawable() : visible(false), height(0), width(0), posX(0), posY(0), scale(1) {}
 
