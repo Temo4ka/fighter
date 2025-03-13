@@ -9,23 +9,68 @@
 
 class Drawable {  
   public:
-    Drawable() : visible (true) {}
+    Drawable() : visible(false), height(0), width(0), posX(0), posY(0), scale(1) {}
+
+    Drawable(int height, int width, int posX, int posY, int scale) {
+        this->visible = true;
+        this->height  = height;
+        this->width   = width;
+        this->posX    = posX;
+        this->posY    = posY;
+        this->scale   = scale;
+    }
 
     virtual void draw(sf::RenderWindow &window) = 0;
 
     void setVisible(bool vis) {visible = vis;}
     bool getVisible() const {return visible;}
+    
+    void setheight(int height) { this->height = height; }
+    int getheight() const { return height; }
+
+    void setwidth(int width) { this->width = width; }
+    int getwidth() const { return width; }
+
+    void setPosX(int posX) { this->posX = posX; }
+    int getPosX() const { return posX; }
+
+    void setPosY(int posY) { this->posY = posY; }
+    int getPosY() const { return posY; }
+
+    void setScale(int scale) { this->scale = scale; }
+    int getScale() const { return scale; }
+
+    void changePosition(int posX, int posY) {
+        this->posX = posX;
+        this->posY = posY;
+    }
+
+    void resize(int sizeX, int width) {
+        this->height = height;
+        this->width  = width;
+    }
 
   private:
     bool visible; // can be public
+    int height, width; // мб нужен другой тип
+    int posX, posY; // мб нужен другой тип
+    int scale; // мб нужен другой тип
 };
 
 
 class DrawableSprite : public Drawable {
   public:
-    explicit DrawableSprite(sf::Texture texture):
-		sprite(texture)
-	{}
+    // не уверен надо ли передавать текстуру по ссылке
+    explicit DrawableSprite(sf::Texture texture) {
+        sprite = texture;
+    }
+
+    // не уверен надо ли передавать текстуру по ссылке
+    DrawableSprite(sf::Textrure texture, int height, int width, int posX, int posY, int scale): 
+        Drawable(height, width, posX, posY, scale)  
+    {
+        sprite = texture;
+    }
 
     sf::Sprite getSprite() const {return sprite;}
 
@@ -36,7 +81,17 @@ class DrawableSprite : public Drawable {
 
 class DrawableText : public Drawable {
   public:
-    DrawableText(const sf::Font &font) : text(font) {}
+    // не уверен надо ли передавать шрифт по ссылке
+    DrawableText(const sf::Font &font) {
+        text = font;
+    }
+
+    // не уверен надо ли передавать шрифт по ссылке
+    DrawableSprite(const sf::Font &font, int height, int width, int posX, int posY, int scale): 
+        Drawable(height, width, posX, posY, scale)  
+    {
+        text = font;
+    }
 
     sf::Text getText() const {return text;}
 
