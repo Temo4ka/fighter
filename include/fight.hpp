@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fighters.hpp"
+#include "scene.hpp"
 
 class Fight {
   public:
@@ -13,6 +14,10 @@ class Fight {
         status    (ON_FIGHT)
     {
       // Basic Scene ( objects.push_back(...); )
+      Background background();
+      BaseBlock base_block(Vec2(0, WINDOW_HGT / 2));
+
+      objects.push_back(base_block);
     }
 
     //TODO: Load Scene from txt file

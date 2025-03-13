@@ -5,9 +5,9 @@
 
 #include "vec2.hpp"
 #include "geometry.hpp"
-#include "spriteManager.hpp"
+#include "sprite_manager.hpp"
 
-class Drawable {  
+static class Drawable {  
   public:
     Drawable() : visible (true) {}
 

@@ -33,3 +33,5 @@ class SpriteManager {
     unsigned int screen_w;
     unsigned int screen_h;
 };
+
+uint64_t hash(const std::string &string);
