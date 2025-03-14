@@ -17,7 +17,6 @@ class Background : public DrawableSprite {
 class BaseBlock : public GameObject {
   public:
   BaseBlock(const SpriteManager &sp_man, const Vec2& pos_, const Vec2 vel_ = Vec2(0, 0), const double mass_ = 1e9):
-    DrawableSprite(sp_man.getTexture(BB_TEX_ID)),
-    Entity(Entity::State::FIXED, pos_, vel_, mass_)
+    GameObject(sp_man.getTexture(BB_TEX_ID), pos_, Vec2(1, 1), Entity::FIXED, vel_, mass_)
   {}
 };

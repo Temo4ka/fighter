@@ -8,10 +8,10 @@ class Fight {
   public:
     Fight() = delete;
 
-    explicit Fight(const GraphicsModule &g_module, FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
+    explicit Fight(GraphicsModule &g_module, FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		  lftPlayer (lftPlayerInfo),
 		  rgtPlayer (rgtPlayerInfo),
-      sp_man       (obj_sp_man),
+      sp_man       (g_module.getSpriteManager()),
       status         (ON_FIGHT),
       timer              (time)
     {
@@ -60,7 +60,7 @@ class Fight {
 
     Time_t  timer;
 
-    const SpriteManager &sp_man;
+    SpriteManager &sp_man;
 };
 
 

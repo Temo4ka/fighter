@@ -16,7 +16,7 @@ class FightController {
                                 FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo):
         physModule (physModule_),
         graphModule (graphModule_),
-        currentFight(lftPlayerInfo, rgtPlayerInfo, graphModule_.getSpriteManager())
+        currentFight(graphModule_, lftPlayerInfo, rgtPlayerInfo)
     {} 
 
     void startFight(const FighterInfo &fighter1, const FighterInfo &fighter2);
