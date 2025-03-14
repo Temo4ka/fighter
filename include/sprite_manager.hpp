@@ -26,7 +26,7 @@ class SpriteManager {
     // gets number of loaded Sprites
     size_t getSize() const; 
 
-    sf::Texture getTexture(uint64_t id);
+    sf::Texture getTexture(uint64_t id) const;
 
   private:
     std::unordered_map<uint64_t, sf::Texture> textures;

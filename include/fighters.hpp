@@ -66,9 +66,9 @@ class Fighter : public DrawableSprite, public Entity {
   public:
     Fighter() = delete;
     
-    Fighter(const FighterInfo &fgtrInfo,
-                const Vec2 &pos_ = Vec2(0, 0), const Entity::State &state_ = Entity::State::STILL):
-      DrawableSprite(fgtrInfo.getTexture()),
+    Fighter(const FighterInfo &fgtrInfo, const Vec2 &pos_ = Vec2(0, 0), const Vec2 &scale_ = Vec2(1, 1),
+            const Entity::State &state_ = Entity::State::STILL):
+      DrawableSprite(fgtrInfo.getTexture(), sf::Vector2f(pos_.x, pos_.y), sf::Vector2f(scale_.x, scale_.y)),
       Entity (state_, pos_, Vec2(0, 0), BASE_MASS),
       fighterStartParams (fgtrInfo)
     {}

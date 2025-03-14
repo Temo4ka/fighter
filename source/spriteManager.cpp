@@ -40,7 +40,7 @@ size_t SpriteManager::getSize() const {
     return textures.size();
 }
 
-sf::Texture SpriteManager::getTexture(uint64_t id) {
+sf::Texture SpriteManager::getTexture(uint64_t id) const {
     if (textures.find(id) == textures.end()) {
         throw std::runtime_error("texture not found by ID: " + id);
     }

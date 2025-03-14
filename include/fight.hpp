@@ -7,15 +7,16 @@ class Fight {
   public:
     Fight() = delete;
 
-    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
-		lftPlayer (lftPlayerInfo),
-		rgtPlayer (rgtPlayerInfo),
-        timer     (time),
-        status    (ON_FIGHT)
+    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo,  const SpriteManager &obj_sp_man, const Time_t time = TIME):
+		  lftPlayer (lftPlayerInfo),
+		  rgtPlayer (rgtPlayerInfo),
+      sp_man       (obj_sp_man),
+      status         (ON_FIGHT),
+      timer              (time)
     {
       // Basic Scene ( objects.push_back(...); )
-      Background background();
-      BaseBlock base_block(Vec2(0, WINDOW_HGT / 2));
+      Background background = Background(sp_man);
+      BaseBlock base_block(sp_man, Vec2(0, WINDOW_HGT / 2));
 
       objects.push_back(base_block);
     }
@@ -55,6 +56,8 @@ class Fight {
     std::vector<Entity> objects;
 
     Time_t  timer;
+
+    const SpriteManager &sp_man;
 };
 
 
