@@ -8,8 +8,8 @@ int main()
 
     SpriteManager sprite_manager = graphics.getSpriteManager();
 
-    FighterInfo player1(sprite_manager, sprite_manager.loadTexture(/* AssetFile1 */), 10, 1, 1);
-    FighterInfo player2(sprite_manager, sprite_manager.loadTexture(/* AssetFile2 */), 1, 10, 1);
+    FighterInfo player1(sprite_manager, sprite_manager.loadTexture("./assets/players/player1.jpg"), 10, 1, 1);
+    FighterInfo player2(sprite_manager, sprite_manager.loadTexture("./assets/players/player2.jpg"), 1, 10, 1);
     FightController fight_controller(physics, graphics, player1, player2);
 
     event_manager.enable();

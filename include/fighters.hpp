@@ -23,7 +23,7 @@ class FighterInfo {
 
     FighterInfo() = delete;
 
-    FighterInfo(SpriteManager &sprite_man_, uint64_t textureID_, uint8_t &strength_, uint8_t &dexterity_, uint8_t &constitution_):
+    FighterInfo(SpriteManager &sprite_man_, uint64_t textureID_, uint8_t strength_, uint8_t dexterity_, uint8_t constitution_):
       textureID(textureID_),  
       sprite_man(sprite_man_),
       strength(strength_),
