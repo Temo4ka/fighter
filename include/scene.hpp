@@ -14,7 +14,7 @@ class Background : public DrawableSprite {
   {}
 };
 
-class BaseBlock : public DrawableSprite, public Entity {
+class BaseBlock : public GameObject {
   public:
   BaseBlock(const SpriteManager &sp_man, const Vec2& pos_, const Vec2 vel_ = Vec2(0, 0), const double mass_ = 1e9):
     DrawableSprite(sp_man.getTexture(BB_TEX_ID)),

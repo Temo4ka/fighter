@@ -1,12 +1,12 @@
 #include "../include/fight_controller.hpp"
 
 void FightController::startFight(const FighterInfo &fighter1, const FighterInfo &fighter2) {
-    currentFight = Fight(fighter1, fighter2);
+    currentFight = Fight(graphModule, fighter1, fighter2);
 
-    std::vector<Entity>& obj = currentFight.getObjects();
-    for (auto it = obj.begin(); it != obj.end(); it++) {
-        physModule.addObject(&(*it));
-        graphModule.insertObject(&(*it));
+    auto objects = currentFight.getObjects();
+    for (auto cur_object : objects) {
+        physModule.addObject(cur_object);
+        graphModule.insertObject(cur_object);
     }
 
     physModule.addObject(currentFight.getLftFighter());

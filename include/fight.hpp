@@ -8,7 +8,7 @@ class Fight {
   public:
     Fight() = delete;
 
-    explicit Fight(FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo,  const SpriteManager &obj_sp_man, const Time_t time = TIME):
+    explicit Fight(const GraphicsModule &g_module, FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		  lftPlayer (lftPlayerInfo),
 		  rgtPlayer (rgtPlayerInfo),
       sp_man       (obj_sp_man),
@@ -16,15 +16,17 @@ class Fight {
       timer              (time)
     {
       // Basic Scene ( objects.push_back(...); )
-      Background background = Background(sp_man);
-      BaseBlock base_block(sp_man, Vec2(0, WINDOW_HGT / 2));
+      Background background = Background(g_module.getSpriteManager());
+      g_module.insertObject(&background);
+      
+      BaseBlock base_block(g_module.getSpriteManager(), Vec2(0, WINDOW_HGT / 2));
 
-      objects.push_back(base_block);
+      objects.push_back(&base_block);
     }
 
     //TODO: Load Scene from txt file
 
-    std::vector<Entity>& getObjects() { return objects; }
+    std::vector<GameObject*>& getObjects() { return objects; }
 
     Fighter* getLftFighter() { return &lftPlayer; }
     Fighter* getRgtFighter() { return &rgtPlayer; }
@@ -54,7 +56,7 @@ class Fight {
     Fighter rgtPlayer;
     Fighter lftPlayer;
 
-    std::vector<Entity> objects;
+    std::vector<GameObject*> objects;
 
     Time_t  timer;
 
