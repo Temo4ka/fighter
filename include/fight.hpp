@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game_object.hpp"
 #include "fighters.hpp"
 #include "scene.hpp"
 

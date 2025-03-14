@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 
+#include "game_object.hpp"
 #include "event.hpp"
 #include "physics.hpp"
 #include "graphics.hpp"
@@ -62,14 +63,13 @@ class FighterInfo {
     std::map<MouseButton, Commands> MouseControls = {};
 };
 
-class Fighter : public DrawableSprite, public Entity {
+class Fighter : public GameObject {
   public:
     Fighter() = delete;
     
     Fighter(const FighterInfo &fgtrInfo, const Vec2 &pos_ = Vec2(0, 0), const Vec2 &scale_ = Vec2(1, 1),
             const Entity::State &state_ = Entity::State::STILL):
-      DrawableSprite(fgtrInfo.getTexture(), sf::Vector2f(pos_.x, pos_.y), sf::Vector2f(scale_.x, scale_.y)),
-      Entity (state_, pos_, Vec2(0, 0), BASE_MASS),
+      GameObject(fgtrInfo.getTexture(), pos_, scale_, state_),
       fighterStartParams (fgtrInfo)
     {}
 
