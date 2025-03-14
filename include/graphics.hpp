@@ -31,10 +31,21 @@ class DrawableSprite : public Drawable {
   public:
     DrawableSprite(sf::Textrure &texture) { sprite = texture; }
 
+    DrawableSprite(sf::Textrure &texture, const sf::Vector2f position_, const sf::Vector2f size_, const sf::Vector2f scale_)
+    { 
+      sprite = sf::Sprite(texture);
+      sprite.setPosition(position);
+      sprite.setScale(scale);
+      sprite.setSize(size);
+    }
+
     sf::Sprite getSprite() const { return sprite; }
 
     void setPosition(const sf::Vector2f& position) override { sprite.setPosition(position); }
     sf::Vector2f getPosition() const override { return sprite.getPosition(); }
+
+    void setSize(const sf::Vector2f& size) override { sprite.setSize(size); }
+    sf::Vector2f getSize() const override { return sprite.getSize(); }
 
     void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
     sf::Vector2f getScale() const override { return sprite.getScale(); }
@@ -65,7 +76,7 @@ class DrawableText : public Drawable {
 
     unsigned int getTextSize() const { return text.getCharacterSize(); }
 
-    void draw(sf::RenderWindow &window) override {window.draw(text);}
+    void draw(sf::RenderWindow &window) override { window.draw(text); }
   private:
     sf::Text text;
 };
