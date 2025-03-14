@@ -9,93 +9,63 @@
 
 class Drawable {  
   public:
-    Drawable() : visible(false), height(0), width(0), posX(0), posY(0), scale(1) {}
-
-    Drawable(int height, int width, int posX, int posY, int scale) {
-        this->visible = true;
-        this->height  = height;
-        this->width   = width;
-        this->posX    = posX;
-        this->posY    = posY;
-        this->scale   = scale;
-    }
+    Drawable() : visible(false) {}
 
     virtual void draw(sf::RenderWindow &window) = 0;
 
     void setVisible(bool vis) {visible = vis;}
     bool getVisible() const {return visible;}
-    
-    void setheight(int height) { this->height = height; }
-    int getheight() const { return height; }
 
-    void setwidth(int width) { this->width = width; }
-    int getwidth() const { return width; }
+    virtual void setPosition(const sf::Vector2f& position) = 0;
+    virtual sf::Vector2f getPosition() const = 0;
 
-    void setPosX(int posX) { this->posX = posX; }
-    int getPosX() const { return posX; }
-
-    void setPosY(int posY) { this->posY = posY; }
-    int getPosY() const { return posY; }
-
-    void setScale(int scale) { this->scale = scale; }
-    int getScale() const { return scale; }
-
-    void changePosition(int posX, int posY) {
-        this->posX = posX;
-        this->posY = posY;
-    }
-
-    void resize(int sizeX, int width) {
-        this->height = height;
-        this->width  = width;
-    }
+    virtual void setScale(const sf::Vector2f& scale) = 0;
+    virtual sf::Vector2f getScale() const = 0;
 
   private:
     bool visible; // can be public
-    int height, width; // мб нужен другой тип
-    int posX, posY; // мб нужен другой тип
-    int scale; // мб нужен другой тип
 };
 
 
 class DrawableSprite : public Drawable {
   public:
-    // не уверен надо ли передавать текстуру по ссылке
-    explicit DrawableSprite(sf::Texture texture) {
-        sprite = texture;
-    }
+    DrawableSprite(sf::Textrure &texture) { sprite = texture; }
 
-    // не уверен надо ли передавать текстуру по ссылке
-    DrawableSprite(sf::Textrure texture, int height, int width, int posX, int posY, int scale): 
-        Drawable(height, width, posX, posY, scale)  
-    {
-        sprite = texture;
-    }
+    sf::Sprite getSprite() const { return sprite; }
 
-    sf::Sprite getSprite() const {return sprite;}
+    void setPosition(const sf::Vector2f& position) override { sprite.setPosition(position); }
+    sf::Vector2f getPosition() const override { return sprite.getPosition(); }
 
-	void draw(sf::RenderWindow &window) { window.draw(sprite); }
+    void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
+    sf::Vector2f getScale() const override { return sprite.getScale(); }
+
+	void draw(sf::RenderWindow &window) override { window.draw(sprite); }
+
   private: 
     sf::Sprite sprite;
 };
 
 class DrawableText : public Drawable {
   public:
-    // не уверен надо ли передавать шрифт по ссылке
-    DrawableText(const sf::Font &font) {
-        text = font;
-    }
+    DrawableText(const sf::Font &font) { text = font; }
 
-    // не уверен надо ли передавать шрифт по ссылке
-    DrawableSprite(const sf::Font &font, int height, int width, int posX, int posY, int scale): 
-        Drawable(height, width, posX, posY, scale)  
-    {
-        text = font;
-    }
+    sf::Text getText() const { return text; }
 
-    sf::Text getText() const {return text;}
+    void setPosition(const sf::Vector2f& position) override { text.setPosition(position); }
+    sf::Vector2f getPosition() const override { return text.getPosition(); }
 
-    void draw(sf::RenderWindow &window) {window.draw(text);}
+    void setScale(const sf::Vector2f& scale) override { text.setScale(scale); }
+    sf::Vector2f getScale() const override { return text.getScale(); }
+
+    // нейронка предложила, вроде полезно
+    void setTextString(const std::string& str) { text.setString(str); }
+    std::string getTextString() const { return text.getString().toAnsiString(); }
+
+    void setTextSize(unsigned int size) { text.setCharacterSize(size); }
+
+    unsigned int getTextSize() const { return text.getCharacterSize(); }
+
+    void draw(sf::RenderWindow &window) override {window.draw(text);}
   private:
     sf::Text text;
 };
