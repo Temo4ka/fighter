@@ -8,17 +8,7 @@ enum class MouseButton {
     Unknown
 };
 
-MouseButton getMouseButton(int code) {
-    switch (code) {
-        case (int) MouseButton::Left: 
-            return MouseButton::Left;
-        case (int) MouseButton::Right:
-            return MouseButton::Right;
-
-        default:
-            return MouseButton::Unknown;
-    }
-}
+MouseButton getMouseButton(int code);
 
 struct MouseContext {
     Vec2 position;

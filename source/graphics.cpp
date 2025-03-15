@@ -2,7 +2,7 @@
 
 void GraphicsModule::draw() {
     for (Drawable *drawable : drawingQueue) {
-        drawable->draw();
+        drawable->draw(window);
     }
 }
 

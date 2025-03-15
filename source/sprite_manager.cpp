@@ -1,6 +1,6 @@
-#include "../include/spriteManager.hpp"
+#include "../include/sprite_manager.hpp"
 
-const HASH_CONST = 53;
+const uint64_t HASH_CONST = 53;
 
 uint64_t hash(const std::string &string) {
     uint64_t hsh = 0;
@@ -40,9 +40,9 @@ size_t SpriteManager::getSize() const {
     return textures.size();
 }
 
-sf::Texture SpriteManager::getTexture(uint64_t id) const {
+sf::Texture SpriteManager::getTexture(uint64_t id) {
     if (textures.find(id) == textures.end()) {
-        throw std::runtime_error("texture not found by ID: " + id);
+        throw std::runtime_error("texture not found by ID: " + std::to_string(id));
     }
     return textures[id];
 }

@@ -3,6 +3,8 @@
 #include <string>
 #include <cstdint>
 
+#include "event.hpp"
+#include "config.hpp"
 #include "vec2.hpp"
 #include "geometry.hpp"
 #include "sprite_manager.hpp"

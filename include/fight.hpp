@@ -8,7 +8,7 @@ class Fight {
   public:
     Fight() = delete;
 
-    explicit Fight(GraphicsModule &g_module, FighterInfo &lftPlayerInfo, FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
+    explicit Fight(GraphicsModule &g_module, const FighterInfo &lftPlayerInfo, const FighterInfo &rgtPlayerInfo, const Time_t time = TIME):
 		  lftPlayer (lftPlayerInfo),
 		  rgtPlayer (rgtPlayerInfo),
       sp_man       (g_module.getSpriteManager()),

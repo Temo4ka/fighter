@@ -29,7 +29,7 @@ void Fighter::mousePressed(MouseContext context) {
             break;
 
         case FighterInfo::Commands::UNDEFINED:
-        case default:
+        default:
             break;
     }
 
@@ -72,7 +72,7 @@ void Fighter::keyPressed(KeyboardContext context) {
             break;
 
         case FighterInfo::Commands::UNDEFINED:
-        case default:
+        default:
             break;
     }
 

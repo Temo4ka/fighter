@@ -80,3 +80,15 @@ int main()
         }
     }
 }
+
+MouseButton getMouseButton(int code) {
+    switch (code) {
+        case (int) MouseButton::Left: 
+            return MouseButton::Left;
+        case (int) MouseButton::Right:
+            return MouseButton::Right;
+
+        default:
+            return MouseButton::Unknown;
+    }
+}
