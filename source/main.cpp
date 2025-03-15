@@ -1,8 +1,11 @@
 #include "../include/fight_controller.hpp"
+#include "../include/DSL.hpp"
 
 int main()
 {
-    GraphicsModule graphics;
+    std::vector<std::string> textureList = { BACKGROUND_FILE, BASE_OBJECT_FILE };
+
+    GraphicsModule graphics(textureList);
     PhysicsModule  physics;
     EventManager event_manager;
 
@@ -29,10 +32,10 @@ int main()
     sf::Clock clk = {};
     uint64_t last_time = 0;
 
-    while (graphics.isWindowOpen())
-    {
-        while (const std::optional event = graphics.windowPollEvent())
-        {
+    while (graphics.isWindowOpen()) {
+        MSG("BLYAT");
+        while (auto event = graphics.windowPollEvent()) {
+            MSG("HUI");
             if (event->is<sf::Event::KeyPressed>()) {
                 auto sf_context = event->getIf<sf::Event::KeyPressed>();
                 event_manager.keyPress({sf_context->alt, sf_context->shift, sf_context->control, (Key) sf_context->code});

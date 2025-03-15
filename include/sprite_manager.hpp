@@ -9,6 +9,8 @@ class SpriteManager {
 
     explicit SpriteManager() = default;
 
+    explicit SpriteManager(std::vector<std::string> &loadList);
+    
     // loads texture from file and inserts it into map
     uint64_t loadTexture(const std::string& filename); 
 

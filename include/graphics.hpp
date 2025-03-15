@@ -8,6 +8,7 @@
 #include "vec2.hpp"
 #include "geometry.hpp"
 #include "sprite_manager.hpp"
+#include "DSL.hpp"
 
 class Drawable {  
   public:
@@ -88,6 +89,10 @@ class GraphicsModule {
 
     explicit GraphicsModule() = default;
 
+    explicit GraphicsModule(std::vector<std::string> &textureLoadList) :
+      sprite_man(textureLoadList)
+    {}
+
     void draw();
 
     void insertObject(Drawable *obj) { drawingQueue.push_back(obj); }
@@ -102,7 +107,7 @@ class GraphicsModule {
 
 	SpriteManager &getSpriteManager() { return sprite_man; }
 
-	std::optional<sf::Event> windowPollEvent() { return window.pollEvent(); }
+	auto windowPollEvent() { return window.pollEvent(); }
 
 	bool isWindowOpen() { return window.isOpen(); }
 

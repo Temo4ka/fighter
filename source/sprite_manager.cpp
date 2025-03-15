@@ -1,15 +1,25 @@
 #include "../include/sprite_manager.hpp"
+#include "../include/DSL.hpp"
 
-const uint64_t HASH_CONST = 53;
+uint64_t hash(const std::string& string) {
+    const uint64_t FNV_PRIME = 1099511628211ULL; // Простое число для FNV-64
+    const uint64_t OFFSET_BASIS = 14695981039346656037ULL; // Начальное значение
 
-uint64_t hash(const std::string &string) {
-    uint64_t hsh = 0;
+    uint64_t hsh = OFFSET_BASIS;
 
-    for (auto chr : string) {
-        hsh = hsh * HASH_CONST + chr;
+    for (char chr : string) {
+        hsh ^= static_cast<uint8_t>(chr); // XOR с каждым байтом символа
+        hsh *= FNV_PRIME;              // Умножение на простое число
     }
 
     return hsh;
+}
+
+SpriteManager::SpriteManager(std::vector<std::string> &loadList) {
+    for (auto cur_string : loadList)
+        loadTexture(cur_string);
+    
+    return;
 }
 
 uint64_t SpriteManager::loadTexture(const std::string& filename) {
@@ -21,6 +31,8 @@ uint64_t SpriteManager::loadTexture(const std::string& filename) {
     try {
         textures[id] = sf::Texture(std::filesystem::path(filename));
     } catch (const sf::Exception) {
+        // MESSAGE("HUI + %s", std::filesystem::path(filename).c_str());
+
         throw std::runtime_error("texture not found in file: " + filename);
     }
 
