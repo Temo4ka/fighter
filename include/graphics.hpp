@@ -51,7 +51,7 @@ class DrawableSprite : public Drawable {
     void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
     sf::Vector2f getScale() const override { return sprite.getScale(); }
 
-	void draw(sf::RenderWindow &window) override { window.draw(sprite); }
+	  void draw(sf::RenderWindow &window) override { MSG("SOSU ZDES"); window.draw(sprite); }
 
   private: 
     sf::Sprite sprite;

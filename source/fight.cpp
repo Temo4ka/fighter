@@ -43,6 +43,7 @@ void Fight::keyReleased(KeyboardContext context) {
 }
 
 void Fight::timeEvent(Time_t dt) {
+    MSG("BLYAT");
     timer -= dt;
 
     if (timer <= 0) {

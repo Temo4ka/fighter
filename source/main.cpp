@@ -1,8 +1,9 @@
 #include "../include/fight_controller.hpp"
 #include "../include/DSL.hpp"
 
-int main()
-{
+int main() {
+    MESSAGE_CLEAR();
+
     std::vector<std::string> textureList = { BACKGROUND_FILE, BASE_OBJECT_FILE };
 
     GraphicsModule graphics(textureList);

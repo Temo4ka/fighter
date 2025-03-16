@@ -16,12 +16,12 @@ class Fight {
       timer              (time)
     {
       // Basic Scene ( objects.push_back(...); )
-      Background background = Background(g_module.getSpriteManager());
-      g_module.insertObject(&background);
+      BaseBlock *base_block = new BaseBlock(g_module.getSpriteManager(), Vec2(0, WINDOW_HGT / 2));
       
-      BaseBlock base_block(g_module.getSpriteManager(), Vec2(0, WINDOW_HGT / 2));
+      objects.push_back(base_block);
 
-      objects.push_back(&base_block);
+      g_module.insertObject(base_block);
+      g_module.insertObject(new Background(g_module.getSpriteManager()));
     }
 
     //TODO: Load Scene from txt file

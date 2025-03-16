@@ -1,6 +1,7 @@
 #include "../include/physics.hpp"
 #include "../include/hitbox.hpp"
 #include "../include/config.hpp"
+#include "../include/DSL.hpp"
 
 void PhysicsModule::addObject(Entity* const obj) { 
     all_objects.push_back(obj);
@@ -15,6 +16,7 @@ void PhysicsModule::eraseObject(Entity* const object) {
 }
 
 void PhysicsModule::updateObjects(Time_t dt) {
+    MSG("BLYAT");
     for (auto it : all_objects) {
         it->position += it->velocity * dt + Vec2(0, G) * dt * dt;
         it->velocity += Vec2(0, G) * dt;

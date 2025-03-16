@@ -2,6 +2,7 @@
 
 void GraphicsModule::draw() {
     for (Drawable *drawable : drawingQueue) {
+        MSG("PIDORS")
         drawable->draw(window);
     }
 }
@@ -24,5 +25,6 @@ void GraphicsModule::eraseObject(size_t ind) {
 }
 
 void GraphicsModule::TimeEvent(Time_t dt) {
+    MSG("BLYAT");
     draw();
 }
