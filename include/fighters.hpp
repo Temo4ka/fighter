@@ -38,7 +38,7 @@ class FighterInfo {
     Commands getCommand(const Key &key) { return KeyControls[key]; }
     Commands getCommand(const MouseButton &m_button) { return MouseControls[m_button]; }
 
-    sf::Texture getTexture() const { return sprite_man.getTexture(textureID); }
+    sf::Texture *getTexture() const { return sprite_man.getTexture(textureID); }
 
   private:
     SpriteManager &sprite_man;

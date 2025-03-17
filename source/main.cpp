@@ -34,9 +34,7 @@ int main() {
     uint64_t last_time = 0;
 
     while (graphics.isWindowOpen()) {
-        MSG("BLYAT");
         while (auto event = graphics.windowPollEvent()) {
-            MSG("HUI");
             if (event->is<sf::Event::KeyPressed>()) {
                 auto sf_context = event->getIf<sf::Event::KeyPressed>();
                 event_manager.keyPress({sf_context->alt, sf_context->shift, sf_context->control, (Key) sf_context->code});
@@ -81,7 +79,6 @@ int main() {
             Time_t dt = (double)(current_time - last_time) / 1000000;
             event_manager.Clock(dt);
             last_time = current_time;
-            MESSAGE_CLEAR();
         }
     }
 }

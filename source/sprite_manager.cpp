@@ -30,8 +30,7 @@ uint64_t SpriteManager::loadTexture(const std::string& filename) {
  
     try {
         textures[id] = sf::Texture(std::filesystem::path(filename));
-        MESSAGE("BLYAHA MUHA size: (%u, %u)", textures[id].getSize().x, textures[id].getSize().y);
-        MESSAGE("BLYAHA MUHA textures: (%u)", textures.size());
+        MESSAGE("%s size: (%u, %u)", filename.c_str(), textures[id].getSize().x, textures[id].getSize().y);
     } catch (const sf::Exception) {
         MSG("HUI");
 
@@ -54,9 +53,12 @@ size_t SpriteManager::getSize() const {
     return textures.size();
 }
 
-sf::Texture SpriteManager::getTexture(uint64_t id) {
+sf::Texture *SpriteManager::getTexture(uint64_t id) {
     if (textures.find(id) == textures.end()) {
         throw std::runtime_error("texture not found by ID: " + std::to_string(id));
     }
-    return textures[id];
+
+    MESSAGE("(%p) TEXTURE BLYAD: (%u, %u)", this, textures[id].getSize().x, textures[id].getSize().y);
+
+    return &textures[id];
 }

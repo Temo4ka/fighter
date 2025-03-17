@@ -14,7 +14,7 @@ class Drawable {
   public:
     Drawable() : visible(false) {}
 
-    virtual void draw(sf::RenderTexture *window) = 0;
+    virtual void draw(sf::RenderTexture &window) = 0;
 
     void setVisible(bool vis) {visible = vis;}
     bool getVisible() const {return visible;}
@@ -32,13 +32,14 @@ class Drawable {
 
 class DrawableSprite : public Drawable {
   public:
-    DrawableSprite(sf::Texture texture):
-      sprite (sf::Sprite(texture))
+    DrawableSprite(sf::Texture *texture):
+      sprite (sf::Sprite(*texture))
     {}
 
-    DrawableSprite(sf::Texture texture, const sf::Vector2f &position_, const sf::Vector2f &scale_):
-      sprite (sf::Sprite(texture))
+    DrawableSprite(sf::Texture *texture, const sf::Vector2f &position_, const sf::Vector2f &scale_):
+      sprite (sf::Sprite(*texture))
     { 
+      MESSAGE("SPRITE CREATED HERE %p, SIZE :(%u, %u)", this, texture->getSize().x, texture->getSize().y);
       sprite.setPosition(position_);
       sprite.setScale(scale_);
     }
@@ -51,10 +52,10 @@ class DrawableSprite : public Drawable {
     void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
     sf::Vector2f getScale() const override { return sprite.getScale(); }
 
-	  void draw(sf::RenderTexture *window) override { 
-      MESSAGE("Sprite Position:m%lg, %lg", sprite.getPosition().x, sprite.getPosition().y);
+	  void draw(sf::RenderTexture &window) override { 
+      MESSAGE("Sprite %p is drawn on position: (%lg, %lg)", this, sprite.getPosition().x, sprite.getPosition().y);
 
-      window->draw(sprite); 
+      window.draw(sprite); 
     }
 
   private: 
@@ -83,7 +84,7 @@ class DrawableText : public Drawable {
 
     unsigned int getTextSize() const { return text.getCharacterSize(); }
 
-    void draw(sf::RenderTexture *window) override { window->draw(text); }
+    void draw(sf::RenderTexture &window) override { window.draw(text); }
   private:
     sf::Text text;
 };

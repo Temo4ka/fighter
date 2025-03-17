@@ -10,7 +10,7 @@ class SpriteManager {
     explicit SpriteManager() = default;
 
     explicit SpriteManager(std::vector<std::string> &loadList);
-    
+
     // loads texture from file and inserts it into map
     uint64_t loadTexture(const std::string& filename); 
 
@@ -28,7 +28,7 @@ class SpriteManager {
     // gets number of loaded Sprites
     size_t getSize() const; 
 
-    sf::Texture getTexture(uint64_t id);
+    sf::Texture *getTexture(uint64_t id);
 
   private:
     std::unordered_map<uint64_t, sf::Texture> textures;
