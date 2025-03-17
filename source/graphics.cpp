@@ -3,7 +3,7 @@
 void GraphicsModule::draw() {
     for (Drawable *drawable : drawingQueue) {
         MSG("PIDORS")
-        drawable->draw(window);
+        drawable->draw(&screen);
     }
 }
 
@@ -27,4 +27,12 @@ void GraphicsModule::eraseObject(size_t ind) {
 void GraphicsModule::TimeEvent(Time_t dt) {
     MSG("BLYAT");
     draw();
+
+    screen.display();
+    MESSAGE("Texture Size:  (%u, %u)", screen.getSize().x, screen.getSize().y);
+    MESSAGE("Sprite_Manager size:  (%u)", sprite_man.getSize());
+
+    sf::Sprite screen_sprite(screen.getTexture());
+    window.draw(screen_sprite);
+    window.display();
 }

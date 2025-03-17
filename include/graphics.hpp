@@ -14,7 +14,7 @@ class Drawable {
   public:
     Drawable() : visible(false) {}
 
-    virtual void draw(sf::RenderWindow &window) = 0;
+    virtual void draw(sf::RenderTexture *window) = 0;
 
     void setVisible(bool vis) {visible = vis;}
     bool getVisible() const {return visible;}
@@ -51,7 +51,11 @@ class DrawableSprite : public Drawable {
     void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
     sf::Vector2f getScale() const override { return sprite.getScale(); }
 
-	  void draw(sf::RenderWindow &window) override { MSG("SOSU ZDES"); window.draw(sprite); }
+	  void draw(sf::RenderTexture *window) override { 
+      MESSAGE("Sprite Position:m%lg, %lg", sprite.getPosition().x, sprite.getPosition().y);
+
+      window->draw(sprite); 
+    }
 
   private: 
     sf::Sprite sprite;
@@ -79,7 +83,7 @@ class DrawableText : public Drawable {
 
     unsigned int getTextSize() const { return text.getCharacterSize(); }
 
-    void draw(sf::RenderWindow &window) override { window.draw(text); }
+    void draw(sf::RenderTexture *window) override { window->draw(text); }
   private:
     sf::Text text;
 };

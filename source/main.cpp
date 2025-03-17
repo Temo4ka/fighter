@@ -10,7 +10,7 @@ int main() {
     PhysicsModule  physics;
     EventManager event_manager;
 
-    SpriteManager sprite_manager = graphics.getSpriteManager();
+    SpriteManager &sprite_manager = graphics.getSpriteManager();
 
     FighterInfo player1(sprite_manager, sprite_manager.loadTexture("./assets/players/player1.jpg"), 10, 1, 1);
     FighterInfo player2(sprite_manager, sprite_manager.loadTexture("./assets/players/player2.jpg"), 1, 10, 1);
@@ -81,6 +81,7 @@ int main() {
             Time_t dt = (double)(current_time - last_time) / 1000000;
             event_manager.Clock(dt);
             last_time = current_time;
+            MESSAGE_CLEAR();
         }
     }
 }

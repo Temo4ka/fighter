@@ -30,8 +30,10 @@ uint64_t SpriteManager::loadTexture(const std::string& filename) {
  
     try {
         textures[id] = sf::Texture(std::filesystem::path(filename));
+        MESSAGE("BLYAHA MUHA size: (%u, %u)", textures[id].getSize().x, textures[id].getSize().y);
+        MESSAGE("BLYAHA MUHA textures: (%u)", textures.size());
     } catch (const sf::Exception) {
-        // MESSAGE("HUI + %s", std::filesystem::path(filename).c_str());
+        MSG("HUI");
 
         throw std::runtime_error("texture not found in file: " + filename);
     }
