@@ -11,6 +11,12 @@ all:
 ./source/physics.cpp ./source/sprite_manager.cpp ./source/vec2.cpp ./source/graphics.cpp ./source/hitbox.cpp   \
 -lm -o run.exe $(SFMLFLAGS)
 
+debug:
+	$(CC) $(SFML_DIR)                                                                                          \
+./source/main.cpp ./source/fight_controller.cpp ./source/fight.cpp ./source/fighters.cpp ./source/geometry.cpp \
+./source/physics.cpp ./source/sprite_manager.cpp ./source/vec2.cpp ./source/graphics.cpp ./source/hitbox.cpp   \
+-lm -g -o run.exe $(SFMLFLAGS)
+
 mac:
 	clang++ -std=c++23 $(MAC_SFML_DIR)                                                                         \
 ./source/main.cpp ./source/fight_controller.cpp ./source/fight.cpp ./source/fighters.cpp ./source/geometry.cpp \
