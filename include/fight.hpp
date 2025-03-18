@@ -16,7 +16,7 @@ class Fight {
       timer              (time)
     {
       // Basic Scene ( objects.push_back(...); )
-      BaseBlock *base_block = new BaseBlock(g_module.getSpriteManager(), Vec2(0, 0));
+      BaseBlock *base_block = new BaseBlock(g_module.getSpriteManager(), Vec2(0, WINDOW_HGT / 2));
       
       objects.push_back(base_block);
 
