@@ -127,3 +127,44 @@ class GraphicsModule {
     
     SpriteManager sprite_man;
 };
+
+#define DEBUG_
+
+#ifdef DEBUG_
+
+#include "hitbox.hpp"
+
+class HitboxRect : public Drawable {
+  public:
+    HitboxRect(Hitbox &hitbox) {
+        for (auto cur : hitbox.getRects()) {
+            sf::Vector2f size = sf::Vector2f(cur.getSize().x, cur.getSize().y);
+            sf::Vector2f pos  = sf::Vector2f(cur.getPos().x, cur.getPos().y);
+
+
+            sf::RectangleShape newShape(size);
+            newShape.setScale(scale);
+            newShape.setPosition(pos);
+
+            rects.push_back(newShape);
+        }
+    }
+
+    sf::Vector2f getPosition() const {return position; }
+    void setPosition(const sf::Vector2f& newPosition) {
+        sf::Vector2f delta = newPosition - position;
+        for (auto cur : rects) cur.setPosition(cur.getPosition() + delta);
+    }
+
+    sf::Vector2f getScale() const { return scale; }
+    void setScale(const sf::Vector2f& newScale) {
+        for (auto cur : rects) cur.setScale(newScale);
+    }
+
+  private:
+    sf::Vector2f position = {0, 0};
+    sf::Vector2f scale = {1, 1};
+
+    std::vector<sf::RectangleShape> rects;
+};
+#endif
