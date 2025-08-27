@@ -26,6 +26,17 @@ Vec2 Vec2::operator!() const {
     return ret;
 }
 
+// Новые методы для улучшенной физики
+Vec2 Vec2::normalized() const {
+    double len = GetLen();
+    if (len < 0.0001) return Vec2(0, 0);
+    return Vec2(x / len, y / len);
+}
+
+double Vec2::dot(const Vec2& other) const {
+    return x * other.x + y * other.y;
+}
+
 void Vec2::Rotate (const double angle) {
     double sin_ = std::sin (angle);
     double cos_ = std::cos (angle);
@@ -44,6 +55,24 @@ double Vec2::GetAngle() {
 
     if (norm.y >= 0) return std::acos(norm.x);
     else return (M_PI * 2 - std::acos(norm.x));
+}
+
+// Операторы сравнения для сортировки
+bool Vec2::operator<(const Vec2& other) const {
+    if (x != other.x) return x < other.x;
+    return y < other.y;
+}
+
+bool Vec2::operator<=(const Vec2& other) const {
+    return !(other < *this);
+}
+
+bool Vec2::operator>(const Vec2& other) const {
+    return other < *this;
+}
+
+bool Vec2::operator>=(const Vec2& other) const {
+    return !(*this < other);
 }
 
 Vec2 operator+= (Vec2& vec1, const Vec2& vec2) {
