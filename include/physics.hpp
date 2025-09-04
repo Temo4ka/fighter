@@ -42,6 +42,20 @@ class Entity {
         state  (state_),
         position (pos_),
         velocity (vel_),
+        scale   (Vec2(1.0, 1.0)),
+        mass    (mass_),
+        friction(0.8),
+        airResistance(0.02),
+        elasticity(0.5),
+        maxVelocity(100.0),
+        angularVelocity(0.0),
+        rotation(0.0) {}
+        
+    explicit Entity(const State &state_, const Vec2& pos_, const Vec2& scale_, const Vec2& vel_, const double &mass_):
+        state  (state_),
+        position (pos_),
+        velocity (vel_),
+        scale   (scale_),
         mass    (mass_),
         friction(0.8),
         airResistance(0.02),
@@ -60,14 +74,17 @@ class Entity {
     void setAirResistance(double ar) { airResistance = ar; }
     void setElasticity(double e) { elasticity = e; }
     void setMaxVelocity(double mv) { maxVelocity = mv; }
+    void setScale(const Vec2& s) { scale = s; }
     
     double getFriction() const { return friction; }
     double getAirResistance() const { return airResistance; }
     double getElasticity() const { return elasticity; }
     double getMaxVelocity() const { return maxVelocity; }
+    const Vec2& getScale() const { return scale; }
 
     Vec2 position;
     Vec2 velocity;
+    Vec2 scale;            // Масштаб объекта
     double mass;
     
     // Новые физические свойства

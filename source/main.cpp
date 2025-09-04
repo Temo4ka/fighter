@@ -2,7 +2,7 @@
 #include "../include/DSL.hpp"
 
 int main() {
-    MESSAGE_CLEAR();
+    MESSAGE_CLEAR(); 
 
     std::vector<std::string> textureList = { BACKGROUND_FILE, BASE_OBJECT_FILE };
 
@@ -22,10 +22,10 @@ int main() {
     event_manager.CreateClockHandler(graphics, &GraphicsModule::TimeEvent);
     event_manager.CreateClockHandler(fight_controller, &FightController::timeEvent);
 
-    event_manager.CreateKeyPressHandler(fight_controller, &FightController::keyPressed);
-    event_manager.CreateKeyReleaseHandler(fight_controller, &FightController::keyReleased);
-    event_manager.CreateMouseMoveHandler(fight_controller, &FightController::mouseMoved);
-    event_manager.CreateMousePressHandler(fight_controller, &FightController::mousePressed);
+    event_manager.CreateKeyPressHandler    (fight_controller, &FightController::keyPressed);
+    event_manager.CreateKeyReleaseHandler  (fight_controller, &FightController::keyReleased);
+    event_manager.CreateMouseMoveHandler   (fight_controller, &FightController::mouseMoved);
+    event_manager.CreateMousePressHandler  (fight_controller, &FightController::mousePressed);
     event_manager.CreateMouseReleaseHandler(fight_controller, &FightController::mouseReleased);
 
     Vec2 mousePosition(0, 0);
@@ -34,6 +34,8 @@ int main() {
     uint64_t last_time = 0;
 
     while (graphics.isWindowOpen()) {
+        // MESSAGE_CLEAR(); // In Case we don't want continious logs
+
         while (auto event = graphics.windowPollEvent()) {
             if (event->is<sf::Event::KeyPressed>()) {
                 auto sf_context = event->getIf<sf::Event::KeyPressed>();

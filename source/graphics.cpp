@@ -24,11 +24,9 @@ void GraphicsModule::eraseObject(size_t ind) {
 }
 
 void GraphicsModule::TimeEvent(Time_t dt) {
-    MSG("BLYAT");
     draw();
 
     screen.display();
-    MESSAGE("Texture Size:  (%u, %u)", screen.getSize().x, screen.getSize().y);
 
     sf::Sprite screen_sprite(screen.getTexture());
     window.draw(screen_sprite);

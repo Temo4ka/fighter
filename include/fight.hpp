@@ -16,12 +16,15 @@ class Fight {
       timer              (time)
     {
       // Basic Scene ( objects.push_back(...); )
-      BaseBlock *base_block = new BaseBlock(g_module.getSpriteManager(), Vec2(0, WINDOW_HGT / 2));
+      BaseBlock *base_block = new BaseBlock(g_module.getSpriteManager(), Vec2(0, 60));
       
       objects.push_back(base_block);
 
       g_module.insertObject(new Background(g_module.getSpriteManager()));
       g_module.insertObject(base_block);
+
+      rgtPlayer.setWorldPosition(Vec2(600, 800));
+      lftPlayer.setWorldPosition(Vec2(0, 800));
     }
 
     //TODO: Load Scene from txt file

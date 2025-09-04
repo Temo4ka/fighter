@@ -42,7 +42,7 @@ class FightController {
         Fighting = 1,
         Paused = 2,
         Final = 3,
-    } currentStatus;
+    } currentStatus = Fighting;
 
     Fight currentFight;
 

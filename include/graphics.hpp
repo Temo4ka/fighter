@@ -24,6 +24,9 @@ class Drawable {
 
     virtual void setScale(const sf::Vector2f& scale) = 0;
     virtual sf::Vector2f getScale() const = 0;
+    
+    virtual void setRotation(float rotation) = 0;
+    virtual float getRotation() const = 0;
 
   private:
     bool visible; // can be public
@@ -51,6 +54,9 @@ class DrawableSprite : public Drawable {
 
     void setScale(const sf::Vector2f& scale) override { sprite.setScale(scale); }
     sf::Vector2f getScale() const override { return sprite.getScale(); }
+    
+    void setRotation(float rotation) override { sprite.setRotation(sf::degrees(rotation)); }
+    float getRotation() const override { return sprite.getRotation().asDegrees(); }
 
 	  void draw(sf::RenderTexture &window) override { 
       MESSAGE("Sprite %p is drawn on position: (%lg, %lg)", this, sprite.getPosition().x, sprite.getPosition().y);
@@ -75,6 +81,9 @@ class DrawableText : public Drawable {
 
     void setScale(const sf::Vector2f& scale) override { text.setScale(scale); }
     sf::Vector2f getScale() const override { return text.getScale(); }
+    
+    void setRotation(float rotation) override { /* Текст не поддерживает поворот */ }
+    float getRotation() const override { return 0.0f; }
 
     // нейронка предложила, вроде полезно
     void setTextString(const std::string& str) { text.setString(str); }
@@ -150,16 +159,19 @@ class HitboxRect : public Drawable {
         }
     }
 
-    sf::Vector2f getPosition() const {return position; }
-    void setPosition(const sf::Vector2f& newPosition) {
+    sf::Vector2f getPosition() const override {return position; }
+    void setPosition(const sf::Vector2f& newPosition) override {
         sf::Vector2f delta = newPosition - position;
         for (auto cur : rects) cur.setPosition(cur.getPosition() + delta);
     }
 
-    sf::Vector2f getScale() const { return scale; }
-    void setScale(const sf::Vector2f& newScale) {
+    sf::Vector2f getScale() const override { return scale; }
+    void setScale(const sf::Vector2f& newScale) override {
         for (auto cur : rects) cur.setScale(newScale);
     }
+    
+    void setRotation(float rotation) override { /* Hitbox не поддерживает поворот */ }
+    float getRotation() const override { return 0.0f; }
 
   private:
     sf::Vector2f position = {0, 0};

@@ -43,7 +43,6 @@ void Fight::keyReleased(KeyboardContext context) {
 }
 
 void Fight::timeEvent(Time_t dt) {
-    MSG("BLYAT");
     timer -= dt;
 
     if (timer <= 0) {
@@ -63,6 +62,13 @@ void Fight::timeEvent(Time_t dt) {
         status = FINISHED_LFT_WON;
     else if (rgtPlayer.getHP() < 0)
         status = FINISHED_RGT_WON;
+
+    lftPlayer.updateGraphicsPosition();
+    rgtPlayer.updateGraphicsPosition();
+
+    for (auto &cur_obj : objects) {
+        cur_obj->updateGraphicsPosition();
+    }
 
     return;
 }

@@ -121,6 +121,7 @@ void PhysicsModule::updateObjects(Time_t dt) {
     // Применяем ограничения
     for (auto obj : all_objects) {
         applyConstraints(obj);
+        MESSAGE("%p has physics coordinates: (%g, %g)", obj, obj->position.x, obj->position.y);
     }
 }
 
@@ -198,6 +199,7 @@ void PhysicsModule::collideObjects() {
         
         for (auto other : nearby) {
             if (obj != other && Hitbox::checkHitboxCollision(obj->getHitbox(), other->getHitbox())) {
+                MSG("HERE");
                 handleCollision(obj, other);
             }
         }

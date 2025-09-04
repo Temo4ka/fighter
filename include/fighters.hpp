@@ -68,7 +68,7 @@ class Fighter : public GameObject {
     Fighter() = delete;
     
     Fighter(const FighterInfo &fgtrInfo, const Vec2 &pos_ = Vec2(0, 0), const Vec2 &scale_ = Vec2(1, 1),
-            const Entity::State &state_ = Entity::State::STILL):
+            const Entity::State &state_ = Entity::State::IN_AIR):
       GameObject(fgtrInfo.getTexture(), pos_, scale_, state_),
       fighterStartParams (fgtrInfo)
     {}
