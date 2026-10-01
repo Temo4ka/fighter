@@ -23,14 +23,14 @@ TEST_CASE("Vec2: arithmetic", "[core][vec2]") {
 
 TEST_CASE("Vec2: length and normalization", "[core][vec2]") {
     REQUIRE(Vec2{3.0f, 4.0f}.getLength() == Approx(5.0f));
-    const Vec2 N = Vec2{3.0f, 4.0f}.getNormalized();
-    CHECK(N.X == Approx(0.6f));
-    CHECK(N.Y == Approx(0.8f));
+    const Vec2 Unit = Vec2{3.0f, 4.0f}.getNormalized();
+    CHECK(Unit.X == Approx(0.6f));
+    CHECK(Unit.Y == Approx(0.8f));
     CHECK(Vec2{}.getNormalized() == Vec2{});   // no NaN
 }
 
 TEST_CASE("Vec2: rotation is counter-clockwise", "[core][vec2]") {
-    const Vec2 R = fighter::rotate({1.0f, 0.0f}, std::numbers::pi_v<float> / 2.0f);
-    CHECK(R.X == Approx(0.0f).margin(1e-6));
-    CHECK(R.Y == Approx(1.0f));
+    const Vec2 Rotated = fighter::rotate({1.0f, 0.0f}, std::numbers::pi_v<float> / 2.0f);
+    CHECK(Rotated.X == Approx(0.0f).margin(1e-6));
+    CHECK(Rotated.Y == Approx(1.0f));
 }

@@ -59,13 +59,13 @@ public:
     ~Connection() { disconnect(); }
 
     void disconnect() {
-        if (auto S = Slot.lock()) S->Connected = false;
+        if (auto State = Slot.lock()) State->Connected = false;
         Slot.reset();
     }
 
     bool isConnected() const {
-        auto S = Slot.lock();
-        return S && S->Connected;
+        auto State = Slot.lock();
+        return State && State->Connected;
     }
 
 private:
@@ -93,18 +93,18 @@ public:
         // A handler may add new slots, so iterate by index over the slots that
         // existed when emit() started. The shared_ptr copy keeps the slot alive
         // for the duration of the call.
-        const std::size_t Count = Slots.size();
-        for (std::size_t I = 0; I < Count; ++I) {
-            std::shared_ptr<SlotData> Slot = Slots[I];
+        const size_t Count = Slots.size();
+        for (size_t Index = 0; Index < Count; ++Index) {
+            std::shared_ptr<SlotData> Slot = Slots[Index];
             if (Slot->Connected) Slot->Callback(Arguments...);
         }
         --EmitDepth;
         if (EmitDepth == 0) removeDisconnected();
     }
 
-    std::size_t getHandlerCount() const {
-        return static_cast<std::size_t>(std::count_if(Slots.begin(), Slots.end(),
-                                                      [](const auto& S) { return S->Connected; }));
+    size_t getHandlerCount() const {
+        return static_cast<size_t>(std::count_if(Slots.begin(), Slots.end(),
+                                                      [](const auto& Entry) { return Entry->Connected; }));
     }
 
 private:
@@ -113,7 +113,7 @@ private:
     };
 
     void removeDisconnected() {
-        std::erase_if(Slots, [](const auto& S) { return !S->Connected; });
+        std::erase_if(Slots, [](const auto& Entry) { return !Entry->Connected; });
     }
 
     std::vector<std::shared_ptr<SlotData>> Slots;

@@ -41,7 +41,7 @@ public:
     static constexpr double MaxTimeScale = 1.0;
 
     FixedStepLoop() : FixedStepLoop(Config{}) {}
-    explicit FixedStepLoop(Config C);
+    explicit FixedStepLoop(Config Settings);
 
     /// Advances time by \p FrameSec seconds of real time and calls
     /// \p OnStep(dt) as many times as needed.
@@ -80,7 +80,7 @@ public:
     /// @}
 
     double getStepSec() const { return Cfg.StepSec; }
-    std::uint64_t getTick() const { return Tick; }
+    uint64_t getTick() const { return Tick; }
     int getStepsLastAdvance() const { return StepsLastAdvance; }
 
     /// Resets the step counter and accumulated time (fight restart).
@@ -101,7 +101,7 @@ private:
     double TimeScale = 1.0;
     bool Paused = false;
     bool SingleStepRequested = false;
-    std::uint64_t Tick = 0;
+    uint64_t Tick = 0;
     int StepsLastAdvance = 0;
 };
 

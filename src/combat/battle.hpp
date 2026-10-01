@@ -17,6 +17,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -85,15 +86,15 @@ private:
         stats::PhysicalProfile Profile;
     };
 
-    void updateFighter(FighterState& F, const PlayerCommands& Cmd, float Dt);
-    void finish(Winner W);
+    void updateFighter(FighterState& Fighter, const PlayerCommands& Cmd, float Dt);
+    void finish(Winner Outcome);
     void publishSnapshot();
     void drawDebug() const;
 
     BattleConfig Cfg;
     std::array<FighterState, 2> Fighters;
     double ElapsedSec = 0.0;
-    std::uint64_t Tick = 0;
+    uint64_t Tick = 0;
     RenderSnapshot Snapshot;
     std::optional<BattleResult> Result;
 };

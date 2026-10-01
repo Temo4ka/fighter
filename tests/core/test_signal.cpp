@@ -8,67 +8,67 @@ using fighter::Connection;
 using fighter::Signal;
 
 TEST_CASE("Signal: handler is called while the connection is alive", "[core][signal]") {
-    Signal<int> S;
+    Signal<int> Sig;
     int Sum = 0;
     {
-        Connection C = S.connect([&](int V) { Sum += V; });
-        S.emit(5);
+        Connection Conn = Sig.connect([&](int Value) { Sum += Value; });
+        Sig.emit(5);
         CHECK(Sum == 5);
-        CHECK(S.getHandlerCount() == 1);
+        CHECK(Sig.getHandlerCount() == 1);
     }
-    S.emit(5);   // the connection is destroyed, the handler is not called
+    Sig.emit(5);   // the connection is destroyed, the handler is not called
     CHECK(Sum == 5);
-    CHECK(S.getHandlerCount() == 0);
+    CHECK(Sig.getHandlerCount() == 0);
 }
 
 TEST_CASE("Signal: moving a connection keeps it connected", "[core][signal]") {
-    Signal<> S;
+    Signal<> Sig;
     int Calls = 0;
     Connection Outer;
     {
-        Connection Inner = S.connect([&] { ++Calls; });
+        Connection Inner = Sig.connect([&] { ++Calls; });
         Outer = std::move(Inner);
     }
-    S.emit();
+    Sig.emit();
     CHECK(Calls == 1);
     CHECK(Outer.isConnected());
     Outer.disconnect();
-    S.emit();
+    Sig.emit();
     CHECK(Calls == 1);
 }
 
 TEST_CASE("Signal: disconnect from inside the handler", "[core][signal]") {
-    Signal<> S;
+    Signal<> Sig;
     int Calls = 0;
-    std::optional<Connection> C;
-    C = S.connect([&] {
+    std::optional<Connection> Conn;
+    Conn = Sig.connect([&] {
         ++Calls;
-        C->disconnect();
+        Conn->disconnect();
     });
-    S.emit();
-    S.emit();
+    Sig.emit();
+    Sig.emit();
     CHECK(Calls == 1);
 }
 
 TEST_CASE("Signal: handler added during emit fires from the next emit", "[core][signal]") {
-    Signal<> S;
+    Signal<> Sig;
     int Late = 0;
     std::optional<Connection> Added;
-    Connection First = S.connect([&] {
-        if (!Added) Added = S.connect([&] { ++Late; });
+    Connection First = Sig.connect([&] {
+        if (!Added) Added = Sig.connect([&] { ++Late; });
     });
-    S.emit();
+    Sig.emit();
     CHECK(Late == 0);
-    S.emit();
+    Sig.emit();
     CHECK(Late == 1);
 }
 
 TEST_CASE("Signal: connection safely outlives the signal", "[core][signal]") {
-    Connection C;
+    Connection Conn;
     {
-        Signal<> S;
-        C = S.connect([] {});
+        Signal<> Sig;
+        Conn = Sig.connect([] {});
     }
-    CHECK_FALSE(C.isConnected());
-    C.disconnect();   // does not crash
+    CHECK_FALSE(Conn.isConnected());
+    Conn.disconnect();   // does not crash
 }

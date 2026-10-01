@@ -32,16 +32,16 @@ enum class Level { Debug, Info, Warn, Error };
 
 /// Sets the lowest level that is still written. The default is Debug in the
 /// debug build and Info in the release build.
-void setMinLevel(Level L);
+void setMinLevel(Level Severity);
 Level getMinLevel();
 
 /// Duplicates output to \p Path (stderr output continues). Returns false if
 /// the file cannot be opened.
 bool setFile(const std::filesystem::path& Path);
 
-void write(Level L, std::string_view Message);
+void write(Level Severity, std::string_view Message);
 
-inline bool isEnabled(Level L) { return L >= getMinLevel(); }
+inline bool isEnabled(Level Severity) { return Severity >= getMinLevel(); }
 
 template <class... Args>
 void debug(std::format_string<Args...> Fmt, Args&&... Arguments) {

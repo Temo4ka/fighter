@@ -28,7 +28,7 @@
 
 namespace fighter {
 
-enum class BodyPart : std::uint8_t {
+enum class BodyPart : uint8_t {
     Head,
     Torso,
     Pelvis,
@@ -39,7 +39,7 @@ enum class BodyPart : std::uint8_t {
     Count
 };
 
-inline constexpr std::size_t BodyPartCount = static_cast<std::size_t>(BodyPart::Count);
+inline constexpr size_t BodyPartCount = static_cast<size_t>(BodyPart::Count);
 
 /// An array with one element per body part, indexed by BodyPart.
 template <class T>
@@ -51,8 +51,8 @@ constexpr std::string_view getBodyPartName(BodyPart Part) {
         "UpperArmL", "ForearmL", "UpperArmR", "ForearmR",
         "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR",
     };
-    const auto I = static_cast<std::size_t>(Part);
-    return I < Names.size() ? Names[I] : "?";
+    const auto Index = static_cast<size_t>(Part);
+    return Index < Names.size() ? Names[Index] : "?";
 }
 
 /// World placement of one body part. This is all the renderer knows about the

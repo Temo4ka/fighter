@@ -1,4 +1,4 @@
-//===- debug/draw.hpp - Debug drawing API -----------------------*- C++ -*-===//
+//===- debug/draw.hpp - Debug drawing API -----------------------*- Category++ -*-===//
 //
 // Part of the Fighter project.
 //
@@ -49,14 +49,14 @@ DrawList& getDrawList();
 /// previous step.
 void beginTick();
 
-void drawLine  (Cat C, Vec2 A, Vec2 B);
-void drawArrow (Cat C, Vec2 From, Vec2 Vec, std::string_view Label = {});
-void drawCircle(Cat C, Vec2 Center, float Radius);
-void drawArc   (Cat C, Vec2 Center, float Radius, float Angle0, float Angle1);
-void drawPoly  (Cat C, std::span<const Vec2> Vertices);
-void drawPoint (Cat C, Vec2 At, float Size = 0.04f);
-void drawCross (Cat C, Vec2 At, float Size = 0.12f);
-void drawText  (Cat C, Vec2 At, std::string_view Text);
+void drawLine  (Cat Category, Vec2 From, Vec2 To);
+void drawArrow (Cat Category, Vec2 From, Vec2 Vec, std::string_view Label = {});
+void drawCircle(Cat Category, Vec2 Center, float Radius);
+void drawArc   (Cat Category, Vec2 Center, float Radius, float Angle0, float Angle1);
+void drawPoly  (Cat Category, std::span<const Vec2> Vertices);
+void drawPoint (Cat Category, Vec2 At, float Size = 0.04f);
+void drawCross (Cat Category, Vec2 At, float Size = 0.12f);
+void drawText  (Cat Category, Vec2 At, std::string_view Text);
 
 /// Sets a text panel line; a line with the same key is overwritten.
 void setPanel(std::string_view Key, std::string_view Value);

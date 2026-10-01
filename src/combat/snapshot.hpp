@@ -38,7 +38,7 @@ struct ArenaView {
 };
 
 struct RenderSnapshot {
-    std::uint64_t Tick = 0;
+    uint64_t Tick = 0;
     double TimeLeftSec = 0.0;
     ArenaView Arena;
     std::array<FighterView, 2> Fighters;   ///< [0] is the left fighter, [1] the right one.

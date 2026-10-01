@@ -19,6 +19,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -28,7 +29,7 @@
 
 namespace fighter::app {
 
-enum class Action : std::uint8_t { Left, Right, Jump, Crouch, Punch, Kick, Block, Count };
+enum class Action : uint8_t { Left, Right, Jump, Crouch, Punch, Kick, Block, Count };
 
 struct Binding {
     sf::Keyboard::Scancode Key;
@@ -57,7 +58,7 @@ public:
     combat::PlayerCommands getCommands(int Player) const;
 
 private:
-    using ActionState = std::array<bool, static_cast<std::size_t>(Action::Count)>;
+    using ActionState = std::array<bool, static_cast<size_t>(Action::Count)>;
 
     std::vector<Binding> Bindings;
     std::array<ActionState, PlayerCount> Held{};

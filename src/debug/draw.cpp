@@ -21,27 +21,27 @@ DrawList& getDrawList() {
 
 void beginTick() { getDrawList().beginTick(); }
 
-void drawLine(Cat C, Vec2 A, Vec2 B) { getDrawList().addLine(C, A, B, getCurrentSide()); }
+void drawLine(Cat Category, Vec2 From, Vec2 To) { getDrawList().addLine(Category, From, To, getCurrentSide()); }
 
-void drawArrow(Cat C, Vec2 From, Vec2 Vec, std::string_view Label) {
-    getDrawList().addArrow(C, From, Vec, Label, getCurrentSide());
+void drawArrow(Cat Category, Vec2 From, Vec2 Vec, std::string_view Label) {
+    getDrawList().addArrow(Category, From, Vec, Label, getCurrentSide());
 }
 
-void drawCircle(Cat C, Vec2 Center, float Radius) {
-    getDrawList().addCircle(C, Center, Radius, getCurrentSide());
+void drawCircle(Cat Category, Vec2 Center, float Radius) {
+    getDrawList().addCircle(Category, Center, Radius, getCurrentSide());
 }
 
-void drawArc(Cat C, Vec2 Center, float Radius, float Angle0, float Angle1) {
-    getDrawList().addArc(C, Center, Radius, Angle0, Angle1, getCurrentSide());
+void drawArc(Cat Category, Vec2 Center, float Radius, float Angle0, float Angle1) {
+    getDrawList().addArc(Category, Center, Radius, Angle0, Angle1, getCurrentSide());
 }
 
-void drawPoly(Cat C, std::span<const Vec2> Vertices) {
-    getDrawList().addPoly(C, Vertices, getCurrentSide());
+void drawPoly(Cat Category, std::span<const Vec2> Vertices) {
+    getDrawList().addPoly(Category, Vertices, getCurrentSide());
 }
 
-void drawPoint(Cat C, Vec2 At, float Size) { getDrawList().addPoint(C, At, Size, getCurrentSide()); }
-void drawCross(Cat C, Vec2 At, float Size) { getDrawList().addCross(C, At, Size, getCurrentSide()); }
-void drawText(Cat C, Vec2 At, std::string_view Text) { getDrawList().addText(C, At, Text, getCurrentSide()); }
+void drawPoint(Cat Category, Vec2 At, float Size) { getDrawList().addPoint(Category, At, Size, getCurrentSide()); }
+void drawCross(Cat Category, Vec2 At, float Size) { getDrawList().addCross(Category, At, Size, getCurrentSide()); }
+void drawText(Cat Category, Vec2 At, std::string_view Text) { getDrawList().addText(Category, At, Text, getCurrentSide()); }
 
 void setPanel(std::string_view Key, std::string_view Value) { getDrawList().setPanel(Key, Value); }
 void logEvent(std::string_view Message) { getDrawList().logEvent(Message); }

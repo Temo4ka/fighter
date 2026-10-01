@@ -22,6 +22,21 @@
 
 namespace fighter::stats {
 
+/// Physical parameters of one body part after stats and equipment.
+struct PartParams {
+    float MassKg = 0.0f;
+    float Armor = 0.0f;
+};
+
+/// The result of "stats + equipment -> physics". The rig applies it and
+/// combat uses it.
+struct PhysicalProfile {
+    PerBodyPart<PartParams> Parts{};
+    float MotorMaxTorque = 0.0f;   ///< N*m, from STR.
+    float MotorGain = 0.0f;        ///< 1/s, from DEX: how fast a motor reaches the pose.
+    float MaxHp = 0.0f;            ///< From CON.
+};
+
 /// Base RPG stats. New ones will come together with magic and abilities.
 struct Stats {
     int Strength = 10;      ///< STR: motor torque, strike power.
@@ -43,21 +58,6 @@ struct Loadout {
     std::vector<EquipmentItem> Items;
 };
 
-/// Physical parameters of one body part after stats and equipment.
-struct PartParams {
-    float MassKg = 0.0f;
-    float Armor = 0.0f;
-};
-
-/// The result of "stats + equipment -> physics". The rig applies it and
-/// combat uses it.
-struct PhysicalProfile {
-    PerBodyPart<PartParams> Parts{};
-    float MotorMaxTorque = 0.0f;   ///< N*m, from STR.
-    float MotorGain = 0.0f;        ///< 1/s, from DEX: how fast a motor reaches the pose.
-    float MaxHp = 0.0f;            ///< From CON.
-};
-
 /// Balance coefficients. Loaded from data/balance.json in phase 2.
 struct BalanceTable {
     PerBodyPart<float> BaseMassKg{};   ///< Body part masses at CON = 10.
@@ -75,6 +75,6 @@ struct BalanceTable {
 
 /// PLACEHOLDER for phase 0: linear formulas. Agent E replaces them with the
 /// formulas from the balance table.
-PhysicalProfile computeProfile(const Stats& S, const Loadout& L, const BalanceTable& Balance);
+PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, const BalanceTable& Balance);
 
 } // namespace fighter::stats

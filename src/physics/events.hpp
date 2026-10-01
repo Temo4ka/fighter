@@ -24,7 +24,7 @@ namespace fighter::physics {
 
 /// A body part of a particular fighter.
 struct PartRef {
-    std::uint8_t Fighter = 0;   ///< 0 is the left fighter, 1 is the right one.
+    uint8_t Fighter = 0;   ///< 0 is the left fighter, 1 is the right one.
     BodyPart Part = BodyPart::Torso;
 };
 

@@ -1,5 +1,6 @@
 #include "physics/world.hpp"
 
+#include <cstdint>
 #include <utility>
 
 #include <box2d/box2d.h>
@@ -7,13 +8,13 @@
 namespace fighter::physics {
 namespace {
 
-b2WorldId loadWorldId(std::uint32_t Packed) { return b2LoadWorldId(Packed); }
+b2WorldId loadWorldId(uint32_t Packed) { return b2LoadWorldId(Packed); }
 
 } // namespace
 
-World::World(Config C) : SubSteps(C.SubSteps) {
+World::World(Config Settings) : SubSteps(Settings.SubSteps) {
     b2WorldDef Def = b2DefaultWorldDef();
-    Def.gravity = b2Vec2{C.Gravity.X, C.Gravity.Y};
+    Def.gravity = b2Vec2{Settings.Gravity.X, Settings.Gravity.Y};
     Id = b2StoreWorldId(b2CreateWorld(&Def));
 }
 
@@ -43,8 +44,8 @@ void World::step(float Dt) {
 }
 
 Vec2 World::getGravity() const {
-    const b2Vec2 G = b2World_GetGravity(loadWorldId(Id));
-    return {G.x, G.y};
+    const b2Vec2 Gravity = b2World_GetGravity(loadWorldId(Id));
+    return {Gravity.x, Gravity.y};
 }
 
 int World::getBodyCount() const {

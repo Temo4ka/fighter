@@ -1,4 +1,4 @@
-//===- debug/palette.hpp - Debug category colors ----------------*- C++ -*-===//
+//===- debug/palette.hpp - Debug category colors ----------------*- Category++ -*-===//
 //
 // Part of the Fighter project.
 //
@@ -20,11 +20,11 @@
 namespace fighter::debug {
 
 struct Rgba {
-    std::uint8_t R = 255, G = 255, B = 255, A = 255;
+    uint8_t R = 255, G = 255, B = 255, A = 255;
 };
 
-constexpr Rgba getColor(Cat C, Side Owner = Side::None) {
-    switch (C) {
+constexpr Rgba getColor(Cat Category, Side Owner = Side::None) {
+    switch (Category) {
         case Cat::Hurtbox:
             return Owner == Side::Right ? Rgba{70, 140, 255, 255}    // blue: right fighter
                                         : Rgba{60, 210, 90, 255};    // green: left fighter
@@ -45,9 +45,9 @@ constexpr Rgba getColor(Cat C, Side Owner = Side::None) {
 
 /// Polygon fill: the category color made translucent so that whatever is
 /// underneath stays visible.
-constexpr Rgba getFillColor(Cat C, Side Owner = Side::None) {
-    Rgba Color = getColor(C, Owner);
-    Color.A = static_cast<std::uint8_t>(Color.A / 4);
+constexpr Rgba getFillColor(Cat Category, Side Owner = Side::None) {
+    Rgba Color = getColor(Category, Owner);
+    Color.A = static_cast<uint8_t>(Color.A / 4);
     return Color;
 }
 

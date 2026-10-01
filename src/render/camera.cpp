@@ -4,7 +4,7 @@
 
 namespace fighter::render {
 
-Camera::Camera(Config C) : ViewHeightM(C.ViewHeightM), Center(C.CenterM) {}
+Camera::Camera(Config Settings) : ViewHeightM(Settings.ViewHeightM), Center(Settings.CenterM) {}
 
 void Camera::setWindowSize(sf::Vector2u SizePx) {
     WindowPx = {std::max(SizePx.x, 1u), std::max(SizePx.y, 1u)};

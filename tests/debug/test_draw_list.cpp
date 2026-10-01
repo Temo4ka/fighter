@@ -53,15 +53,15 @@ TEST_CASE("DrawList: panel line is overwritten by key and keeps its order", "[de
 
 TEST_CASE("DrawList: event log is bounded", "[debug]") {
     DrawList List;
-    for (int I = 0; I < 20; ++I) List.logEvent(std::to_string(I));
+    for (int Index = 0; Index < 20; ++Index) List.logEvent(std::to_string(Index));
     REQUIRE(List.getEvents().size() == DrawList::EventLogSize);
     CHECK(List.getEvents().back() == "19");
 }
 
 TEST_CASE("Palette: Hurtbox color differs per fighter", "[debug]") {
-    const auto L = debug::getColor(Cat::Hurtbox, Side::Left);
-    const auto R = debug::getColor(Cat::Hurtbox, Side::Right);
-    CHECK((L.R != R.R || L.G != R.G || L.B != R.B));
+    const auto LeftColor = debug::getColor(Cat::Hurtbox, Side::Left);
+    const auto RightColor = debug::getColor(Cat::Hurtbox, Side::Right);
+    CHECK((LeftColor.R != RightColor.R || LeftColor.G != RightColor.G || LeftColor.B != RightColor.B));
     CHECK(debug::getFillColor(Cat::Hitbox).A < debug::getColor(Cat::Hitbox).A);
 }
 

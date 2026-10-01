@@ -20,8 +20,8 @@ LoggerState& getState() {
     return State;
 }
 
-std::string_view getLevelName(Level L) {
-    switch (L) {
+std::string_view getLevelName(Level Severity) {
+    switch (Severity) {
         case Level::Debug: return "DEBUG";
         case Level::Info:  return "INFO ";
         case Level::Warn:  return "WARN ";
@@ -32,9 +32,9 @@ std::string_view getLevelName(Level L) {
 
 } // namespace
 
-void setMinLevel(Level L) {
+void setMinLevel(Level Severity) {
     std::scoped_lock Lock(getState().Mutex);
-    getState().MinLevel = L;
+    getState().MinLevel = Severity;
 }
 
 Level getMinLevel() {
@@ -49,18 +49,18 @@ bool setFile(const std::filesystem::path& Path) {
     return getState().File.is_open();
 }
 
-void write(Level L, std::string_view Message) {
+void write(Level Severity, std::string_view Message) {
     LoggerState& State = getState();
     std::scoped_lock Lock(State.Mutex);
 
     const double Seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - State.Start).count();
-    const std::string Line = std::format("[{:9.3f}] {} {}\n", Seconds, getLevelName(L), Message);
+    const std::string Line = std::format("[{:9.3f}] {} {}\n", Seconds, getLevelName(Severity), Message);
 
     std::fputs(Line.c_str(), stderr);
     if (State.File.is_open()) {
         State.File << Line;
-        if (L >= Level::Warn) State.File.flush();
+        if (Severity >= Level::Warn) State.File.flush();
     }
 }
 

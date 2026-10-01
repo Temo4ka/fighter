@@ -17,8 +17,8 @@ TEST_CASE("FixedStepLoop: step count does not depend on how time is split into f
     FixedStepLoop Fine = makeLoop();
     int CoarseSteps = 0, FineSteps = 0;
 
-    for (int I = 0; I < 10; ++I) Coarse.advance(8 * Step, [&](double) { ++CoarseSteps; });
-    for (int I = 0; I < 80 * 7; ++I) Fine.advance(Step / 7.0, [&](double) { ++FineSteps; });
+    for (int Frame = 0; Frame < 10; ++Frame) Coarse.advance(8 * Step, [&](double) { ++CoarseSteps; });
+    for (int Frame = 0; Frame < 80 * 7; ++Frame) Fine.advance(Step / 7.0, [&](double) { ++FineSteps; });
 
     CHECK(CoarseSteps == 80);
     CHECK(FineSteps >= 79);   // Step / 7 is not exact, allow one step of error

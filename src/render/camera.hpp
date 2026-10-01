@@ -37,7 +37,7 @@ public:
     };
 
     Camera() : Camera(Config{}) {}
-    explicit Camera(Config C);
+    explicit Camera(Config Settings);
 
     /// The view width follows the window aspect ratio; the height in meters is kept.
     void setWindowSize(sf::Vector2u SizePx);

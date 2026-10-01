@@ -75,6 +75,9 @@ private:
     std::unique_ptr<combat::Battle> CurrentBattle;
     combat::RenderSnapshot Previous;
     bool ResultReported = false;
+    /// Exponential moving average of the frame time, shown as FPS in the
+    /// debug panel. Averaging the time rather than 1/time keeps rare fast
+    /// frames from inflating the FPS.
     double FrameSecSmoothed = 0.0;
 };
 

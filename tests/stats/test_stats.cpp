@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
+
 #include "stats/stats.hpp"
 
 using namespace fighter;
@@ -39,8 +41,8 @@ TEST_CASE("computeProfile: equipment adds mass and armor to its body parts", "[s
     const auto Base = computeProfile({}, {}, Balance);
     const auto Armored = computeProfile({}, Gear, Balance);
 
-    const auto Head = static_cast<std::size_t>(BodyPart::Head);
-    const auto Torso = static_cast<std::size_t>(BodyPart::Torso);
+    const auto Head = static_cast<size_t>(BodyPart::Head);
+    const auto Torso = static_cast<size_t>(BodyPart::Torso);
     CHECK(Armored.Parts[Head].MassKg == Base.Parts[Head].MassKg + 2.0f);
     CHECK(Armored.Parts[Head].Armor == 0.3f);
     CHECK(Armored.Parts[Torso].MassKg == Base.Parts[Torso].MassKg);

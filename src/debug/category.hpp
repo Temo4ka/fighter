@@ -1,4 +1,4 @@
-//===- debug/category.hpp - Debug primitive categories ----------*- C++ -*-===//
+//===- debug/category.hpp - Debug primitive categories ----------*- Category++ -*-===//
 //
 // Part of the Fighter project.
 //
@@ -22,7 +22,7 @@
 
 namespace fighter::debug {
 
-enum class Cat : std::uint8_t {
+enum class Cat : uint8_t {
     Hurtbox,     ///< Body parts that can be hit.
     Hitbox,      ///< Striking parts during the active phase of an attack.
     Block,       ///< Blocking zones.
@@ -37,19 +37,19 @@ enum class Cat : std::uint8_t {
     Count
 };
 
-inline constexpr std::size_t CatCount = static_cast<std::size_t>(Cat::Count);
+inline constexpr size_t CatCount = static_cast<size_t>(Cat::Count);
 
-constexpr std::string_view getCatName(Cat C) {
+constexpr std::string_view getCatName(Cat Category) {
     constexpr std::array<std::string_view, CatCount> Names = {
         "Hurtbox", "Hitbox", "Block", "Static", "Joints", "TargetPose",
         "Motors", "Forces", "Velocity", "Contacts", "CoM",
     };
-    const auto I = static_cast<std::size_t>(C);
-    return I < Names.size() ? Names[I] : "?";
+    const auto Index = static_cast<size_t>(Category);
+    return Index < Names.size() ? Names[Index] : "?";
 }
 
 /// Which fighter a primitive belongs to. Some categories (Hurtbox) use a
 /// different color for each fighter.
-enum class Side : std::uint8_t { None, Left, Right };
+enum class Side : uint8_t { None, Left, Right };
 
 } // namespace fighter::debug

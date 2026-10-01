@@ -1,6 +1,7 @@
 #include "app/app.hpp"
 
 #include <format>
+#include <string>
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/Texture.hpp>
@@ -29,8 +30,8 @@ combat::BattleConfig makeSandboxBattle() {
     return Config;
 }
 
-const char* getWinnerName(combat::Winner W) {
-    switch (W) {
+std::string getWinnerName(combat::Winner Outcome) {
+    switch (Outcome) {
         case combat::Winner::Left: return "P1";
         case combat::Winner::Right: return "P2";
         case combat::Winner::Draw: return "draw";

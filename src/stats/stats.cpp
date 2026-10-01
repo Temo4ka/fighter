@@ -1,12 +1,14 @@
 #include "stats/stats.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <ranges>
 
 namespace fighter::stats {
 
 BalanceTable BalanceTable::getDefaults() {
     BalanceTable Table;
-    auto Set = [&](BodyPart Part, float Kg) { Table.BaseMassKg[static_cast<std::size_t>(Part)] = Kg; };
+    auto Set = [&](BodyPart Part, float Kg) { Table.BaseMassKg[static_cast<size_t>(Part)] = Kg; };
     Set(BodyPart::Head, 5.0f);
     Set(BodyPart::Torso, 26.0f);
     Set(BodyPart::Pelvis, 11.0f);
@@ -23,29 +25,29 @@ BalanceTable BalanceTable::getDefaults() {
     return Table;
 }
 
-PhysicalProfile computeProfile(const Stats& S, const Loadout& L, const BalanceTable& Balance) {
+PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, const BalanceTable& Balance) {
     PhysicalProfile Profile;
 
-    const float ConScale = 1.0f + Balance.MassPerCon * static_cast<float>(S.Constitution - 10);
-    for (std::size_t I = 0; I < BodyPartCount; ++I) {
-        Profile.Parts[I].MassKg = Balance.BaseMassKg[I] * std::max(ConScale, 0.5f);
+    const float ConScale = 1.0f + Balance.MassPerCon * static_cast<float>(BaseStats.Constitution - 10);
+    for (auto&& [Params, BaseMass] : std::views::zip(Profile.Parts, Balance.BaseMassKg)) {
+        Params.MassKg = BaseMass * std::max(ConScale, 0.5f);
     }
 
-    for (const EquipmentItem& Item : L.Items) {
+    for (const EquipmentItem& Item : Gear.Items) {
         if (Item.Covers.empty()) continue;
         const float Share = Item.MassKg / static_cast<float>(Item.Covers.size());
         for (BodyPart Part : Item.Covers) {
-            PartParams& P = Profile.Parts[static_cast<std::size_t>(Part)];
-            P.MassKg += Share;
-            P.Armor = std::clamp(P.Armor + Item.Armor, 0.0f, 0.9f);
+            PartParams& Params = Profile.Parts[static_cast<size_t>(Part)];
+            Params.MassKg += Share;
+            Params.Armor = std::clamp(Params.Armor + Item.Armor, 0.0f, 0.9f);
         }
     }
 
     Profile.MotorMaxTorque =
-        Balance.BaseMotorTorque * (1.0f + Balance.TorquePerStr * static_cast<float>(S.Strength - 10));
+        Balance.BaseMotorTorque * (1.0f + Balance.TorquePerStr * static_cast<float>(BaseStats.Strength - 10));
     Profile.MotorGain =
-        Balance.BaseMotorGain * (1.0f + Balance.GainPerDex * static_cast<float>(S.Dexterity - 10));
-    Profile.MaxHp = Balance.BaseHp + Balance.HpPerCon * static_cast<float>(S.Constitution - 10);
+        Balance.BaseMotorGain * (1.0f + Balance.GainPerDex * static_cast<float>(BaseStats.Dexterity - 10));
+    Profile.MaxHp = Balance.BaseHp + Balance.HpPerCon * static_cast<float>(BaseStats.Constitution - 10);
     return Profile;
 }
 

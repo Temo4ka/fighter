@@ -1,5 +1,7 @@
 #include "app/input.hpp"
 
+#include <cstddef>
+
 namespace fighter::app {
 
 InputSystem::InputSystem(std::vector<Binding> NewBindings) : Bindings(std::move(NewBindings)) {}
@@ -21,9 +23,9 @@ std::vector<Binding> InputSystem::getDefaultBindings() {
 
 bool InputSystem::onKey(sf::Keyboard::Scancode Key, bool Pressed) {
     bool Bound = false;
-    for (const Binding& B : Bindings) {
-        if (B.Key != Key || B.Player < 0 || B.Player >= PlayerCount) continue;
-        Held[static_cast<std::size_t>(B.Player)][static_cast<std::size_t>(B.Act)] = Pressed;
+    for (const Binding& Entry : Bindings) {
+        if (Entry.Key != Key || Entry.Player < 0 || Entry.Player >= PlayerCount) continue;
+        Held[static_cast<size_t>(Entry.Player)][static_cast<size_t>(Entry.Act)] = Pressed;
         Bound = true;
     }
     return Bound;
@@ -35,8 +37,8 @@ void InputSystem::reset() {
 
 combat::PlayerCommands InputSystem::getCommands(int Player) const {
     if (Player < 0 || Player >= PlayerCount) return {};
-    const ActionState& State = Held[static_cast<std::size_t>(Player)];
-    auto IsHeld = [&](Action A) { return State[static_cast<std::size_t>(A)]; };
+    const ActionState& State = Held[static_cast<size_t>(Player)];
+    auto IsHeld = [&](Action Act) { return State[static_cast<size_t>(Act)]; };
 
     combat::PlayerCommands Cmd;
     // Both directions at once means standing still.

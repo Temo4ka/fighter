@@ -21,19 +21,19 @@ int main(int Argc, char** Argv) {
     const char* RootEnv = std::getenv("FIGHTER_ROOT");
     Opts.Root = RootEnv ? RootEnv : FIGHTER_SOURCE_DIR;
 
-    for (int I = 1; I < Argc; ++I) {
-        const std::string_view Arg = Argv[I];
-        const bool HasValue = I + 1 < Argc;
+    for (int ArgIndex = 1; ArgIndex < Argc; ++ArgIndex) {
+        const std::string_view Arg = Argv[ArgIndex];
+        const bool HasValue = ArgIndex + 1 < Argc;
         if (Arg == "--screenshot" && HasValue) {
-            Opts.Screenshot = Argv[++I];
+            Opts.Screenshot = Argv[++ArgIndex];
         } else if (Arg == "--frames" && HasValue) {
-            Opts.Frames = std::atoi(Argv[++I]);
+            Opts.Frames = std::atoi(Argv[++ArgIndex]);
         } else if (Arg == "--mode" && HasValue) {
-            Opts.Mode = Argv[++I];
+            Opts.Mode = Argv[++ArgIndex];
         } else if (Arg == "--showcase") {
             Opts.Showcase = true;
         } else if (Arg == "--log" && HasValue) {
-            if (!log::setFile(Argv[++I])) log::warn("cannot open log file {}", Argv[I]);
+            if (!log::setFile(Argv[++ArgIndex])) log::warn("cannot open log file {}", Argv[ArgIndex]);
         } else {
             log::warn("unknown argument: {}", Arg);
         }
@@ -42,8 +42,8 @@ int main(int Argc, char** Argv) {
     try {
         app::App Application(std::move(Opts));
         return Application.run();
-    } catch (const std::exception& E) {
-        log::error("fatal: {}", E.what());
+    } catch (const std::exception& Error) {
+        log::error("fatal: {}", Error.what());
         return EXIT_FAILURE;
     }
 }

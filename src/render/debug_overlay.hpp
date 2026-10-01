@@ -16,6 +16,7 @@
 #pragma once
 
 #include <bitset>
+#include <cstddef>
 
 #include <SFML/Graphics/RenderTarget.hpp>
 #include <SFML/Window/Keyboard.hpp>
@@ -56,7 +57,7 @@ public:
     void drawPrimitives(sf::RenderTarget& Target, const Camera& Cam, const debug::DrawList& List) const;
     void drawPanel(sf::RenderTarget& Target, const Camera& Cam, const debug::DrawList& List) const;
 
-    bool isCategoryEnabled(debug::Cat C) const { return Enabled.test(static_cast<std::size_t>(C)); }
+    bool isCategoryEnabled(debug::Cat Category) const { return Enabled.test(static_cast<size_t>(Category)); }
 
 private:
     Resources& Assets;

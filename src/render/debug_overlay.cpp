@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <numbers>
 #include <optional>
@@ -38,11 +39,11 @@ constexpr float LineHeight = 16.0f;
 constexpr int CircleSegments = 32;
 constexpr float TwoPi = 2.0f * std::numbers::pi_v<float>;
 
-sf::Color toSfColor(debug::Rgba C) { return sf::Color(C.R, C.G, C.B, C.A); }
+sf::Color toSfColor(debug::Rgba Source) { return sf::Color(Source.R, Source.G, Source.B, Source.A); }
 
-std::optional<std::size_t> findCategoryForKey(Scan Key) {
-    for (std::size_t I = 0; I < CategoryKeys.size(); ++I) {
-        if (CategoryKeys[I] == Key) return I;
+std::optional<size_t> findCategoryForKey(Scan Key) {
+    for (size_t Index = 0; Index < CategoryKeys.size(); ++Index) {
+        if (CategoryKeys[Index] == Key) return Index;
     }
     return std::nullopt;
 }
@@ -50,17 +51,17 @@ std::optional<std::size_t> findCategoryForKey(Scan Key) {
 /// Collects all line segments into one VertexArray: one draw call per frame.
 class LineBatch {
 public:
-    void addLine(Vec2 A, Vec2 B, sf::Color Color) {
-        Lines.append(sf::Vertex{Camera::toDraw(A), Color});
-        Lines.append(sf::Vertex{Camera::toDraw(B), Color});
+    void addLine(Vec2 From, Vec2 To, sf::Color Color) {
+        Lines.append(sf::Vertex{Camera::toDraw(From), Color});
+        Lines.append(sf::Vertex{Camera::toDraw(To), Color});
     }
 
     void addArc(Vec2 Center, float Radius, float A0, float A1, sf::Color Color) {
         const int Segments = std::max(4, static_cast<int>(CircleSegments * std::abs(A1 - A0) / TwoPi));
         Vec2 Prev = Center + Vec2{std::cos(A0), std::sin(A0)} * Radius;
-        for (int I = 1; I <= Segments; ++I) {
-            const float T = A0 + (A1 - A0) * static_cast<float>(I) / static_cast<float>(Segments);
-            const Vec2 Next = Center + Vec2{std::cos(T), std::sin(T)} * Radius;
+        for (int Segment = 1; Segment <= Segments; ++Segment) {
+            const float Angle = A0 + (A1 - A0) * static_cast<float>(Segment) / static_cast<float>(Segments);
+            const Vec2 Next = Center + Vec2{std::cos(Angle), std::sin(Angle)} * Radius;
             addLine(Prev, Next, Color);
             Prev = Next;
         }
@@ -102,10 +103,10 @@ DebugOverlay::KeyResult DebugOverlay::handleKey(sf::Keyboard::Scancode Key) {
 void DebugOverlay::drawBackdrop(sf::RenderTarget& Target, const Camera& Cam) const {
     Target.setView(Cam.getWorldView());
     const Vec2 Size = Cam.getViewSizeM();
-    const Vec2 C = Cam.getCenterM();
+    const Vec2 Center = Cam.getCenterM();
 
     sf::RectangleShape Bg({Size.X, Size.Y});
-    Bg.setPosition(Camera::toDraw({C.X - Size.X * 0.5f, C.Y + Size.Y * 0.5f}));
+    Bg.setPosition(Camera::toDraw({Center.X - Size.X * 0.5f, Center.Y + Size.Y * 0.5f}));
     Bg.setFillColor(sf::Color(22, 24, 30));
     Target.draw(Bg);
 
@@ -113,17 +114,17 @@ void DebugOverlay::drawBackdrop(sf::RenderTarget& Target, const Camera& Cam) con
     LineBatch Grid;
     const sf::Color Minor(255, 255, 255, 18);
     const sf::Color Axis(255, 255, 255, 60);
-    const int X0 = static_cast<int>(std::floor(C.X - Size.X * 0.5f));
-    const int X1 = static_cast<int>(std::ceil(C.X + Size.X * 0.5f));
-    const int Y0 = static_cast<int>(std::floor(C.Y - Size.Y * 0.5f));
-    const int Y1 = static_cast<int>(std::ceil(C.Y + Size.Y * 0.5f));
-    for (int X = X0; X <= X1; ++X) {
-        Grid.addLine({static_cast<float>(X), static_cast<float>(Y0)}, {static_cast<float>(X), static_cast<float>(Y1)},
-                     X == 0 ? Axis : Minor);
+    const int X0 = static_cast<int>(std::floor(Center.X - Size.X * 0.5f));
+    const int X1 = static_cast<int>(std::ceil(Center.X + Size.X * 0.5f));
+    const int Y0 = static_cast<int>(std::floor(Center.Y - Size.Y * 0.5f));
+    const int Y1 = static_cast<int>(std::ceil(Center.Y + Size.Y * 0.5f));
+    for (int GridX = X0; GridX <= X1; ++GridX) {
+        const float LineX = static_cast<float>(GridX);
+        Grid.addLine({LineX, static_cast<float>(Y0)}, {LineX, static_cast<float>(Y1)}, GridX == 0 ? Axis : Minor);
     }
-    for (int Y = Y0; Y <= Y1; ++Y) {
-        Grid.addLine({static_cast<float>(X0), static_cast<float>(Y)}, {static_cast<float>(X1), static_cast<float>(Y)},
-                     Y == 0 ? Axis : Minor);
+    for (int GridY = Y0; GridY <= Y1; ++GridY) {
+        const float LineY = static_cast<float>(GridY);
+        Grid.addLine({static_cast<float>(X0), LineY}, {static_cast<float>(X1), LineY}, GridY == 0 ? Axis : Minor);
     }
     Grid.draw(Target);
 }
@@ -133,21 +134,22 @@ void DebugOverlay::drawPrimitives(sf::RenderTarget& Target, const Camera& Cam,
     Target.setView(Cam.getWorldView());
 
     LineBatch Lines;
-    for (const Primitive& P : List.getPrimitives()) {
-        if (!isCategoryEnabled(P.Category)) continue;
-        const sf::Color Color = toSfColor(debug::getColor(P.Category, P.Owner));
+    for (const Primitive& Prim : List.getPrimitives()) {
+        if (!isCategoryEnabled(Prim.Category)) continue;
+        const sf::Color Color = toSfColor(debug::getColor(Prim.Category, Prim.Owner));
 
-        switch (P.Kind) {
+        switch (Prim.Kind) {
             case PrimitiveKind::Line:
-                Lines.addLine(P.A, P.B, Color);
+                Lines.addLine(Prim.Anchor, Prim.End, Color);
                 break;
 
             case PrimitiveKind::Arrow: {
-                const Vec2 Tip = P.A + P.B;
-                Lines.addLine(P.A, Tip, Color);
-                const float Len = P.B.getLength();
+                const Vec2 Tip = Prim.End;
+                const Vec2 Shaft = Prim.End - Prim.Anchor;
+                Lines.addLine(Prim.Anchor, Tip, Color);
+                const float Len = Shaft.getLength();
                 if (Len > 1e-4f) {
-                    const Vec2 Dir = P.B / Len;
+                    const Vec2 Dir = Shaft / Len;
                     const float Head = std::min(0.15f, Len * 0.3f);
                     const Vec2 Wing = perp(Dir) * Head * 0.5f;
                     Lines.addLine(Tip, Tip - Dir * Head + Wing, Color);
@@ -157,40 +159,41 @@ void DebugOverlay::drawPrimitives(sf::RenderTarget& Target, const Camera& Cam,
             }
 
             case PrimitiveKind::Circle:
-                Lines.addArc(P.A, P.Radius, 0.0f, TwoPi, Color);
+                Lines.addArc(Prim.Anchor, Prim.Radius, 0.0f, TwoPi, Color);
                 break;
 
             case PrimitiveKind::Arc:
-                Lines.addArc(P.A, P.Radius, P.Angle0, P.Angle1, Color);
+                Lines.addArc(Prim.Anchor, Prim.Radius, Prim.Angle0, Prim.Angle1, Color);
                 break;
 
             case PrimitiveKind::Poly: {
-                const auto Points = List.getPoints(P);
+                const auto Points = List.getPoints(Prim);
                 if (Points.size() >= 3) {
                     sf::ConvexShape Fill(Points.size());
-                    for (std::size_t I = 0; I < Points.size(); ++I) Fill.setPoint(I, Camera::toDraw(Points[I]));
-                    Fill.setFillColor(toSfColor(debug::getFillColor(P.Category, P.Owner)));
+                    for (size_t Index = 0; Index < Points.size(); ++Index)
+                        Fill.setPoint(Index, Camera::toDraw(Points[Index]));
+                    Fill.setFillColor(toSfColor(debug::getFillColor(Prim.Category, Prim.Owner)));
                     Target.draw(Fill);
                 }
-                for (std::size_t I = 0; I < Points.size(); ++I)
-                    Lines.addLine(Points[I], Points[(I + 1) % Points.size()], Color);
+                for (size_t Index = 0; Index < Points.size(); ++Index)
+                    Lines.addLine(Points[Index], Points[(Index + 1) % Points.size()], Color);
                 break;
             }
 
             case PrimitiveKind::Point: {
-                sf::CircleShape Dot(P.Radius);
-                Dot.setOrigin({P.Radius, P.Radius});
-                Dot.setPosition(Camera::toDraw(P.A));
+                sf::CircleShape Dot(Prim.Radius);
+                Dot.setOrigin({Prim.Radius, Prim.Radius});
+                Dot.setPosition(Camera::toDraw(Prim.Anchor));
                 Dot.setFillColor(Color);
                 Target.draw(Dot);
                 break;
             }
 
             case PrimitiveKind::Cross: {
-                const float S = P.Radius;
-                Lines.addLine(P.A - Vec2{S, 0.0f}, P.A + Vec2{S, 0.0f}, Color);
-                Lines.addLine(P.A - Vec2{0.0f, S}, P.A + Vec2{0.0f, S}, Color);
-                Lines.addArc(P.A, S * 0.45f, 0.0f, TwoPi, sf::Color::Black);
+                const float Size = Prim.Radius;
+                Lines.addLine(Prim.Anchor - Vec2{Size, 0.0f}, Prim.Anchor + Vec2{Size, 0.0f}, Color);
+                Lines.addLine(Prim.Anchor - Vec2{0.0f, Size}, Prim.Anchor + Vec2{0.0f, Size}, Color);
+                Lines.addArc(Prim.Anchor, Size * 0.45f, 0.0f, TwoPi, sf::Color::Black);
                 break;
             }
 
@@ -203,15 +206,15 @@ void DebugOverlay::drawPrimitives(sf::RenderTarget& Target, const Camera& Cam,
     // Labels are drawn in pixels so that the font does not scale with the world.
     Target.setView(Cam.getScreenView());
     const sf::Font& Font = Assets.getFont(assets::MonoFontPath);
-    for (const Primitive& P : List.getPrimitives()) {
-        if (!isCategoryEnabled(P.Category)) continue;
-        const std::string_view Label = List.getText(P);
+    for (const Primitive& Prim : List.getPrimitives()) {
+        if (!isCategoryEnabled(Prim.Category)) continue;
+        const std::string_view Label = List.getText(Prim);
         if (Label.empty()) continue;
 
-        const Vec2 Anchor = (P.Kind == PrimitiveKind::Arrow) ? P.A + P.B : P.A;
+        const Vec2 Anchor = (Prim.Kind == PrimitiveKind::Arrow) ? Prim.End : Prim.Anchor;
         sf::Text Text(Font, std::string(Label), FontSize);
         Text.setPosition(Cam.worldToPixel(Anchor) + sf::Vector2f{4.0f, -LineHeight});
-        Text.setFillColor(toSfColor(debug::getColor(P.Category, P.Owner)));
+        Text.setFillColor(toSfColor(debug::getColor(Prim.Category, Prim.Owner)));
         Text.setOutlineColor(sf::Color(0, 0, 0, 200));
         Text.setOutlineThickness(1.0f);
         Target.draw(Text);
@@ -238,35 +241,36 @@ void DebugOverlay::drawPanel(sf::RenderTarget& Target, const Camera& Cam, const 
     for (const auto& [Key, Value] : List.getPanel()) Lines.push_back({std::format("{:<14} {}", Key, Value)});
     Lines.push_back({""});
 
-    for (std::size_t I = 0; I < debug::CatCount; ++I) {
-        const auto C = static_cast<Cat>(I);
-        const bool On = Enabled.test(I);
-        sf::Color Color = toSfColor(debug::getColor(C, debug::Side::Left));
+    for (size_t Index = 0; Index < debug::CatCount; ++Index) {
+        const auto Category = static_cast<Cat>(Index);
+        const bool On = Enabled.test(Index);
+        sf::Color Color = toSfColor(debug::getColor(Category, debug::Side::Left));
         Color.a = On ? 255 : 90;
-        Lines.push_back({std::format("{} [{}] {}", CategoryKeyNames[I], On ? 'x' : ' ', debug::getCatName(C)), Color});
+        Lines.push_back({std::format("{} [{}] {}", CategoryKeyNames[Index], On ? 'x' : ' ', debug::getCatName(Category)),
+                         Color});
     }
 
     if (!List.getEvents().empty()) {
         Lines.push_back({""});
         Lines.push_back({"events:", sf::Color(255, 220, 120)});
-        for (const std::string& E : List.getEvents()) Lines.push_back({E});
+        for (const std::string& Event : List.getEvents()) Lines.push_back({Event});
     }
 
     // Translucent backing under the text.
     float Width = 0.0f;
     std::vector<sf::Text> Texts;
     Texts.reserve(Lines.size());
-    for (std::size_t I = 0; I < Lines.size(); ++I) {
-        sf::Text& T = Texts.emplace_back(Font, Lines[I].Text, FontSize);
-        T.setFillColor(Lines[I].Color);
-        T.setPosition({16.0f, 64.0f + LineHeight * static_cast<float>(I)});
-        Width = std::max(Width, T.getLocalBounds().size.x);
+    for (size_t Index = 0; Index < Lines.size(); ++Index) {
+        sf::Text& Line = Texts.emplace_back(Font, Lines[Index].Text, FontSize);
+        Line.setFillColor(Lines[Index].Color);
+        Line.setPosition({16.0f, 64.0f + LineHeight * static_cast<float>(Index)});
+        Width = std::max(Width, Line.getLocalBounds().size.x);
     }
     sf::RectangleShape Back({Width + 16.0f, LineHeight * static_cast<float>(Lines.size()) + 12.0f});
     Back.setPosition({8.0f, 58.0f});
     Back.setFillColor(sf::Color(0, 0, 0, 170));
     Target.draw(Back);
-    for (const sf::Text& T : Texts) Target.draw(T);
+    for (const sf::Text& Line : Texts) Target.draw(Line);
 }
 
 } // namespace fighter::render

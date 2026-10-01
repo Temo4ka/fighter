@@ -4,7 +4,7 @@
 
 namespace fighter {
 
-FixedStepLoop::FixedStepLoop(Config C) : Cfg(C) {}
+FixedStepLoop::FixedStepLoop(Config Settings) : Cfg(Settings) {}
 
 void FixedStepLoop::setPaused(bool NewPaused) {
     Paused = NewPaused;

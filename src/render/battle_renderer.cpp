@@ -1,8 +1,11 @@
 #include "render/battle_renderer.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
+#include <ranges>
 
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/Sprite.hpp>
@@ -13,7 +16,7 @@
 namespace fighter::render {
 namespace {
 
-const sf::Color FighterColors[2] = {sf::Color(200, 70, 60), sf::Color(60, 110, 200)};
+const std::array<sf::Color, 2> FighterColors = {sf::Color(200, 70, 60), sf::Color(60, 110, 200)};
 
 /// A rectangle in world coordinates given by its bottom-left corner and size, m.
 sf::RectangleShape makeWorldRect(Vec2 BottomLeft, Vec2 Size) {
@@ -50,17 +53,17 @@ void BattleRenderer::drawWorld(sf::RenderTarget& Target, const Camera& Cam,
     Target.draw(Floor);
 
     // Placeholder fighters.
-    for (std::size_t I = 0; I < Snapshot.Fighters.size(); ++I) {
-        const combat::FighterView& F = Snapshot.Fighters[I];
-        sf::RectangleShape Body = makeWorldRect({F.Position.X - F.Size.X * 0.5f, F.Position.Y}, F.Size);
-        Body.setFillColor(FighterColors[I]);
+    for (auto&& [Fighter, Color] : std::views::zip(Snapshot.Fighters, FighterColors)) {
+        sf::RectangleShape Body =
+            makeWorldRect({Fighter.Position.X - Fighter.Size.X * 0.5f, Fighter.Position.Y}, Fighter.Size);
+        Body.setFillColor(Color);
         Body.setOutlineColor(sf::Color::Black);
         Body.setOutlineThickness(-0.02f);
         Target.draw(Body);
 
         // The "eye" shows which way the fighter is facing.
-        const float EyeX = F.Position.X + (F.FacingRight ? 0.12f : -0.12f) - 0.04f;
-        sf::RectangleShape Eye = makeWorldRect({EyeX, F.Position.Y + F.Size.Y - 0.3f}, {0.08f, 0.08f});
+        const float EyeX = Fighter.Position.X + (Fighter.FacingRight ? 0.12f : -0.12f) - 0.04f;
+        sf::RectangleShape Eye = makeWorldRect({EyeX, Fighter.Position.Y + Fighter.Size.Y - 0.3f}, {0.08f, 0.08f});
         Eye.setFillColor(sf::Color::White);
         Target.draw(Eye);
     }
@@ -74,13 +77,13 @@ void BattleRenderer::drawHud(sf::RenderTarget& Target, const Camera& Cam,
 
     // HP bars: the left fighter on the left, the right one on the right.
     constexpr float BarW = 360.0f, BarH = 18.0f, Margin = 24.0f;
-    for (std::size_t I = 0; I < Snapshot.Fighters.size(); ++I) {
-        const combat::FighterView& F = Snapshot.Fighters[I];
-        const float Ratio = F.MaxHp > 0.0f ? std::clamp(F.Hp / F.MaxHp, 0.0f, 1.0f) : 0.0f;
-        const float X = (I == 0) ? Margin : Width - Margin - BarW;
+    for (size_t Index = 0; Index < Snapshot.Fighters.size(); ++Index) {
+        const combat::FighterView& Fighter = Snapshot.Fighters[Index];
+        const float Ratio = Fighter.MaxHp > 0.0f ? std::clamp(Fighter.Hp / Fighter.MaxHp, 0.0f, 1.0f) : 0.0f;
+        const float BarX = (Index == 0) ? Margin : Width - Margin - BarW;
 
         sf::RectangleShape Back({BarW, BarH});
-        Back.setPosition({X, Margin});
+        Back.setPosition({BarX, Margin});
         Back.setFillColor(sf::Color(0, 0, 0, 160));
         Back.setOutlineColor(sf::Color(230, 230, 230));
         Back.setOutlineThickness(1.0f);
@@ -88,8 +91,8 @@ void BattleRenderer::drawHud(sf::RenderTarget& Target, const Camera& Cam,
 
         sf::RectangleShape Fill({BarW * Ratio, BarH});
         // The right bar shrinks towards the screen center, as in classic fighting games.
-        Fill.setPosition({I == 0 ? X : X + BarW * (1.0f - Ratio), Margin});
-        Fill.setFillColor(FighterColors[I]);
+        Fill.setPosition({Index == 0 ? BarX : BarX + BarW * (1.0f - Ratio), Margin});
+        Fill.setFillColor(FighterColors[Index]);
         Target.draw(Fill);
     }
 

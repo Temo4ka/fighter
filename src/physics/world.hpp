@@ -31,7 +31,7 @@ public:
     };
 
     World() : World(Config{}) {}
-    explicit World(Config C);
+    explicit World(Config Settings);
     ~World();
 
     /// The world owns Box2D resources: it can be moved but not copied.
@@ -49,7 +49,7 @@ public:
 private:
     void destroy();
 
-    std::uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
+    uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
     int SubSteps = 4;
 };
 

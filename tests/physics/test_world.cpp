@@ -9,21 +9,21 @@ using fighter::physics::World;
 using Catch::Approx;
 
 TEST_CASE("physics::World: create, step and gravity", "[physics]") {
-    World W({.Gravity = {0.0f, -9.81f}, .SubSteps = 4});
-    REQUIRE(W.isValid());
-    CHECK(W.getGravity().Y == Approx(-9.81f));
-    CHECK(W.getBodyCount() == 0);
-    for (int I = 0; I < 10; ++I) W.step(1.0f / 60.0f);
+    World PhysWorld({.Gravity = {0.0f, -9.81f}, .SubSteps = 4});
+    REQUIRE(PhysWorld.isValid());
+    CHECK(PhysWorld.getGravity().Y == Approx(-9.81f));
+    CHECK(PhysWorld.getBodyCount() == 0);
+    for (int Step = 0; Step < 10; ++Step) PhysWorld.step(1.0f / 60.0f);
 }
 
 TEST_CASE("physics::World: move transfers ownership", "[physics]") {
-    World A;
-    World B = std::move(A);
-    CHECK_FALSE(A.isValid());
-    CHECK(B.isValid());
+    World First;
+    World Second = std::move(First);
+    CHECK_FALSE(First.isValid());
+    CHECK(Second.isValid());
 
-    World C;
-    C = std::move(B);   // the old world of C is destroyed, the new one moves in
-    CHECK(C.isValid());
-    CHECK_FALSE(B.isValid());
+    World Third;
+    Third = std::move(Second);   // the old world of Third is destroyed, the new one moves in
+    CHECK(Third.isValid());
+    CHECK_FALSE(Second.isValid());
 }
