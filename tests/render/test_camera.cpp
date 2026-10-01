@@ -7,7 +7,7 @@ using fighter::Vec2;
 using fighter::render::Camera;
 using Catch::Approx;
 
-TEST_CASE("Camera: Y мира вверх, Y экрана вниз", "[render][camera]") {
+TEST_CASE("Camera: world Y is up, screen Y is down", "[render][camera]") {
     Camera cam({.viewHeightM = 6.0f, .centerM = {0.0f, 2.5f}});
     cam.setWindowSize({1200, 600});   // 100 px/м, вид 12 × 6 м
 
@@ -24,7 +24,7 @@ TEST_CASE("Camera: Y мира вверх, Y экрана вниз", "[render][ca
     CHECK(higher.y < floorPx.y);          // выше в мире — выше на экране
 }
 
-TEST_CASE("Camera: прямое и обратное преобразования согласованы", "[render][camera]") {
+TEST_CASE("Camera: forward and inverse transforms agree", "[render][camera]") {
     Camera cam;
     cam.setWindowSize({1280, 720});
     for (const Vec2 w : {Vec2{0, 0}, Vec2{-3.5f, 1.2f}, Vec2{4.0f, 5.0f}}) {
@@ -34,7 +34,7 @@ TEST_CASE("Camera: прямое и обратное преобразования
     }
 }
 
-TEST_CASE("Camera: worldView совпадает с worldToPixel", "[render][camera]") {
+TEST_CASE("Camera: worldView matches worldToPixel", "[render][camera]") {
     Camera cam;
     cam.setWindowSize({1280, 720});
     const sf::View view = cam.worldView();
@@ -48,7 +48,7 @@ TEST_CASE("Camera: worldView совпадает с worldToPixel", "[render][came
     CHECK(viaView.y == Approx(direct.y).margin(0.01));
 }
 
-TEST_CASE("Camera: при смене пропорций окна высота вида в метрах сохраняется", "[render][camera]") {
+TEST_CASE("Camera: view height in meters survives aspect change", "[render][camera]") {
     Camera cam({.viewHeightM = 6.0f, .centerM = {0.0f, 2.5f}});
     cam.setWindowSize({800, 800});
     CHECK(cam.viewSizeM().y == Approx(6.0f));

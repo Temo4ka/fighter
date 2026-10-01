@@ -12,7 +12,7 @@ using debug::DrawList;
 using debug::Primitive;
 using debug::Side;
 
-TEST_CASE("DrawList: примитивы хранят данные и подписи", "[debug]") {
+TEST_CASE("DrawList: primitives keep data and labels", "[debug]") {
     DrawList list;
     list.line(Cat::Static, {0, 0}, {1, 0}, Side::None);
     list.arrow(Cat::Forces, {0, 1}, {0.5f, 0}, "J=3", Side::Left);
@@ -30,7 +30,7 @@ TEST_CASE("DrawList: примитивы хранят данные и подпи�
     CHECK(list.points(prims[2])[2] == Vec2{0, 1});
 }
 
-TEST_CASE("DrawList: beginTick очищает примитивы, но не панель", "[debug]") {
+TEST_CASE("DrawList: beginTick clears primitives but not the panel", "[debug]") {
     DrawList list;
     list.point(Cat::Contacts, {0, 0}, 0.1f, Side::None);
     list.setPanel("fps", "60");
@@ -40,7 +40,7 @@ TEST_CASE("DrawList: beginTick очищает примитивы, но не па
     CHECK(list.panel()[0].second == "60");
 }
 
-TEST_CASE("DrawList: строка панели перезаписывается по ключу и сохраняет порядок", "[debug]") {
+TEST_CASE("DrawList: panel line is overwritten by key and keeps its order", "[debug]") {
     DrawList list;
     list.setPanel("a", "1");
     list.setPanel("b", "2");
@@ -50,14 +50,14 @@ TEST_CASE("DrawList: строка панели перезаписывается 
     CHECK(list.panel()[0].second == "3");
 }
 
-TEST_CASE("DrawList: журнал событий ограничен", "[debug]") {
+TEST_CASE("DrawList: event log is bounded", "[debug]") {
     DrawList list;
     for (int i = 0; i < 20; ++i) list.logEvent(std::to_string(i));
     REQUIRE(list.events().size() == DrawList::kEventLogSize);
     CHECK(list.events().back() == "19");
 }
 
-TEST_CASE("Палитра: Hurtbox различает бойцов", "[debug]") {
+TEST_CASE("Palette: Hurtbox color differs per fighter", "[debug]") {
     const auto l = debug::color(Cat::Hurtbox, Side::Left);
     const auto r = debug::color(Cat::Hurtbox, Side::Right);
     CHECK((l.r != r.r || l.g != r.g || l.b != r.b));
@@ -65,7 +65,7 @@ TEST_CASE("Палитра: Hurtbox различает бойцов", "[debug]") 
 }
 
 #if FIGHTER_DEBUG
-TEST_CASE("debug::*: глобальный приёмник и ScopedSide", "[debug]") {
+TEST_CASE("debug API: global sink and ScopedSide", "[debug]") {
     debug::drawList().clearAll();
     debug::line(Cat::Static, {0, 0}, {1, 1});
     {

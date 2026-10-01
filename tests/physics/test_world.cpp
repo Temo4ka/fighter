@@ -8,7 +8,7 @@
 using fighter::physics::World;
 using Catch::Approx;
 
-TEST_CASE("physics::World: создание, шаг и гравитация", "[physics]") {
+TEST_CASE("physics::World: create, step and gravity", "[physics]") {
     World world({.gravity = {0.0f, -9.81f}, .subSteps = 4});
     REQUIRE(world.valid());
     CHECK(world.gravity().y == Approx(-9.81f));
@@ -16,7 +16,7 @@ TEST_CASE("physics::World: создание, шаг и гравитация", "[
     for (int i = 0; i < 10; ++i) world.step(1.0f / 60.0f);
 }
 
-TEST_CASE("physics::World: перемещение передаёт владение", "[physics]") {
+TEST_CASE("physics::World: move transfers ownership", "[physics]") {
     World a;
     World b = std::move(a);
     CHECK_FALSE(a.valid());

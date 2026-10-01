@@ -15,14 +15,14 @@ float totalMass(const PhysicalProfile& p) {
 }
 } // namespace
 
-TEST_CASE("computeProfile: базовый боец весит около 75 кг", "[stats]") {
+TEST_CASE("computeProfile: base fighter weighs about 75 kg", "[stats]") {
     const auto p = computeProfile({}, {}, BalanceTable::defaults());
     CHECK(totalMass(p) > 70.0f);
     CHECK(totalMass(p) < 80.0f);
     CHECK(p.maxHp > 0.0f);
 }
 
-TEST_CASE("computeProfile: статы двигают параметры в нужную сторону", "[stats]") {
+TEST_CASE("computeProfile: stats move parameters in the right direction", "[stats]") {
     const auto balance = BalanceTable::defaults();
     const auto base = computeProfile({}, {}, balance);
 
@@ -33,7 +33,7 @@ TEST_CASE("computeProfile: статы двигают параметры в ну�
     CHECK(tough.maxHp > base.maxHp);
 }
 
-TEST_CASE("computeProfile: снаряжение утяжеляет и защищает свои части тела", "[stats]") {
+TEST_CASE("computeProfile: equipment adds mass and armor to its body parts", "[stats]") {
     Loadout loadout;
     loadout.items.push_back({.id = "helmet", .slot = EquipmentSlot::Head,
                              .covers = {BodyPart::Head}, .massKg = 2.0f, .armor = 0.3f});

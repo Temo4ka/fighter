@@ -17,7 +17,7 @@ void run(Battle& b, const PlayerCommands& l, const PlayerCommands& r, int ticks)
 // Сценарные тесты боя без окна: скриптованный ввод → ожидаемое состояние.
 // Пока проверяют кинематическую заглушку фазы 0; с появлением физики их дополнит агент D.
 
-TEST_CASE("Battle: бойцы стартуют по разные стороны и смотрят друг на друга", "[combat]") {
+TEST_CASE("Battle: fighters start on opposite sides facing each other", "[combat]") {
     Battle b(BattleConfig{});
     const auto& s = b.snapshot();
     CHECK(s.fighters[0].position.x < s.fighters[1].position.x);
@@ -26,7 +26,7 @@ TEST_CASE("Battle: бойцы стартуют по разные стороны 
     CHECK(s.fighters[0].hp == s.fighters[0].maxHp);
 }
 
-TEST_CASE("Battle: ходьба и стена арены", "[combat]") {
+TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
     Battle b(BattleConfig{});
     const float x0 = b.snapshot().fighters[0].position.x;
     run(b, {.moveX = -1.0f}, {}, 30);
@@ -36,7 +36,7 @@ TEST_CASE("Battle: ходьба и стена арены", "[combat]") {
     CHECK(b.snapshot().fighters[0].position.x > -b.config().arena.halfWidthM);   // не вышел за стену
 }
 
-TEST_CASE("Battle: прыжок поднимает и возвращает на пол", "[combat]") {
+TEST_CASE("Battle: jump goes up and lands on the floor", "[combat]") {
     Battle b(BattleConfig{});
     run(b, {.jump = true}, {}, 10);
     CHECK(b.snapshot().fighters[0].position.y > 0.1f);
@@ -44,7 +44,7 @@ TEST_CASE("Battle: прыжок поднимает и возвращает на 
     CHECK(b.snapshot().fighters[0].position.y == Approx(0.0f));
 }
 
-TEST_CASE("Battle: по истечении времени раунда есть результат", "[combat]") {
+TEST_CASE("Battle: result is available when round time runs out", "[combat]") {
     BattleConfig config;
     config.roundTimeSec = 1.0;
     Battle b(config);
@@ -54,7 +54,7 @@ TEST_CASE("Battle: по истечении времени раунда есть 
     CHECK(b.result()->timeSec == Approx(1.0).margin(kDt));
 }
 
-TEST_CASE("Battle: одинаковый ввод даёт одинаковый результат", "[combat]") {
+TEST_CASE("Battle: same input gives the same result", "[combat]") {
     Battle a(BattleConfig{});
     Battle b(BattleConfig{});
     for (int i = 0; i < 300; ++i) {

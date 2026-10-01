@@ -7,7 +7,7 @@
 using fighter::Connection;
 using fighter::Signal;
 
-TEST_CASE("Signal: обработчик вызывается, пока жива подписка", "[core][signal]") {
+TEST_CASE("Signal: handler is called while the connection is alive", "[core][signal]") {
     Signal<int> s;
     int sum = 0;
     {
@@ -21,7 +21,7 @@ TEST_CASE("Signal: обработчик вызывается, пока жива 
     CHECK(s.handlerCount() == 0);
 }
 
-TEST_CASE("Signal: перемещение подписки не отписывает", "[core][signal]") {
+TEST_CASE("Signal: moving a connection keeps it connected", "[core][signal]") {
     Signal<> s;
     int calls = 0;
     Connection outer;
@@ -37,7 +37,7 @@ TEST_CASE("Signal: перемещение подписки не отписыва
     CHECK(calls == 1);
 }
 
-TEST_CASE("Signal: отписка изнутри обработчика", "[core][signal]") {
+TEST_CASE("Signal: disconnect from inside the handler", "[core][signal]") {
     Signal<> s;
     int calls = 0;
     std::optional<Connection> c;
@@ -50,7 +50,7 @@ TEST_CASE("Signal: отписка изнутри обработчика", "[core
     CHECK(calls == 1);
 }
 
-TEST_CASE("Signal: подписка, добавленная во время emit, срабатывает со следующего раза", "[core][signal]") {
+TEST_CASE("Signal: handler added during emit fires from the next emit", "[core][signal]") {
     Signal<> s;
     int late = 0;
     std::optional<Connection> added;
@@ -63,7 +63,7 @@ TEST_CASE("Signal: подписка, добавленная во время emit
     CHECK(late == 1);
 }
 
-TEST_CASE("Signal: подписка переживает сигнал без ошибок", "[core][signal]") {
+TEST_CASE("Signal: connection safely outlives the signal", "[core][signal]") {
     Connection c;
     {
         Signal<> s;

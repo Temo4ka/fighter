@@ -1,3 +1,6 @@
+# Имена TEST_CASE — только ASCII: ctest передаёт имя теста в Catch2 как аргумент
+# командной строки, а на Windows аргументы идут в ANSI-кодировке, и кириллица
+# превращается в «????» — тест не находится. Комментарии внутри тестов — на русском.
 add_executable(fighter_tests
     core/test_vec2.cpp
     core/test_signal.cpp

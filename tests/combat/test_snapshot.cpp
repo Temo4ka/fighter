@@ -9,7 +9,7 @@ using namespace fighter;
 using namespace fighter::combat;
 using Catch::Approx;
 
-TEST_CASE("interpolate: позиции между кадрами", "[combat][snapshot]") {
+TEST_CASE("interpolate: positions between frames", "[combat][snapshot]") {
     RenderSnapshot prev, curr;
     prev.fighters[0].position = {0.0f, 0.0f};
     curr.fighters[0].position = {1.0f, 2.0f};
@@ -21,7 +21,7 @@ TEST_CASE("interpolate: позиции между кадрами", "[combat][sna
     CHECK(mid.fighters[0].hp == 50.0f);   // дискретные поля берутся из текущего кадра
 }
 
-TEST_CASE("interpolate: угол идёт по кратчайшей дуге", "[combat][snapshot]") {
+TEST_CASE("interpolate: angle takes the shortest arc", "[combat][snapshot]") {
     constexpr float pi = std::numbers::pi_v<float>;
     RenderSnapshot prev, curr;
     prev.fighters[0].parts = {PartTransform{BodyPart::Head, {}, 0.9f * pi}};

@@ -12,7 +12,7 @@ constexpr double kStep = 1.0 / 64.0;
 FixedStepLoop makeLoop() { return FixedStepLoop({.stepSec = kStep, .maxFrameSec = 0.25}); }
 } // namespace
 
-TEST_CASE("FixedStepLoop: число шагов не зависит от разбиения времени на кадры", "[core][loop]") {
+TEST_CASE("FixedStepLoop: step count does not depend on how time is split into frames", "[core][loop]") {
     FixedStepLoop coarse = makeLoop();
     FixedStepLoop fine = makeLoop();
     int coarseSteps = 0, fineSteps = 0;
@@ -25,27 +25,27 @@ TEST_CASE("FixedStepLoop: число шагов не зависит от раз�
     CHECK(fineSteps <= 80);
 }
 
-TEST_CASE("FixedStepLoop: dt всегда равен шагу", "[core][loop]") {
+TEST_CASE("FixedStepLoop: dt always equals the step", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     int steps = 0;
     loop.advance(0.037, [&](double dt) { CHECK(dt == kStep); ++steps; });
     CHECK(steps == 2);
 }
 
-TEST_CASE("FixedStepLoop: alpha — остаток шага", "[core][loop]") {
+TEST_CASE("FixedStepLoop: alpha is the leftover fraction of a step", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     const double alpha = loop.advance(2.5 * kStep, [](double) {});
     CHECK(loop.tick() == 2);
     CHECK(alpha == Approx(0.5));
 }
 
-TEST_CASE("FixedStepLoop: длинный кадр обрезается", "[core][loop]") {
+TEST_CASE("FixedStepLoop: long frame is clamped", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     loop.advance(10.0, [](double) {});
     CHECK(loop.tick() == 16);   // 0.25 с / (1/64 с)
 }
 
-TEST_CASE("FixedStepLoop: пауза и пошаговый режим", "[core][loop]") {
+TEST_CASE("FixedStepLoop: pause and single step", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     loop.setPaused(true);
     CHECK(loop.advance(1.0, [](double) {}) == 1.0);
@@ -62,7 +62,7 @@ TEST_CASE("FixedStepLoop: пауза и пошаговый режим", "[core][
     CHECK(loop.tick() == 5);
 }
 
-TEST_CASE("FixedStepLoop: замедление времени", "[core][loop]") {
+TEST_CASE("FixedStepLoop: time scale", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     loop.setTimeScale(0.5);
     loop.advance(8 * kStep, [](double) {});
@@ -74,7 +74,7 @@ TEST_CASE("FixedStepLoop: замедление времени", "[core][loop]") 
     CHECK(loop.timeScale() == FixedStepLoop::kMinTimeScale);
 }
 
-TEST_CASE("FixedStepLoop: reset обнуляет счётчик", "[core][loop]") {
+TEST_CASE("FixedStepLoop: reset clears the counter", "[core][loop]") {
     FixedStepLoop loop = makeLoop();
     loop.advance(3.5 * kStep, [](double) {});
     loop.reset();
