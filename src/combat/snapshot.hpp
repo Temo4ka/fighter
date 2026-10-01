@@ -1,3 +1,18 @@
+//===- combat/snapshot.hpp - Fight state for the renderer -------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines RenderSnapshot, the state of a fight as seen by the
+/// renderer, and interpolate(), which blends two snapshots for smooth drawing
+/// between physics steps (docs/DEVELOPMENT_PLAN.md, section 3.4).
+///
+/// The renderer reads only snapshots and knows nothing about physics.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <array>
@@ -7,32 +22,31 @@
 #include "core/body.hpp"
 #include "core/vec2.hpp"
 
-// Снимок состояния боя для рендера (docs/DEVELOPMENT_PLAN.md §3.4).
-// Рендер читает только снимки и ничего не знает о физике.
 namespace fighter::combat {
 
 struct FighterView {
-    Vec2 position;                    // опорная точка: середина между стопами, м
-    Vec2 size{0.5f, 1.8f};            // габарит; в фазе 0 боец рисуется прямоугольником
-    bool facingRight = true;
-    float hp = 0.0f;
-    float maxHp = 0.0f;
-    std::vector<PartTransform> parts; // части тела; пусто, пока нет rig (фаза 1)
+    Vec2 Position;                    ///< Reference point: midway between the feet, m.
+    Vec2 Size{0.5f, 1.8f};            ///< Bounding size; in phase 0 a fighter is a rectangle.
+    bool FacingRight = true;
+    float Hp = 0.0f;
+    float MaxHp = 0.0f;
+    std::vector<PartTransform> Parts; ///< Body parts; empty until the rig exists (phase 1).
 };
 
 struct ArenaView {
-    float halfWidthM = 5.0f;          // стены в x = ±halfWidthM, пол в y = 0
+    float HalfWidthM = 5.0f;          ///< Walls at x = +-HalfWidthM, floor at y = 0.
 };
 
 struct RenderSnapshot {
-    std::uint64_t tick = 0;
-    double timeLeftSec = 0.0;
-    ArenaView arena;
-    std::array<FighterView, 2> fighters;   // [0] — левый, [1] — правый
+    std::uint64_t Tick = 0;
+    double TimeLeftSec = 0.0;
+    ArenaView Arena;
+    std::array<FighterView, 2> Fighters;   ///< [0] is the left fighter, [1] the right one.
 };
 
-// Промежуточное состояние для плавной отрисовки между шагами физики.
-// alpha = 0 → prev, alpha = 1 → curr. Дискретные поля (hp, facing, tick) берутся из curr.
-RenderSnapshot interpolate(const RenderSnapshot& prev, const RenderSnapshot& curr, float alpha);
+/// Returns the state between two steps for smooth drawing: \p Alpha = 0 gives
+/// \p Prev, \p Alpha = 1 gives \p Curr. Discrete fields (HP, facing, tick) are
+/// taken from \p Curr.
+RenderSnapshot interpolate(const RenderSnapshot& Prev, const RenderSnapshot& Curr, float Alpha);
 
 } // namespace fighter::combat

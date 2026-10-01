@@ -1,3 +1,33 @@
+//===- debug/draw.hpp - Debug drawing API -----------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares the debug drawing API that every module may call
+/// (docs/DEVELOPMENT_PLAN.md, section 3.5).
+///
+/// Coordinates are in world space: meters, Y up. Primitives live until the
+/// start of the next simulation step.
+///
+/// \code
+///   debug::drawArrow(debug::Cat::Forces, HitPoint, Impulse * 0.05f, "J=34.1");
+///   debug::setPanel("P1 state", "Attack/active");
+///
+///   {   // everything drawn inside belongs to the left fighter (Hurtbox color)
+///       debug::ScopedSide Owner(debug::Side::Left);
+///       debug::drawPoly(debug::Cat::Hurtbox, Corners);
+///   }
+/// \endcode
+///
+/// In the release build (FIGHTER_DEBUG=0) every function is an empty inline
+/// function, so the compiler drops both the calls and the evaluation of
+/// side-effect-free arguments. The global sink is a deliberate exception to
+/// the "no global state" rule and exists only for debugging.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <span>
@@ -6,73 +36,60 @@
 #include "core/vec2.hpp"
 #include "debug/category.hpp"
 
-// Отладочная визуализация — API для всех модулей (docs/DEVELOPMENT_PLAN.md §3.5).
-//
-//     debug::arrow(debug::Cat::Forces, hitPoint, impulse * 0.05f, "J=34.1");
-//     debug::panel("P1 state", "Attack/active");
-//
-//     {   // всё, что нарисовано внутри, относится к левому бойцу (цвет Hurtbox)
-//         debug::ScopedSide side(debug::Side::Left);
-//         debug::poly(debug::Cat::Hurtbox, corners);
-//     }
-//
-// Координаты мировые: метры, Y вверх. Примитивы живут до начала следующего шага симуляции.
-//
-// В release (FIGHTER_DEBUG=0) все функции пустые и inline — компилятор выбрасывает
-// и вызовы, и вычисление аргументов без побочных эффектов. Глобальный приёмник здесь —
-// осознанное исключение из правила «без глобального состояния»: только для отладки.
 namespace fighter::debug {
 
 class DrawList;
 
 #if FIGHTER_DEBUG
 
-// Глобальный приёмник, который рисует рендер.
-DrawList& drawList();
+/// The global sink that the renderer draws.
+DrawList& getDrawList();
 
-// Вызывается в начале каждого шага симуляции: очищает примитивы прошлого шага.
+/// Called at the start of every simulation step: clears the primitives of the
+/// previous step.
 void beginTick();
 
-void line  (Cat cat, Vec2 a, Vec2 b);
-void arrow (Cat cat, Vec2 from, Vec2 vec, std::string_view label = {});
-void circle(Cat cat, Vec2 center, float radius);
-void arc   (Cat cat, Vec2 center, float radius, float angle0, float angle1);
-void poly  (Cat cat, std::span<const Vec2> points);
-void point (Cat cat, Vec2 at, float size = 0.04f);
-void cross (Cat cat, Vec2 at, float size = 0.12f);
-void text  (Cat cat, Vec2 at, std::string_view text);
+void drawLine  (Cat C, Vec2 A, Vec2 B);
+void drawArrow (Cat C, Vec2 From, Vec2 Vec, std::string_view Label = {});
+void drawCircle(Cat C, Vec2 Center, float Radius);
+void drawArc   (Cat C, Vec2 Center, float Radius, float Angle0, float Angle1);
+void drawPoly  (Cat C, std::span<const Vec2> Vertices);
+void drawPoint (Cat C, Vec2 At, float Size = 0.04f);
+void drawCross (Cat C, Vec2 At, float Size = 0.12f);
+void drawText  (Cat C, Vec2 At, std::string_view Text);
 
-// Строка текстовой панели: перезаписывается по ключу.
-void panel(std::string_view key, std::string_view value);
-// Строка журнала событий (последние несколько).
-void event(std::string_view message);
+/// Sets a text panel line; a line with the same key is overwritten.
+void setPanel(std::string_view Key, std::string_view Value);
+/// Appends a line to the event log (only the last few are kept).
+void logEvent(std::string_view Message);
 
+/// Marks every primitive drawn during its lifetime as belonging to \p Owner.
 class ScopedSide {
 public:
-    explicit ScopedSide(Side side);
+    explicit ScopedSide(Side Owner);
     ~ScopedSide();
     ScopedSide(const ScopedSide&) = delete;
     ScopedSide& operator=(const ScopedSide&) = delete;
 
 private:
-    Side previous_;
+    Side Previous;
 };
 
 #else
 
 inline void beginTick() {}
 
-inline void line  (Cat, Vec2, Vec2) {}
-inline void arrow (Cat, Vec2, Vec2, std::string_view = {}) {}
-inline void circle(Cat, Vec2, float) {}
-inline void arc   (Cat, Vec2, float, float, float) {}
-inline void poly  (Cat, std::span<const Vec2>) {}
-inline void point (Cat, Vec2, float = 0.04f) {}
-inline void cross (Cat, Vec2, float = 0.12f) {}
-inline void text  (Cat, Vec2, std::string_view) {}
+inline void drawLine  (Cat, Vec2, Vec2) {}
+inline void drawArrow (Cat, Vec2, Vec2, std::string_view = {}) {}
+inline void drawCircle(Cat, Vec2, float) {}
+inline void drawArc   (Cat, Vec2, float, float, float) {}
+inline void drawPoly  (Cat, std::span<const Vec2>) {}
+inline void drawPoint (Cat, Vec2, float = 0.04f) {}
+inline void drawCross (Cat, Vec2, float = 0.12f) {}
+inline void drawText  (Cat, Vec2, std::string_view) {}
 
-inline void panel(std::string_view, std::string_view) {}
-inline void event(std::string_view) {}
+inline void setPanel(std::string_view, std::string_view) {}
+inline void logEvent(std::string_view) {}
 
 class ScopedSide {
 public:

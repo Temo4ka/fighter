@@ -5,45 +5,45 @@
 #include "app/app.hpp"
 #include "core/log.hpp"
 
-// Аргументы командной строки:
-//   --screenshot <file.png>   сохранить кадр и выйти (проверка и баг-репорты)
-//   --frames <N>              через сколько кадров делать снимок (по умолчанию 60)
-//   --mode debug|both|textures  стартовый режим отладочного слоя (debug-сборка)
-//   --showcase                показать образцы всех отладочных категорий (debug-сборка)
-//   --log <file>              дублировать лог в файл
+// Command line arguments:
+//   --screenshot <file.png>     save a frame and exit (verification, bug reports)
+//   --frames <N>                frame on which the screenshot is taken (default 60)
+//   --mode debug|both|textures  initial mode of the debug layer (debug build)
+//   --showcase                  samples of every debug category (debug build)
+//   --log <file>                duplicate the log to a file
 //
-// Корень проекта (assets/, data/): переменная окружения FIGHTER_ROOT,
-// иначе каталог исходников, известный на этапе сборки.
-int main(int argc, char** argv) {
+// Project root (assets/, data/): the FIGHTER_ROOT environment variable,
+// otherwise the source directory known at build time.
+int main(int Argc, char** Argv) {
     using namespace fighter;
 
-    app::Options options;
-    const char* rootEnv = std::getenv("FIGHTER_ROOT");
-    options.root = rootEnv ? rootEnv : FIGHTER_SOURCE_DIR;
+    app::Options Opts;
+    const char* RootEnv = std::getenv("FIGHTER_ROOT");
+    Opts.Root = RootEnv ? RootEnv : FIGHTER_SOURCE_DIR;
 
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view arg = argv[i];
-        const bool hasValue = i + 1 < argc;
-        if (arg == "--screenshot" && hasValue) {
-            options.screenshot = argv[++i];
-        } else if (arg == "--frames" && hasValue) {
-            options.frames = std::atoi(argv[++i]);
-        } else if (arg == "--mode" && hasValue) {
-            options.mode = argv[++i];
-        } else if (arg == "--showcase") {
-            options.showcase = true;
-        } else if (arg == "--log" && hasValue) {
-            if (!log::setFile(argv[++i])) log::warn("cannot open log file {}", argv[i]);
+    for (int I = 1; I < Argc; ++I) {
+        const std::string_view Arg = Argv[I];
+        const bool HasValue = I + 1 < Argc;
+        if (Arg == "--screenshot" && HasValue) {
+            Opts.Screenshot = Argv[++I];
+        } else if (Arg == "--frames" && HasValue) {
+            Opts.Frames = std::atoi(Argv[++I]);
+        } else if (Arg == "--mode" && HasValue) {
+            Opts.Mode = Argv[++I];
+        } else if (Arg == "--showcase") {
+            Opts.Showcase = true;
+        } else if (Arg == "--log" && HasValue) {
+            if (!log::setFile(Argv[++I])) log::warn("cannot open log file {}", Argv[I]);
         } else {
-            log::warn("unknown argument: {}", arg);
+            log::warn("unknown argument: {}", Arg);
         }
     }
 
     try {
-        app::App application(std::move(options));
-        return application.run();
-    } catch (const std::exception& e) {
-        log::error("fatal: {}", e.what());
+        app::App Application(std::move(Opts));
+        return Application.run();
+    } catch (const std::exception& E) {
+        log::error("fatal: {}", E.what());
         return EXIT_FAILURE;
     }
 }

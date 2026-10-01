@@ -8,67 +8,67 @@ using fighter::Connection;
 using fighter::Signal;
 
 TEST_CASE("Signal: handler is called while the connection is alive", "[core][signal]") {
-    Signal<int> s;
-    int sum = 0;
+    Signal<int> S;
+    int Sum = 0;
     {
-        Connection c = s.connect([&](int v) { sum += v; });
-        s.emit(5);
-        CHECK(sum == 5);
-        CHECK(s.handlerCount() == 1);
+        Connection C = S.connect([&](int V) { Sum += V; });
+        S.emit(5);
+        CHECK(Sum == 5);
+        CHECK(S.getHandlerCount() == 1);
     }
-    s.emit(5);   // подписка уничтожена — обработчик не вызывается
-    CHECK(sum == 5);
-    CHECK(s.handlerCount() == 0);
+    S.emit(5);   // the connection is destroyed, the handler is not called
+    CHECK(Sum == 5);
+    CHECK(S.getHandlerCount() == 0);
 }
 
 TEST_CASE("Signal: moving a connection keeps it connected", "[core][signal]") {
-    Signal<> s;
-    int calls = 0;
-    Connection outer;
+    Signal<> S;
+    int Calls = 0;
+    Connection Outer;
     {
-        Connection inner = s.connect([&] { ++calls; });
-        outer = std::move(inner);
+        Connection Inner = S.connect([&] { ++Calls; });
+        Outer = std::move(Inner);
     }
-    s.emit();
-    CHECK(calls == 1);
-    CHECK(outer.connected());
-    outer.disconnect();
-    s.emit();
-    CHECK(calls == 1);
+    S.emit();
+    CHECK(Calls == 1);
+    CHECK(Outer.isConnected());
+    Outer.disconnect();
+    S.emit();
+    CHECK(Calls == 1);
 }
 
 TEST_CASE("Signal: disconnect from inside the handler", "[core][signal]") {
-    Signal<> s;
-    int calls = 0;
-    std::optional<Connection> c;
-    c = s.connect([&] {
-        ++calls;
-        c->disconnect();
+    Signal<> S;
+    int Calls = 0;
+    std::optional<Connection> C;
+    C = S.connect([&] {
+        ++Calls;
+        C->disconnect();
     });
-    s.emit();
-    s.emit();
-    CHECK(calls == 1);
+    S.emit();
+    S.emit();
+    CHECK(Calls == 1);
 }
 
 TEST_CASE("Signal: handler added during emit fires from the next emit", "[core][signal]") {
-    Signal<> s;
-    int late = 0;
-    std::optional<Connection> added;
-    Connection first = s.connect([&] {
-        if (!added) added = s.connect([&] { ++late; });
+    Signal<> S;
+    int Late = 0;
+    std::optional<Connection> Added;
+    Connection First = S.connect([&] {
+        if (!Added) Added = S.connect([&] { ++Late; });
     });
-    s.emit();
-    CHECK(late == 0);
-    s.emit();
-    CHECK(late == 1);
+    S.emit();
+    CHECK(Late == 0);
+    S.emit();
+    CHECK(Late == 1);
 }
 
 TEST_CASE("Signal: connection safely outlives the signal", "[core][signal]") {
-    Connection c;
+    Connection C;
     {
-        Signal<> s;
-        c = s.connect([] {});
+        Signal<> S;
+        C = S.connect([] {});
     }
-    CHECK_FALSE(c.connected());
-    c.disconnect();   // не падает
+    CHECK_FALSE(C.isConnected());
+    C.disconnect();   // does not crash
 }

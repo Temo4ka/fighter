@@ -1,3 +1,22 @@
+//===- core/body.hpp - Shared body part vocabulary --------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines the BodyPart enumeration and PartTransform, the world
+/// placement of one body part.
+///
+/// They live in core because modules that must not depend on each other all
+/// use them: stats (mass and armor per part), rig (the physical body), combat
+/// (where a hit landed) and render (what to draw).
+///
+/// The set of parts may change after the physics spike (phase 1), but only
+/// through review.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <array>
@@ -7,11 +26,6 @@
 
 #include "core/vec2.hpp"
 
-// Общий словарь частей тела. Лежит в core, потому что его используют модули,
-// которые не должны зависеть друг от друга: stats (масса и броня частей),
-// rig (физическое тело), combat (куда попал удар), render (что рисовать).
-//
-// Состав может поменяться по итогам физического спайка (фаза 1) — только через ревью.
 namespace fighter {
 
 enum class BodyPart : std::uint8_t {
@@ -25,26 +39,28 @@ enum class BodyPart : std::uint8_t {
     Count
 };
 
-inline constexpr std::size_t kBodyPartCount = static_cast<std::size_t>(BodyPart::Count);
+inline constexpr std::size_t BodyPartCount = static_cast<std::size_t>(BodyPart::Count);
 
+/// An array with one element per body part, indexed by BodyPart.
 template <class T>
-using PerBodyPart = std::array<T, kBodyPartCount>;
+using PerBodyPart = std::array<T, BodyPartCount>;
 
-constexpr std::string_view bodyPartName(BodyPart part) {
-    constexpr std::array<std::string_view, kBodyPartCount> names = {
+constexpr std::string_view getBodyPartName(BodyPart Part) {
+    constexpr std::array<std::string_view, BodyPartCount> Names = {
         "Head", "Torso", "Pelvis",
         "UpperArmL", "ForearmL", "UpperArmR", "ForearmR",
         "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR",
     };
-    const auto i = static_cast<std::size_t>(part);
-    return i < names.size() ? names[i] : "?";
+    const auto I = static_cast<std::size_t>(Part);
+    return I < Names.size() ? Names[I] : "?";
 }
 
-// Положение части тела в мире. Это всё, что рендер знает о физическом теле.
+/// World placement of one body part. This is all the renderer knows about the
+/// physical body.
 struct PartTransform {
-    BodyPart part = BodyPart::Torso;
-    Vec2 position;        // центр части, м
-    float angle = 0.0f;   // рад, против часовой стрелки
+    BodyPart Part = BodyPart::Torso;
+    Vec2 Position;       ///< Center of the part, m.
+    float Angle = 0.0f;  ///< Radians, counter-clockwise.
 };
 
 } // namespace fighter

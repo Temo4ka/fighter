@@ -1,3 +1,17 @@
+//===- app/app.hpp - Sandbox application ------------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares App, the sandbox that runs a fight: window, input,
+/// simulation loop and rendering.
+///
+/// The main menu, pause and results screens are added by agent F (phase 2).
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <filesystem>
@@ -18,52 +32,50 @@
 #include "render/debug_overlay.hpp"
 #endif
 
-// Песочница для запуска боя: окно, ввод, цикл, отрисовка.
-// Главное меню, пауза и экран итогов добавит агент F (фаза 2).
 namespace fighter::app {
 
 struct Options {
-    std::filesystem::path root;                    // корень проекта (assets/, data/)
-    std::optional<std::filesystem::path> screenshot;  // сохранить кадр и выйти
-    int frames = 60;                               // через сколько кадров делать снимок
-    std::optional<std::string> mode;               // debug | both | textures (только debug-сборка)
-    bool showcase = false;                         // образцы всех отладочных категорий
+    std::filesystem::path Root;                       ///< Project root (assets/, data/).
+    std::optional<std::filesystem::path> Screenshot;  ///< Save a frame and exit.
+    int Frames = 60;                                  ///< Frame on which the screenshot is taken.
+    std::optional<std::string> Mode;                  ///< debug | both | textures (debug build only).
+    bool Showcase = false;                            ///< Samples of every debug category.
 };
 
 class App {
 public:
-    explicit App(Options options);
+    explicit App(Options Settings);
     int run();
 
 private:
     void handleEvents();
-    void onKeyPressed(sf::Keyboard::Scancode key);
-    void stepSimulation(double dt);
-    void render(float alpha);
+    void onKeyPressed(sf::Keyboard::Scancode Key);
+    void stepSimulation(double Dt);
+    void render(float Alpha);
     void restartBattle();
-    void publishFrameStats(double frameSec);
+    void publishFrameStats(double FrameSec);
     void saveScreenshot();
 
 #if FIGHTER_DEBUG
-    void applyDebugAction(render::DebugAction action);
+    void applyDebugAction(render::DebugAction Action);
 #endif
 
-    Options options_;
-    sf::RenderWindow window_;
-    render::Resources resources_;
-    render::Camera camera_;
-    render::BattleRenderer battleRenderer_;
+    Options Opts;
+    sf::RenderWindow Window;
+    render::Resources Assets;
+    render::Camera Cam;
+    render::BattleRenderer Renderer;
 #if FIGHTER_DEBUG
-    render::DebugOverlay overlay_;
-    bool showcase_ = false;
+    render::DebugOverlay Overlay;
+    bool ShowcaseVisible = false;
 #endif
 
-    InputSystem input_;
-    FixedStepLoop loop_;
-    std::unique_ptr<combat::Battle> battle_;
-    combat::RenderSnapshot previous_;
-    bool resultReported_ = false;
-    double frameSecSmoothed_ = 0.0;
+    InputSystem Input;
+    FixedStepLoop Loop;
+    std::unique_ptr<combat::Battle> CurrentBattle;
+    combat::RenderSnapshot Previous;
+    bool ResultReported = false;
+    double FrameSecSmoothed = 0.0;
 };
 
 } // namespace fighter::app

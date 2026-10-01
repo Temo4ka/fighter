@@ -21,7 +21,7 @@ app ──► render ──► combat ──► stats ──► core
 | Модуль | Что внутри | SFML | Box2D |
 |---|---|---|---|
 | `core` | `Vec2`, `log`, `Signal`/`Connection`, `FixedStepLoop`, `BodyPart`, `PartTransform` | — | — |
-| `debug` | `debug::*` (API отрисовки), `DrawList`, категории, палитра | — | — |
+| `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | — | — |
 | `physics` | `physics::World`, `HitEvent` | — | внутри |
 | `rig`, `anim` | пока только заголовки | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile` | — | — |
@@ -36,12 +36,12 @@ app ──► render ──► combat ──► stats ──► core
 
 **Координаты.** Мир в метрах, ось Y вверх, `(0, 0)` — центр арены на уровне пола.
 Пиксели существуют только в `render::Camera`. Рисуя в мире, переводите точку через
-`Camera::toDraw()` и рисуйте в `camera.worldView()`; текст и HUD рисуются в
-`camera.screenView()`, точка переводится через `camera.worldToPixel()`.
+`Camera::toDraw()` и рисуйте в `Cam.getWorldView()`; текст и HUD рисуются в
+`Cam.getScreenView()`, точка переводится через `Cam.worldToPixel()`.
 
 **Цикл.** `FixedStepLoop` вызывает шаг симуляции с постоянным `dt = 1/60 с` столько раз,
 сколько накопилось реального времени. Рендер получает `alpha` и рисует
-`combat::interpolate(prev, curr, alpha)`. Порядок кадра — в `App::run()`:
+`combat::interpolate(Prev, Curr, Alpha)`. Порядок кадра — в `App::run()`:
 события → шаги симуляции → отрисовка.
 
 **Ввод.** `InputSystem` хранит состояние клавиш по событиям нажатия и отпускания
@@ -62,22 +62,54 @@ app ──► render ──► combat ──► stats ──► core
 ```cpp
 #include "debug/draw.hpp"
 
-debug::arrow(debug::Cat::Forces, point, impulse * 0.05f, "J=34");
-debug::panel("P1 state", "attack");
-debug::event("P1 hit P2: 12 dmg");
+debug::drawArrow(debug::Cat::Forces, Point, Impulse * 0.05f, "J=34");
+debug::setPanel("P1 state", "attack");
+debug::logEvent("P1 hit P2: 12 dmg");
 ```
 
 - Примитивы очищаются в начале каждого шага симуляции (`debug::beginTick()`
   в `App::stepSimulation`), поэтому на паузе картинка «замирает».
 - Строки панели живут, пока их не перезапишут по тому же ключу.
 - `debug::ScopedSide` задаёт, к какому бойцу относятся примитивы (цвет Hurtbox).
-- В release (`FIGHTER_DEBUG=0`) все функции `debug::*` — пустые inline, и вызовы
+- В release (`FIGHTER_DEBUG=0`) все функции `debug::draw*`, `setPanel`, `logEvent` — пустые inline, и вызовы
   выбрасываются компилятором. Тяжёлую подготовку данных для отладки оборачивайте
   в `if constexpr (FIGHTER_DEBUG)`.
 - Цвета категорий — только в `src/debug/palette.hpp`.
 
-Глобальный приёмник `debug::drawList()` — единственное глобальное состояние
+Глобальный приёмник `debug::getDrawList()` — единственное глобальное состояние
 в проекте, и только для отладки.
+
+## Стиль кода
+
+Именование — по [LLVM Coding Standards](https://llvm.org/docs/CodingStandards.html#name-types-functions-variables-and-enumerators-properly):
+
+| Что | Как | Пример |
+|---|---|---|
+| типы, перечисления, перечислители | `UpperCamelCase` | `FixedStepLoop`, `Cat::Hurtbox` |
+| переменные, параметры, поля, константы | `UpperCamelCase`, без `k` и `_` | `MoveX`, `Dt`, `WalkSpeed` |
+| функции и методы | глагол в `lowerCamelCase` | `computeProfile()`, `drawArrow()` |
+| геттеры | `get…`, `is…`, `should…` | `getSnapshot()`, `isPaused()` |
+| пространства имён | строчные | `fighter::combat` |
+| файлы | `snake_case` | `fixed_step_loop.hpp` |
+
+- Параметр не должен совпадать с именем поля класса: MSVC на `/W4` предупреждает
+  об этом (C4458). Используйте `NewX`, `Settings`, `RootPath` и т.п.
+- Комментарии — на английском. Документирующие — `///`, обычные — `//`.
+- Каждый `.hpp` начинается с заголовка в формате LLVM: первая строка ровно
+  80 символов, затем `\file` и описание, зачем файл нужен:
+
+```cpp
+//===- core/vec2.hpp - 2D vector math ---------------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines Vec2, the 2D vector used for all world-space math, ...
+///
+//===----------------------------------------------------------------------===//
+```
 
 ## Как добавить модуль
 

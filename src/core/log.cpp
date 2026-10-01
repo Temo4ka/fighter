@@ -8,20 +8,20 @@
 namespace fighter::log {
 namespace {
 
-struct State {
-    std::mutex mutex;
-    Level minLevel = FIGHTER_DEBUG ? Level::Debug : Level::Info;
-    std::ofstream file;
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+struct LoggerState {
+    std::mutex Mutex;
+    Level MinLevel = FIGHTER_DEBUG ? Level::Debug : Level::Info;
+    std::ofstream File;
+    std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
 };
 
-State& state() {
-    static State s;
-    return s;
+LoggerState& getState() {
+    static LoggerState State;
+    return State;
 }
 
-std::string_view levelName(Level level) {
-    switch (level) {
+std::string_view getLevelName(Level L) {
+    switch (L) {
         case Level::Debug: return "DEBUG";
         case Level::Info:  return "INFO ";
         case Level::Warn:  return "WARN ";
@@ -32,34 +32,35 @@ std::string_view levelName(Level level) {
 
 } // namespace
 
-void setMinLevel(Level level) {
-    std::scoped_lock lock(state().mutex);
-    state().minLevel = level;
+void setMinLevel(Level L) {
+    std::scoped_lock Lock(getState().Mutex);
+    getState().MinLevel = L;
 }
 
-Level minLevel() {
-    return state().minLevel;
+Level getMinLevel() {
+    return getState().MinLevel;
 }
 
-bool setFile(const std::filesystem::path& path) {
-    std::scoped_lock lock(state().mutex);
-    std::error_code ec;
-    if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
-    state().file = std::ofstream(path, std::ios::out | std::ios::trunc);
-    return state().file.is_open();
+bool setFile(const std::filesystem::path& Path) {
+    std::scoped_lock Lock(getState().Mutex);
+    std::error_code Ec;
+    if (Path.has_parent_path()) std::filesystem::create_directories(Path.parent_path(), Ec);
+    getState().File = std::ofstream(Path, std::ios::out | std::ios::trunc);
+    return getState().File.is_open();
 }
 
-void write(Level level, std::string_view message) {
-    State& s = state();
-    std::scoped_lock lock(s.mutex);
+void write(Level L, std::string_view Message) {
+    LoggerState& State = getState();
+    std::scoped_lock Lock(State.Mutex);
 
-    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.start).count();
-    const std::string line = std::format("[{:9.3f}] {} {}\n", t, levelName(level), message);
+    const double Seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - State.Start).count();
+    const std::string Line = std::format("[{:9.3f}] {} {}\n", Seconds, getLevelName(L), Message);
 
-    std::fputs(line.c_str(), stderr);
-    if (s.file.is_open()) {
-        s.file << line;
-        if (level >= Level::Warn) s.file.flush();
+    std::fputs(Line.c_str(), stderr);
+    if (State.File.is_open()) {
+        State.File << Line;
+        if (L >= Level::Warn) State.File.flush();
     }
 }
 

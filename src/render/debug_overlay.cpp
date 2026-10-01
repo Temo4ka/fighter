@@ -22,70 +22,72 @@ namespace {
 using Scan = sf::Keyboard::Scan;
 using debug::Cat;
 using debug::Primitive;
+using debug::PrimitiveKind;
 
-// Клавиши категорий: 1…9, 0, «-» — в порядке перечисления debug::Cat.
-constexpr std::array<Scan, debug::kCatCount> kCategoryKeys = {
+// Category keys: 1...9, 0, '-' in the order of debug::Cat.
+constexpr std::array<Scan, debug::CatCount> CategoryKeys = {
     Scan::Num1, Scan::Num2, Scan::Num3, Scan::Num4, Scan::Num5, Scan::Num6,
     Scan::Num7, Scan::Num8, Scan::Num9, Scan::Num0, Scan::Hyphen,
 };
-constexpr std::array<const char*, debug::kCatCount> kCategoryKeyNames = {
+constexpr std::array<const char*, debug::CatCount> CategoryKeyNames = {
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-",
 };
 
-constexpr unsigned kFontSize = 13;
-constexpr float kLineHeight = 16.0f;
-constexpr int kCircleSegments = 32;
+constexpr unsigned FontSize = 13;
+constexpr float LineHeight = 16.0f;
+constexpr int CircleSegments = 32;
+constexpr float TwoPi = 2.0f * std::numbers::pi_v<float>;
 
-sf::Color toSf(debug::Rgba c) { return sf::Color(c.r, c.g, c.b, c.a); }
+sf::Color toSfColor(debug::Rgba C) { return sf::Color(C.R, C.G, C.B, C.A); }
 
-std::optional<std::size_t> categoryForKey(Scan key) {
-    for (std::size_t i = 0; i < kCategoryKeys.size(); ++i) {
-        if (kCategoryKeys[i] == key) return i;
+std::optional<std::size_t> findCategoryForKey(Scan Key) {
+    for (std::size_t I = 0; I < CategoryKeys.size(); ++I) {
+        if (CategoryKeys[I] == Key) return I;
     }
     return std::nullopt;
 }
 
-// Все отрезки собираются в один VertexArray — один вызов отрисовки на кадр.
+/// Collects all line segments into one VertexArray: one draw call per frame.
 class LineBatch {
 public:
-    void add(Vec2 a, Vec2 b, sf::Color color) {
-        lines_.append(sf::Vertex{Camera::toDraw(a), color});
-        lines_.append(sf::Vertex{Camera::toDraw(b), color});
+    void addLine(Vec2 A, Vec2 B, sf::Color Color) {
+        Lines.append(sf::Vertex{Camera::toDraw(A), Color});
+        Lines.append(sf::Vertex{Camera::toDraw(B), Color});
     }
 
-    void addCircle(Vec2 c, float r, float a0, float a1, sf::Color color) {
-        const int segments = std::max(4, static_cast<int>(kCircleSegments * std::abs(a1 - a0) / (2.0f * std::numbers::pi_v<float>)));
-        Vec2 prev = c + Vec2{std::cos(a0), std::sin(a0)} * r;
-        for (int i = 1; i <= segments; ++i) {
-            const float t = a0 + (a1 - a0) * static_cast<float>(i) / static_cast<float>(segments);
-            const Vec2 next = c + Vec2{std::cos(t), std::sin(t)} * r;
-            add(prev, next, color);
-            prev = next;
+    void addArc(Vec2 Center, float Radius, float A0, float A1, sf::Color Color) {
+        const int Segments = std::max(4, static_cast<int>(CircleSegments * std::abs(A1 - A0) / TwoPi));
+        Vec2 Prev = Center + Vec2{std::cos(A0), std::sin(A0)} * Radius;
+        for (int I = 1; I <= Segments; ++I) {
+            const float T = A0 + (A1 - A0) * static_cast<float>(I) / static_cast<float>(Segments);
+            const Vec2 Next = Center + Vec2{std::cos(T), std::sin(T)} * Radius;
+            addLine(Prev, Next, Color);
+            Prev = Next;
         }
     }
 
-    void draw(sf::RenderTarget& target) const { target.draw(lines_); }
+    void draw(sf::RenderTarget& Target) const { Target.draw(Lines); }
 
 private:
-    sf::VertexArray lines_{sf::PrimitiveType::Lines};
+    sf::VertexArray Lines{sf::PrimitiveType::Lines};
 };
 
 } // namespace
 
-DebugOverlay::DebugOverlay(Resources& resources) : resources_(resources) {
-    enabled_.set();
+DebugOverlay::DebugOverlay(Resources& Res) : Assets(Res) {
+    Enabled.set();
 }
 
-DebugOverlay::KeyResult DebugOverlay::handleKey(sf::Keyboard::Scancode key) {
-    if (auto cat = categoryForKey(key)) {
-        enabled_.flip(*cat);
+DebugOverlay::KeyResult DebugOverlay::handleKey(sf::Keyboard::Scancode Key) {
+    if (auto Category = findCategoryForKey(Key)) {
+        Enabled.flip(*Category);
         return {true, DebugAction::None};
     }
-    switch (key) {
-        case Scan::F1: mode_ = ViewMode::DebugOnly; return {true, DebugAction::None};
-        case Scan::F2: mode_ = ViewMode::Both; return {true, DebugAction::None};
-        case Scan::F3: mode_ = ViewMode::TexturesOnly; return {true, DebugAction::None};
-        case Scan::F4: panelVisible_ = !panelVisible_; return {true, DebugAction::None};
+    switch (Key) {
+        case Scan::F1: Mode = ViewMode::DebugOnly; return {true, DebugAction::None};
+        case Scan::F2: Mode = ViewMode::Both; return {true, DebugAction::None};
+        case Scan::F3: Mode = ViewMode::TexturesOnly; return {true, DebugAction::None};
+        case Scan::F4: PanelVisible = !PanelVisible; return {true, DebugAction::None};
         case Scan::F5: return {true, DebugAction::Reload};
         case Scan::F6: return {true, DebugAction::ToggleShowcase};
         case Scan::P: return {true, DebugAction::TogglePause};
@@ -97,173 +99,174 @@ DebugOverlay::KeyResult DebugOverlay::handleKey(sf::Keyboard::Scancode key) {
     }
 }
 
-void DebugOverlay::drawBackdrop(sf::RenderTarget& target, const Camera& camera) const {
-    target.setView(camera.worldView());
-    const Vec2 size = camera.viewSizeM();
-    const Vec2 c = camera.centerM();
+void DebugOverlay::drawBackdrop(sf::RenderTarget& Target, const Camera& Cam) const {
+    Target.setView(Cam.getWorldView());
+    const Vec2 Size = Cam.getViewSizeM();
+    const Vec2 C = Cam.getCenterM();
 
-    sf::RectangleShape bg({size.x, size.y});
-    bg.setPosition(Camera::toDraw({c.x - size.x * 0.5f, c.y + size.y * 0.5f}));
-    bg.setFillColor(sf::Color(22, 24, 30));
-    target.draw(bg);
+    sf::RectangleShape Bg({Size.X, Size.Y});
+    Bg.setPosition(Camera::toDraw({C.X - Size.X * 0.5f, C.Y + Size.Y * 0.5f}));
+    Bg.setFillColor(sf::Color(22, 24, 30));
+    Target.draw(Bg);
 
-    // Сетка 1 м и оси: сразу видно масштаб и где ноль.
-    LineBatch grid;
-    const sf::Color minor(255, 255, 255, 18);
-    const sf::Color axis(255, 255, 255, 60);
-    const int x0 = static_cast<int>(std::floor(c.x - size.x * 0.5f));
-    const int x1 = static_cast<int>(std::ceil(c.x + size.x * 0.5f));
-    const int y0 = static_cast<int>(std::floor(c.y - size.y * 0.5f));
-    const int y1 = static_cast<int>(std::ceil(c.y + size.y * 0.5f));
-    for (int x = x0; x <= x1; ++x) {
-        grid.add({static_cast<float>(x), static_cast<float>(y0)}, {static_cast<float>(x), static_cast<float>(y1)},
-                 x == 0 ? axis : minor);
+    // A 1 m grid and the axes: scale and origin are visible at a glance.
+    LineBatch Grid;
+    const sf::Color Minor(255, 255, 255, 18);
+    const sf::Color Axis(255, 255, 255, 60);
+    const int X0 = static_cast<int>(std::floor(C.X - Size.X * 0.5f));
+    const int X1 = static_cast<int>(std::ceil(C.X + Size.X * 0.5f));
+    const int Y0 = static_cast<int>(std::floor(C.Y - Size.Y * 0.5f));
+    const int Y1 = static_cast<int>(std::ceil(C.Y + Size.Y * 0.5f));
+    for (int X = X0; X <= X1; ++X) {
+        Grid.addLine({static_cast<float>(X), static_cast<float>(Y0)}, {static_cast<float>(X), static_cast<float>(Y1)},
+                     X == 0 ? Axis : Minor);
     }
-    for (int y = y0; y <= y1; ++y) {
-        grid.add({static_cast<float>(x0), static_cast<float>(y)}, {static_cast<float>(x1), static_cast<float>(y)},
-                 y == 0 ? axis : minor);
+    for (int Y = Y0; Y <= Y1; ++Y) {
+        Grid.addLine({static_cast<float>(X0), static_cast<float>(Y)}, {static_cast<float>(X1), static_cast<float>(Y)},
+                     Y == 0 ? Axis : Minor);
     }
-    grid.draw(target);
+    Grid.draw(Target);
 }
 
-void DebugOverlay::drawPrimitives(sf::RenderTarget& target, const Camera& camera,
-                                  const debug::DrawList& list) const {
-    target.setView(camera.worldView());
+void DebugOverlay::drawPrimitives(sf::RenderTarget& Target, const Camera& Cam,
+                                  const debug::DrawList& List) const {
+    Target.setView(Cam.getWorldView());
 
-    LineBatch lines;
-    for (const Primitive& p : list.primitives()) {
-        if (!categoryEnabled(p.cat)) continue;
-        const sf::Color color = toSf(debug::color(p.cat, p.side));
+    LineBatch Lines;
+    for (const Primitive& P : List.getPrimitives()) {
+        if (!isCategoryEnabled(P.Category)) continue;
+        const sf::Color Color = toSfColor(debug::getColor(P.Category, P.Owner));
 
-        switch (p.kind) {
-            case Primitive::Kind::Line:
-                lines.add(p.a, p.b, color);
+        switch (P.Kind) {
+            case PrimitiveKind::Line:
+                Lines.addLine(P.A, P.B, Color);
                 break;
 
-            case Primitive::Kind::Arrow: {
-                const Vec2 tip = p.a + p.b;
-                lines.add(p.a, tip, color);
-                const float len = p.b.length();
-                if (len > 1e-4f) {
-                    const Vec2 dir = p.b / len;
-                    const float head = std::min(0.15f, len * 0.3f);
-                    const Vec2 side = perp(dir) * head * 0.5f;
-                    lines.add(tip, tip - dir * head + side, color);
-                    lines.add(tip, tip - dir * head - side, color);
+            case PrimitiveKind::Arrow: {
+                const Vec2 Tip = P.A + P.B;
+                Lines.addLine(P.A, Tip, Color);
+                const float Len = P.B.getLength();
+                if (Len > 1e-4f) {
+                    const Vec2 Dir = P.B / Len;
+                    const float Head = std::min(0.15f, Len * 0.3f);
+                    const Vec2 Wing = perp(Dir) * Head * 0.5f;
+                    Lines.addLine(Tip, Tip - Dir * Head + Wing, Color);
+                    Lines.addLine(Tip, Tip - Dir * Head - Wing, Color);
                 }
                 break;
             }
 
-            case Primitive::Kind::Circle:
-                lines.addCircle(p.a, p.radius, 0.0f, 2.0f * std::numbers::pi_v<float>, color);
+            case PrimitiveKind::Circle:
+                Lines.addArc(P.A, P.Radius, 0.0f, TwoPi, Color);
                 break;
 
-            case Primitive::Kind::Arc:
-                lines.addCircle(p.a, p.radius, p.angle0, p.angle1, color);
+            case PrimitiveKind::Arc:
+                Lines.addArc(P.A, P.Radius, P.Angle0, P.Angle1, Color);
                 break;
 
-            case Primitive::Kind::Poly: {
-                const auto pts = list.points(p);
-                if (pts.size() >= 3) {
-                    sf::ConvexShape fill(pts.size());
-                    for (std::size_t i = 0; i < pts.size(); ++i) fill.setPoint(i, Camera::toDraw(pts[i]));
-                    fill.setFillColor(toSf(debug::fillColor(p.cat, p.side)));
-                    target.draw(fill);
+            case PrimitiveKind::Poly: {
+                const auto Points = List.getPoints(P);
+                if (Points.size() >= 3) {
+                    sf::ConvexShape Fill(Points.size());
+                    for (std::size_t I = 0; I < Points.size(); ++I) Fill.setPoint(I, Camera::toDraw(Points[I]));
+                    Fill.setFillColor(toSfColor(debug::getFillColor(P.Category, P.Owner)));
+                    Target.draw(Fill);
                 }
-                for (std::size_t i = 0; i < pts.size(); ++i) lines.add(pts[i], pts[(i + 1) % pts.size()], color);
+                for (std::size_t I = 0; I < Points.size(); ++I)
+                    Lines.addLine(Points[I], Points[(I + 1) % Points.size()], Color);
                 break;
             }
 
-            case Primitive::Kind::Point: {
-                sf::CircleShape dot(p.radius);
-                dot.setOrigin({p.radius, p.radius});
-                dot.setPosition(Camera::toDraw(p.a));
-                dot.setFillColor(color);
-                target.draw(dot);
+            case PrimitiveKind::Point: {
+                sf::CircleShape Dot(P.Radius);
+                Dot.setOrigin({P.Radius, P.Radius});
+                Dot.setPosition(Camera::toDraw(P.A));
+                Dot.setFillColor(Color);
+                Target.draw(Dot);
                 break;
             }
 
-            case Primitive::Kind::Cross: {
-                const float s = p.radius;
-                lines.add(p.a - Vec2{s, 0.0f}, p.a + Vec2{s, 0.0f}, color);
-                lines.add(p.a - Vec2{0.0f, s}, p.a + Vec2{0.0f, s}, color);
-                lines.addCircle(p.a, s * 0.45f, 0.0f, 2.0f * std::numbers::pi_v<float>, sf::Color::Black);
+            case PrimitiveKind::Cross: {
+                const float S = P.Radius;
+                Lines.addLine(P.A - Vec2{S, 0.0f}, P.A + Vec2{S, 0.0f}, Color);
+                Lines.addLine(P.A - Vec2{0.0f, S}, P.A + Vec2{0.0f, S}, Color);
+                Lines.addArc(P.A, S * 0.45f, 0.0f, TwoPi, sf::Color::Black);
                 break;
             }
 
-            case Primitive::Kind::Text:
-                break;   // текст — ниже, в пикселях
+            case PrimitiveKind::Text:
+                break;   // Text is drawn below, in pixels.
         }
     }
-    lines.draw(target);
+    Lines.draw(Target);
 
-    // Подписи рисуются в пикселях, чтобы шрифт не масштабировался вместе с миром.
-    target.setView(camera.screenView());
-    const sf::Font& font = resources_.font(assets::kMonoFont);
-    for (const Primitive& p : list.primitives()) {
-        if (!categoryEnabled(p.cat)) continue;
-        const std::string_view label = list.text(p);
-        if (label.empty()) continue;
+    // Labels are drawn in pixels so that the font does not scale with the world.
+    Target.setView(Cam.getScreenView());
+    const sf::Font& Font = Assets.getFont(assets::MonoFontPath);
+    for (const Primitive& P : List.getPrimitives()) {
+        if (!isCategoryEnabled(P.Category)) continue;
+        const std::string_view Label = List.getText(P);
+        if (Label.empty()) continue;
 
-        const Vec2 anchor = (p.kind == Primitive::Kind::Arrow) ? p.a + p.b : p.a;
-        sf::Text text(font, std::string(label), kFontSize);
-        text.setPosition(camera.worldToPixel(anchor) + sf::Vector2f{4.0f, -kLineHeight});
-        text.setFillColor(toSf(debug::color(p.cat, p.side)));
-        text.setOutlineColor(sf::Color(0, 0, 0, 200));
-        text.setOutlineThickness(1.0f);
-        target.draw(text);
+        const Vec2 Anchor = (P.Kind == PrimitiveKind::Arrow) ? P.A + P.B : P.A;
+        sf::Text Text(Font, std::string(Label), FontSize);
+        Text.setPosition(Cam.worldToPixel(Anchor) + sf::Vector2f{4.0f, -LineHeight});
+        Text.setFillColor(toSfColor(debug::getColor(P.Category, P.Owner)));
+        Text.setOutlineColor(sf::Color(0, 0, 0, 200));
+        Text.setOutlineThickness(1.0f);
+        Target.draw(Text);
     }
 }
 
-void DebugOverlay::drawPanel(sf::RenderTarget& target, const Camera& camera, const debug::DrawList& list) const {
-    if (!panelVisible_) return;
-    target.setView(camera.screenView());
-    const sf::Font& font = resources_.font(assets::kMonoFont);
+void DebugOverlay::drawPanel(sf::RenderTarget& Target, const Camera& Cam, const debug::DrawList& List) const {
+    if (!PanelVisible) return;
+    Target.setView(Cam.getScreenView());
+    const sf::Font& Font = Assets.getFont(assets::MonoFontPath);
 
-    struct Line {
-        std::string text;
-        sf::Color color = sf::Color(230, 230, 230);
+    struct PanelLine {
+        std::string Text;
+        sf::Color Color = sf::Color(230, 230, 230);
     };
-    std::vector<Line> lines;
+    std::vector<PanelLine> Lines;
 
-    const char* modeName = mode_ == ViewMode::DebugOnly ? "debug" : mode_ == ViewMode::Both ? "both" : "textures";
-    lines.push_back({std::format("DEBUG  mode: {}  (F1 debug, F2 both, F3 textures, F4 panel)", modeName),
+    const char* ModeName = Mode == ViewMode::DebugOnly ? "debug" : Mode == ViewMode::Both ? "both" : "textures";
+    Lines.push_back({std::format("DEBUG  mode: {}  (F1 debug, F2 both, F3 textures, F4 panel)", ModeName),
                      sf::Color(255, 220, 120)});
-    lines.push_back({"P pause  . step  [ ] speed  R restart  F5 reload  F6 showcase", sf::Color(170, 170, 170)});
-    lines.push_back({""});
+    Lines.push_back({"P pause  . step  [ ] speed  R restart  F5 reload  F6 showcase", sf::Color(170, 170, 170)});
+    Lines.push_back({""});
 
-    for (const auto& [key, value] : list.panel()) lines.push_back({std::format("{:<14} {}", key, value)});
-    lines.push_back({""});
+    for (const auto& [Key, Value] : List.getPanel()) Lines.push_back({std::format("{:<14} {}", Key, Value)});
+    Lines.push_back({""});
 
-    for (std::size_t i = 0; i < debug::kCatCount; ++i) {
-        const auto cat = static_cast<Cat>(i);
-        const bool on = enabled_.test(i);
-        sf::Color c = toSf(debug::color(cat, debug::Side::Left));
-        c.a = on ? 255 : 90;
-        lines.push_back({std::format("{} [{}] {}", kCategoryKeyNames[i], on ? 'x' : ' ', debug::catName(cat)), c});
+    for (std::size_t I = 0; I < debug::CatCount; ++I) {
+        const auto C = static_cast<Cat>(I);
+        const bool On = Enabled.test(I);
+        sf::Color Color = toSfColor(debug::getColor(C, debug::Side::Left));
+        Color.a = On ? 255 : 90;
+        Lines.push_back({std::format("{} [{}] {}", CategoryKeyNames[I], On ? 'x' : ' ', debug::getCatName(C)), Color});
     }
 
-    if (!list.events().empty()) {
-        lines.push_back({""});
-        lines.push_back({"events:", sf::Color(255, 220, 120)});
-        for (const std::string& e : list.events()) lines.push_back({e});
+    if (!List.getEvents().empty()) {
+        Lines.push_back({""});
+        Lines.push_back({"events:", sf::Color(255, 220, 120)});
+        for (const std::string& E : List.getEvents()) Lines.push_back({E});
     }
 
-    // Полупрозрачная подложка под текстом.
-    float width = 0.0f;
-    std::vector<sf::Text> texts;
-    texts.reserve(lines.size());
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        sf::Text& t = texts.emplace_back(font, lines[i].text, kFontSize);
-        t.setFillColor(lines[i].color);
-        t.setPosition({16.0f, 64.0f + kLineHeight * static_cast<float>(i)});
-        width = std::max(width, t.getLocalBounds().size.x);
+    // Translucent backing under the text.
+    float Width = 0.0f;
+    std::vector<sf::Text> Texts;
+    Texts.reserve(Lines.size());
+    for (std::size_t I = 0; I < Lines.size(); ++I) {
+        sf::Text& T = Texts.emplace_back(Font, Lines[I].Text, FontSize);
+        T.setFillColor(Lines[I].Color);
+        T.setPosition({16.0f, 64.0f + LineHeight * static_cast<float>(I)});
+        Width = std::max(Width, T.getLocalBounds().size.x);
     }
-    sf::RectangleShape back({width + 16.0f, kLineHeight * static_cast<float>(lines.size()) + 12.0f});
-    back.setPosition({8.0f, 58.0f});
-    back.setFillColor(sf::Color(0, 0, 0, 170));
-    target.draw(back);
-    for (const sf::Text& t : texts) target.draw(t);
+    sf::RectangleShape Back({Width + 16.0f, LineHeight * static_cast<float>(Lines.size()) + 12.0f});
+    Back.setPosition({8.0f, 58.0f});
+    Back.setFillColor(sf::Color(0, 0, 0, 170));
+    Target.draw(Back);
+    for (const sf::Text& T : Texts) Target.draw(T);
 }
 
 } // namespace fighter::render

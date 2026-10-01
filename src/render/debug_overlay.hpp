@@ -1,3 +1,18 @@
+//===- render/debug_overlay.hpp - Debug layer -------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares DebugOverlay, the debug layer of the debug build
+/// (docs/DEVELOPMENT_PLAN.md, section 3.5). It draws the primitives of
+/// debug::DrawList over the scene or instead of it, and the text panel.
+///
+/// Built only with FIGHTER_DEBUG=ON.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <bitset>
@@ -9,48 +24,45 @@
 #include "render/camera.hpp"
 #include "render/resources.hpp"
 
-// Отладочный слой debug-сборки (docs/DEVELOPMENT_PLAN.md §3.5): рисует примитивы
-// debug::DrawList поверх сцены или вместо неё и текстовую панель.
-// Собирается только при FIGHTER_DEBUG=ON.
 namespace fighter::render {
 
 enum class ViewMode {
-    DebugOnly,     // F1: только примитивы на тёмном фоне с сеткой 1 м
-    Both,          // F2: текстуры + примитивы поверх
-    TexturesOnly,  // F3: как в release
+    DebugOnly,     ///< F1: primitives only, on a dark background with a 1 m grid.
+    Both,          ///< F2: textures with primitives on top.
+    TexturesOnly,  ///< F3: as in release.
 };
 
-// Действия, которые выполняет приложение (overlay ими не владеет).
+/// Actions carried out by the application; the overlay does not own them.
 enum class DebugAction { None, TogglePause, Step, Slower, Faster, Restart, Reload, ToggleShowcase };
 
 class DebugOverlay {
 public:
     struct KeyResult {
-        bool consumed = false;   // клавиша отладочная — в игру её не передаём
-        DebugAction action = DebugAction::None;
+        bool Consumed = false;   ///< The key is a debug key and must not reach the game.
+        DebugAction Action = DebugAction::None;
     };
 
-    explicit DebugOverlay(Resources& resources);
+    explicit DebugOverlay(Resources& Res);
 
-    KeyResult handleKey(sf::Keyboard::Scancode key);
+    KeyResult handleKey(sf::Keyboard::Scancode Key);
 
-    ViewMode mode() const { return mode_; }
-    void setMode(ViewMode mode) { mode_ = mode; }
-    bool showTextures() const { return mode_ != ViewMode::DebugOnly; }
-    bool showPrimitives() const { return mode_ != ViewMode::TexturesOnly; }
+    ViewMode getMode() const { return Mode; }
+    void setMode(ViewMode NewMode) { Mode = NewMode; }
+    bool shouldShowTextures() const { return Mode != ViewMode::DebugOnly; }
+    bool shouldShowPrimitives() const { return Mode != ViewMode::TexturesOnly; }
 
-    // Фон и сетка для режима DebugOnly.
-    void drawBackdrop(sf::RenderTarget& target, const Camera& camera) const;
-    void drawPrimitives(sf::RenderTarget& target, const Camera& camera, const debug::DrawList& list) const;
-    void drawPanel(sf::RenderTarget& target, const Camera& camera, const debug::DrawList& list) const;
+    /// Background and grid for the DebugOnly mode.
+    void drawBackdrop(sf::RenderTarget& Target, const Camera& Cam) const;
+    void drawPrimitives(sf::RenderTarget& Target, const Camera& Cam, const debug::DrawList& List) const;
+    void drawPanel(sf::RenderTarget& Target, const Camera& Cam, const debug::DrawList& List) const;
 
-    bool categoryEnabled(debug::Cat cat) const { return enabled_.test(static_cast<std::size_t>(cat)); }
+    bool isCategoryEnabled(debug::Cat C) const { return Enabled.test(static_cast<std::size_t>(C)); }
 
 private:
-    Resources& resources_;
-    ViewMode mode_ = ViewMode::DebugOnly;
-    bool panelVisible_ = true;
-    std::bitset<debug::kCatCount> enabled_;
+    Resources& Assets;
+    ViewMode Mode = ViewMode::DebugOnly;
+    bool PanelVisible = true;
+    std::bitset<debug::CatCount> Enabled;
 };
 
 } // namespace fighter::render

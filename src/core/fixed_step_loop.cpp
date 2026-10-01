@@ -4,28 +4,28 @@
 
 namespace fighter {
 
-FixedStepLoop::FixedStepLoop(Config config) : config_(config) {}
+FixedStepLoop::FixedStepLoop(Config C) : Cfg(C) {}
 
-void FixedStepLoop::setPaused(bool paused) {
-    paused_ = paused;
-    singleStepRequested_ = false;
-    // После снятия с паузы не догоняем время, накопленное до неё.
-    accumulator_ = 0.0;
+void FixedStepLoop::setPaused(bool NewPaused) {
+    Paused = NewPaused;
+    SingleStepRequested = false;
+    // After unpausing, do not catch up with the time accumulated before the pause.
+    Accumulator = 0.0;
 }
 
-void FixedStepLoop::setTimeScale(double scale) {
-    timeScale_ = std::clamp(scale, kMinTimeScale, kMaxTimeScale);
+void FixedStepLoop::setTimeScale(double Scale) {
+    TimeScale = std::clamp(Scale, MinTimeScale, MaxTimeScale);
 }
 
 void FixedStepLoop::reset() {
-    accumulator_ = 0.0;
-    tick_ = 0;
-    stepsLastAdvance_ = 0;
-    singleStepRequested_ = false;
+    Accumulator = 0.0;
+    Tick = 0;
+    StepsLastAdvance = 0;
+    SingleStepRequested = false;
 }
 
-double FixedStepLoop::clampFrame(double frameSec) const {
-    return std::clamp(frameSec, 0.0, config_.maxFrameSec);
+double FixedStepLoop::clampFrame(double FrameSec) const {
+    return std::clamp(FrameSec, 0.0, Cfg.MaxFrameSec);
 }
 
 } // namespace fighter

@@ -78,12 +78,12 @@ loop:
 **Как устроено.** Любой модуль может отправлять примитивы в общий приёмник
 `debug::DrawList` в **мировых координатах**: линии, стрелки, окружности, многоугольники,
 точки, текст рядом с объектом. Каждый примитив относится к **категории**. Рендер рисует
-список поверх сцены (или вместо неё). В release все вызовы `debug::*` компилируются в
+список поверх сцены (или вместо неё). В release все вызовы `debug::draw*` компилируются в
 пустоту, и примитивы не собираются.
 
 ```cpp
-// пример из rig: стрелка момента мотора в шарнире
-debug::arrow(debug::Cat::Motors, jointPos, torqueDir * scale, "τ=12.4");
+// example from rig: an arrow for the motor torque at a joint
+debug::drawArrow(debug::Cat::Motors, JointPos, TorqueDir * Scale, "tau=12.4");
 ```
 
 **Режимы экрана** (переключаются клавишами в debug-сборке):
@@ -149,47 +149,51 @@ tests/       — Catch2
 ### Основные контракты (фиксируются в фазе 0, дальше меняются только через ревью)
 
 ```cpp
-// combat — публичный API модуля
-struct FighterConfig { Stats stats; Loadout loadout; std::string rigId; };
-struct BattleConfig  { FighterConfig left, right; ArenaConfig arena; double roundTimeSec; };
-struct BattleResult  { Winner winner; double timeSec; FighterReport left, right; };
+// combat — публичный API модуля (src/combat/battle.hpp, commands.hpp, snapshot.hpp)
+struct FighterConfig { stats::Stats Stats; stats::Loadout Loadout; std::string RigId; };
+struct BattleConfig  { FighterConfig Left, Right; ArenaConfig Arena; double RoundTimeSec; };
+struct BattleResult  { Winner WinnerSide; double TimeSec; FighterReport Left, Right; };
 
-struct PlayerCommands {            // снимок ввода на один тик
-    float moveX;                   // -1..1
-    bool  jump, crouch, block;
-    bool  punch, kick;
+struct PlayerCommands {            // input snapshot for one step
+    float MoveX;                   // -1..1
+    bool  Jump, Crouch, Block;
+    bool  Punch, Kick;
 };
 
 class Battle {
 public:
-    explicit Battle(const BattleConfig&);
-    void update(const PlayerCommands& left, const PlayerCommands& right, double dt);
-    const RenderSnapshot& snapshot() const;
-    std::optional<BattleResult> result() const;
+    explicit Battle(const BattleConfig& Config);
+    void update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, double Dt);
+    const RenderSnapshot& getSnapshot() const;
+    std::optional<BattleResult> getResult() const;
 };
 
-// stats → физика
+// stats -> physics (src/stats/stats.hpp)
 struct PhysicalProfile {
-    std::array<PartParams, PART_COUNT> parts;   // масса, броня каждой части
-    float motorMaxTorque;   // STR
-    float motorGain;        // DEX: скорость выхода на позу
-    float maxHp;            // CON
+    PerBodyPart<PartParams> Parts;   // mass and armor of each part
+    float MotorMaxTorque;            // STR
+    float MotorGain;                 // DEX: how fast a pose is reached
+    float MaxHp;                     // CON
 };
-PhysicalProfile computeProfile(const Stats&, const Loadout&, const BalanceTable&);
+PhysicalProfile computeProfile(const Stats& S, const Loadout& L, const BalanceTable& Balance);
 
-// physics → combat
-struct HitEvent { PartRef attacker, victim; Vec2 point; float approachSpeed; float impulse; };
+// physics -> combat (src/physics/events.hpp)
+struct HitEvent { PartRef Attacker, Victim; Vec2 Point; float ApproachSpeed; float Impulse; };
 
-// debug — в release все функции пустые inline
+// debug (src/debug/draw.hpp): empty inlines in release
 namespace debug {
 enum class Cat { Hurtbox, Hitbox, Block, Static, Joints, TargetPose,
                  Motors, Forces, Velocity, Contacts, CoM };
-void line  (Cat, Vec2 a, Vec2 b);
-void arrow (Cat, Vec2 from, Vec2 vec, std::string_view label = {});
-void circle(Cat, Vec2 center, float r);
-void poly  (Cat, std::span<const Vec2> pts);
-void text  (Cat, Vec2 at, std::string_view);
-void panel (std::string_view key, std::string_view value);   // строка текстовой панели
+void drawLine  (Cat C, Vec2 A, Vec2 B);
+void drawArrow (Cat C, Vec2 From, Vec2 Vec, std::string_view Label = {});
+void drawCircle(Cat C, Vec2 Center, float Radius);
+void drawArc   (Cat C, Vec2 Center, float Radius, float Angle0, float Angle1);
+void drawPoly  (Cat C, std::span<const Vec2> Vertices);
+void drawPoint (Cat C, Vec2 At, float Size = 0.04f);
+void drawCross (Cat C, Vec2 At, float Size = 0.12f);
+void drawText  (Cat C, Vec2 At, std::string_view Text);
+void setPanel  (std::string_view Key, std::string_view Value);   // text panel line
+void logEvent  (std::string_view Message);                       // event log line
 }
 ```
 

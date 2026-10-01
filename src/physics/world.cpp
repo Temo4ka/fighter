@@ -7,48 +7,48 @@
 namespace fighter::physics {
 namespace {
 
-b2WorldId load(std::uint32_t id) { return b2LoadWorldId(id); }
+b2WorldId loadWorldId(std::uint32_t Packed) { return b2LoadWorldId(Packed); }
 
 } // namespace
 
-World::World(Config config) : subSteps_(config.subSteps) {
-    b2WorldDef def = b2DefaultWorldDef();
-    def.gravity = b2Vec2{config.gravity.x, config.gravity.y};
-    id_ = b2StoreWorldId(b2CreateWorld(&def));
+World::World(Config C) : SubSteps(C.SubSteps) {
+    b2WorldDef Def = b2DefaultWorldDef();
+    Def.gravity = b2Vec2{C.Gravity.X, C.Gravity.Y};
+    Id = b2StoreWorldId(b2CreateWorld(&Def));
 }
 
 World::~World() { destroy(); }
 
-World::World(World&& other) noexcept
-    : id_(std::exchange(other.id_, 0)), subSteps_(other.subSteps_) {}
+World::World(World&& Other) noexcept
+    : Id(std::exchange(Other.Id, 0)), SubSteps(Other.SubSteps) {}
 
-World& World::operator=(World&& other) noexcept {
-    if (this != &other) {
+World& World::operator=(World&& Other) noexcept {
+    if (this != &Other) {
         destroy();
-        id_ = std::exchange(other.id_, 0);
-        subSteps_ = other.subSteps_;
+        Id = std::exchange(Other.Id, 0);
+        SubSteps = Other.SubSteps;
     }
     return *this;
 }
 
 void World::destroy() {
-    if (id_ != 0) {
-        b2DestroyWorld(load(id_));
-        id_ = 0;
+    if (Id != 0) {
+        b2DestroyWorld(loadWorldId(Id));
+        Id = 0;
     }
 }
 
-void World::step(float dt) {
-    b2World_Step(load(id_), dt, subSteps_);
+void World::step(float Dt) {
+    b2World_Step(loadWorldId(Id), Dt, SubSteps);
 }
 
-Vec2 World::gravity() const {
-    const b2Vec2 g = b2World_GetGravity(load(id_));
-    return {g.x, g.y};
+Vec2 World::getGravity() const {
+    const b2Vec2 G = b2World_GetGravity(loadWorldId(Id));
+    return {G.x, G.y};
 }
 
-int World::bodyCount() const {
-    return b2World_GetCounters(load(id_)).bodyCount;
+int World::getBodyCount() const {
+    return b2World_GetCounters(loadWorldId(Id)).bodyCount;
 }
 
 } // namespace fighter::physics

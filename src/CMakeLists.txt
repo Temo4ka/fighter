@@ -1,4 +1,5 @@
-# Порядок важен только для читаемости: зависимости идут сверху вниз (docs/DEVELOPMENT_PLAN.md §4).
+# The order only matters for readability: dependencies go top-down
+# (docs/DEVELOPMENT_PLAN.md, section 4).
 add_subdirectory(core)
 add_subdirectory(debug)
 add_subdirectory(physics)

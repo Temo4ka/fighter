@@ -9,131 +9,132 @@
 namespace fighter::combat {
 namespace {
 
-// Параметры кинематической заглушки. В фазе 2 их заменит физика тела.
-constexpr float kWalkSpeed = 3.0f;    // м/с
-constexpr float kJumpSpeed = 5.0f;    // м/с
-constexpr float kHalfWidth = 0.25f;   // м
-constexpr float kHeight = 1.8f;       // м
-constexpr float kStartX = 2.0f;       // м от центра арены
+// Parameters of the kinematic placeholder. Body physics replaces them in phase 2.
+constexpr float WalkSpeed = 3.0f;    // m/s
+constexpr float JumpSpeed = 5.0f;    // m/s
+constexpr float HalfWidth = 0.25f;   // m
+constexpr float Height = 1.8f;       // m
+constexpr float StartX = 2.0f;       // m from the arena center
 
-[[maybe_unused]] const char* sideName(std::size_t i) { return i == 0 ? "P1" : "P2"; }
+[[maybe_unused]] const char* getPlayerName(std::size_t I) { return I == 0 ? "P1" : "P2"; }
 
 } // namespace
 
-Battle::Battle(const BattleConfig& config) : config_(config) {
-    const stats::BalanceTable balance = stats::BalanceTable::defaults();
-    const std::array<const FighterConfig*, 2> cfg = {&config_.left, &config_.right};
+Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
+    const stats::BalanceTable Balance = stats::BalanceTable::getDefaults();
+    const std::array<const FighterConfig*, 2> Configs = {&Cfg.Left, &Cfg.Right};
 
-    for (std::size_t i = 0; i < fighters_.size(); ++i) {
-        FighterState& f = fighters_[i];
-        f.profile = stats::computeProfile(cfg[i]->stats, cfg[i]->loadout, balance);
-        f.hp = f.profile.maxHp;
-        f.position = {i == 0 ? -kStartX : kStartX, 0.0f};
-        f.facingRight = (i == 0);
+    for (std::size_t I = 0; I < Fighters.size(); ++I) {
+        FighterState& F = Fighters[I];
+        F.Profile = stats::computeProfile(Configs[I]->Stats, Configs[I]->Loadout, Balance);
+        F.Hp = F.Profile.MaxHp;
+        F.Position = {I == 0 ? -StartX : StartX, 0.0f};
+        F.FacingRight = (I == 0);
     }
     publishSnapshot();
 }
 
-void Battle::update(const PlayerCommands& left, const PlayerCommands& right, double dt) {
-    if (result_) return;
+void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, double Dt) {
+    if (Result) return;
 
-    const float fdt = static_cast<float>(dt);
-    updateFighter(fighters_[0], left, fdt);
-    updateFighter(fighters_[1], right, fdt);
+    const float StepDt = static_cast<float>(Dt);
+    updateFighter(Fighters[0], LeftCmd, StepDt);
+    updateFighter(Fighters[1], RightCmd, StepDt);
 
-    // Бойцы смотрят друг на друга.
-    fighters_[0].facingRight = fighters_[0].position.x <= fighters_[1].position.x;
-    fighters_[1].facingRight = !fighters_[0].facingRight;
+    // Fighters face each other.
+    Fighters[0].FacingRight = Fighters[0].Position.X <= Fighters[1].Position.X;
+    Fighters[1].FacingRight = !Fighters[0].FacingRight;
 
-    elapsedSec_ += dt;
-    ++tick_;
+    ElapsedSec += Dt;
+    ++Tick;
 
-    if (elapsedSec_ >= config_.roundTimeSec) {
-        const float hl = fighters_[0].hp;
-        const float hr = fighters_[1].hp;
-        finish(hl > hr ? Winner::Left : hr > hl ? Winner::Right : Winner::Draw);
+    if (ElapsedSec >= Cfg.RoundTimeSec) {
+        const float HpL = Fighters[0].Hp;
+        const float HpR = Fighters[1].Hp;
+        finish(HpL > HpR ? Winner::Left : HpR > HpL ? Winner::Right : Winner::Draw);
     }
 
     publishSnapshot();
     drawDebug();
 }
 
-void Battle::updateFighter(FighterState& f, const PlayerCommands& cmd, float dt) {
-    f.velocity.x = std::clamp(cmd.moveX, -1.0f, 1.0f) * kWalkSpeed;
-    if (cmd.jump && f.grounded) {
-        f.velocity.y = kJumpSpeed;
-        f.grounded = false;
+void Battle::updateFighter(FighterState& F, const PlayerCommands& Cmd, float Dt) {
+    F.Velocity.X = std::clamp(Cmd.MoveX, -1.0f, 1.0f) * WalkSpeed;
+    if (Cmd.Jump && F.Grounded) {
+        F.Velocity.Y = JumpSpeed;
+        F.Grounded = false;
     }
-    if (!f.grounded) f.velocity += config_.arena.gravity * dt;
+    if (!F.Grounded) F.Velocity += Cfg.Arena.Gravity * Dt;
 
-    f.position += f.velocity * dt;
+    F.Position += F.Velocity * Dt;
 
-    if (f.position.y <= 0.0f) {
-        f.position.y = 0.0f;
-        f.velocity.y = 0.0f;
-        f.grounded = true;
+    if (F.Position.Y <= 0.0f) {
+        F.Position.Y = 0.0f;
+        F.Velocity.Y = 0.0f;
+        F.Grounded = true;
     }
-    const float limit = config_.arena.halfWidthM - kHalfWidth;
-    f.position.x = std::clamp(f.position.x, -limit, limit);
+    const float Limit = Cfg.Arena.HalfWidthM - HalfWidth;
+    F.Position.X = std::clamp(F.Position.X, -Limit, Limit);
 }
 
-void Battle::finish(Winner winner) {
-    BattleResult r;
-    r.winner = winner;
-    r.timeSec = elapsedSec_;
-    r.left.hpLeft = fighters_[0].hp;
-    r.right.hpLeft = fighters_[1].hp;
-    result_ = r;
+void Battle::finish(Winner W) {
+    BattleResult R;
+    R.WinnerSide = W;
+    R.TimeSec = ElapsedSec;
+    R.Left.HpLeft = Fighters[0].Hp;
+    R.Right.HpLeft = Fighters[1].Hp;
+    Result = R;
 }
 
 void Battle::publishSnapshot() {
-    snapshot_.tick = tick_;
-    snapshot_.timeLeftSec = std::max(0.0, config_.roundTimeSec - elapsedSec_);
-    snapshot_.arena.halfWidthM = config_.arena.halfWidthM;
-    for (std::size_t i = 0; i < fighters_.size(); ++i) {
-        const FighterState& f = fighters_[i];
-        FighterView& v = snapshot_.fighters[i];
-        v.position = f.position;
-        v.size = {2.0f * kHalfWidth, kHeight};
-        v.facingRight = f.facingRight;
-        v.hp = f.hp;
-        v.maxHp = f.profile.maxHp;
+    Snapshot.Tick = Tick;
+    Snapshot.TimeLeftSec = std::max(0.0, Cfg.RoundTimeSec - ElapsedSec);
+    Snapshot.Arena.HalfWidthM = Cfg.Arena.HalfWidthM;
+    for (std::size_t I = 0; I < Fighters.size(); ++I) {
+        const FighterState& F = Fighters[I];
+        FighterView& V = Snapshot.Fighters[I];
+        V.Position = F.Position;
+        V.Size = {2.0f * HalfWidth, Height};
+        V.FacingRight = F.FacingRight;
+        V.Hp = F.Hp;
+        V.MaxHp = F.Profile.MaxHp;
     }
 }
 
 void Battle::drawDebug() const {
     if constexpr (FIGHTER_DEBUG) {
-        const float hw = config_.arena.halfWidthM;
-        debug::line(debug::Cat::Static, {-hw, 0.0f}, {hw, 0.0f});
-        debug::line(debug::Cat::Static, {-hw, 0.0f}, {-hw, 4.0f});
-        debug::line(debug::Cat::Static, {hw, 0.0f}, {hw, 4.0f});
+        const float Hw = Cfg.Arena.HalfWidthM;
+        debug::drawLine(debug::Cat::Static, {-Hw, 0.0f}, {Hw, 0.0f});
+        debug::drawLine(debug::Cat::Static, {-Hw, 0.0f}, {-Hw, 4.0f});
+        debug::drawLine(debug::Cat::Static, {Hw, 0.0f}, {Hw, 4.0f});
 
-        for (std::size_t i = 0; i < fighters_.size(); ++i) {
-            const FighterState& f = fighters_[i];
-            debug::ScopedSide side(i == 0 ? debug::Side::Left : debug::Side::Right);
+        for (std::size_t I = 0; I < Fighters.size(); ++I) {
+            const FighterState& F = Fighters[I];
+            debug::ScopedSide Owner(I == 0 ? debug::Side::Left : debug::Side::Right);
 
-            const Vec2 p = f.position;
-            const std::array<Vec2, 4> box = {
-                Vec2{p.x - kHalfWidth, p.y},
-                Vec2{p.x + kHalfWidth, p.y},
-                Vec2{p.x + kHalfWidth, p.y + kHeight},
-                Vec2{p.x - kHalfWidth, p.y + kHeight},
+            const Vec2 P = F.Position;
+            const std::array<Vec2, 4> Box = {
+                Vec2{P.X - HalfWidth, P.Y},
+                Vec2{P.X + HalfWidth, P.Y},
+                Vec2{P.X + HalfWidth, P.Y + Height},
+                Vec2{P.X - HalfWidth, P.Y + Height},
             };
-            debug::poly(debug::Cat::Hurtbox, box);
+            debug::drawPoly(debug::Cat::Hurtbox, Box);
 
-            const Vec2 com = p + Vec2{0.0f, kHeight * 0.55f};
-            debug::cross(debug::Cat::CoM, com);
-            if (f.velocity.lengthSquared() > 1e-4f) {
-                debug::arrow(debug::Cat::Velocity, com, f.velocity * 0.2f,
-                             std::format("{:.1f} m/s", f.velocity.length()));
+            const Vec2 CenterOfMass = P + Vec2{0.0f, Height * 0.55f};
+            debug::drawCross(debug::Cat::CoM, CenterOfMass);
+            if (F.Velocity.getLengthSquared() > 1e-4f) {
+                debug::drawArrow(debug::Cat::Velocity, CenterOfMass, F.Velocity * 0.2f,
+                                 std::format("{:.1f} m/s", F.Velocity.getLength()));
             }
 
-            debug::panel(std::format("{} pos", sideName(i)),
-                         std::format("({:+.2f}, {:+.2f}) m  {}", p.x, p.y, f.grounded ? "ground" : "air"));
-            debug::panel(std::format("{} hp", sideName(i)),
-                         std::format("{:.0f} / {:.0f}", f.hp, f.profile.maxHp));
+            debug::setPanel(std::format("{} pos", getPlayerName(I)),
+                            std::format("({:+.2f}, {:+.2f}) m  {}", P.X, P.Y,
+                                        F.Grounded ? "ground" : "air"));
+            debug::setPanel(std::format("{} hp", getPlayerName(I)),
+                            std::format("{:.0f} / {:.0f}", F.Hp, F.Profile.MaxHp));
         }
-        debug::panel("round", std::format("{:.1f} s left", snapshot_.timeLeftSec));
+        debug::setPanel("round", std::format("{:.1f} s left", Snapshot.TimeLeftSec));
     }
 }
 

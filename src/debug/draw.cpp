@@ -7,42 +7,47 @@
 namespace fighter::debug {
 namespace {
 
-Side& currentSide() {
-    static Side side = Side::None;
-    return side;
+Side& getCurrentSide() {
+    static Side Current = Side::None;
+    return Current;
 }
 
 } // namespace
 
-DrawList& drawList() {
-    static DrawList list;
-    return list;
+DrawList& getDrawList() {
+    static DrawList List;
+    return List;
 }
 
-void beginTick() { drawList().beginTick(); }
+void beginTick() { getDrawList().beginTick(); }
 
-void line(Cat cat, Vec2 a, Vec2 b) { drawList().line(cat, a, b, currentSide()); }
+void drawLine(Cat C, Vec2 A, Vec2 B) { getDrawList().addLine(C, A, B, getCurrentSide()); }
 
-void arrow(Cat cat, Vec2 from, Vec2 vec, std::string_view label) {
-    drawList().arrow(cat, from, vec, label, currentSide());
+void drawArrow(Cat C, Vec2 From, Vec2 Vec, std::string_view Label) {
+    getDrawList().addArrow(C, From, Vec, Label, getCurrentSide());
 }
 
-void circle(Cat cat, Vec2 center, float radius) { drawList().circle(cat, center, radius, currentSide()); }
-
-void arc(Cat cat, Vec2 center, float radius, float angle0, float angle1) {
-    drawList().arc(cat, center, radius, angle0, angle1, currentSide());
+void drawCircle(Cat C, Vec2 Center, float Radius) {
+    getDrawList().addCircle(C, Center, Radius, getCurrentSide());
 }
 
-void poly(Cat cat, std::span<const Vec2> points) { drawList().poly(cat, points, currentSide()); }
-void point(Cat cat, Vec2 at, float size) { drawList().point(cat, at, size, currentSide()); }
-void cross(Cat cat, Vec2 at, float size) { drawList().cross(cat, at, size, currentSide()); }
-void text(Cat cat, Vec2 at, std::string_view text) { drawList().text(cat, at, text, currentSide()); }
+void drawArc(Cat C, Vec2 Center, float Radius, float Angle0, float Angle1) {
+    getDrawList().addArc(C, Center, Radius, Angle0, Angle1, getCurrentSide());
+}
 
-void panel(std::string_view key, std::string_view value) { drawList().setPanel(key, value); }
-void event(std::string_view message) { drawList().logEvent(message); }
+void drawPoly(Cat C, std::span<const Vec2> Vertices) {
+    getDrawList().addPoly(C, Vertices, getCurrentSide());
+}
 
-ScopedSide::ScopedSide(Side side) : previous_(currentSide()) { currentSide() = side; }
-ScopedSide::~ScopedSide() { currentSide() = previous_; }
+void drawPoint(Cat C, Vec2 At, float Size) { getDrawList().addPoint(C, At, Size, getCurrentSide()); }
+void drawCross(Cat C, Vec2 At, float Size) { getDrawList().addCross(C, At, Size, getCurrentSide()); }
+void drawText(Cat C, Vec2 At, std::string_view Text) { getDrawList().addText(C, At, Text, getCurrentSide()); }
+
+void setPanel(std::string_view Key, std::string_view Value) { getDrawList().setPanel(Key, Value); }
+void logEvent(std::string_view Message) { getDrawList().logEvent(Message); }
+
+ScopedSide::ScopedSide(Side Owner) : Previous(getCurrentSide()) { getCurrentSide() = Owner; }
+ScopedSide::~ScopedSide() { getCurrentSide() = Previous; }
 
 } // namespace fighter::debug
 

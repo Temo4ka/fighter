@@ -1,3 +1,25 @@
+//===- render/camera.hpp - World to screen conversion -----------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares render::Camera, the only place in the project where
+/// world coordinates become pixels (docs/DEVELOPMENT_PLAN.md, section 3.1).
+///
+/// World: meters, Y up, (0, 0) is the arena center at floor level.
+/// Screen: pixels, Y down, (0, 0) is the top-left corner of the window.
+///
+/// There are two ways to draw in world units:
+///  - set getWorldView() as the view and pass SFML the coordinates from
+///    toDraw(WorldPos);
+///  - convert a point to pixels with worldToPixel() and draw in
+///    getScreenView(). Text is drawn this way so that it does not scale with
+///    the world.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <SFML/Graphics/View.hpp>
@@ -5,55 +27,45 @@
 
 #include "core/vec2.hpp"
 
-// Камера: единственное место в проекте, где мировые координаты превращаются в пиксели
-// (docs/DEVELOPMENT_PLAN.md §3.1).
-//
-// Мир: метры, ось Y вверх, (0, 0) — центр арены на уровне пола.
-// Экран: пиксели, ось Y вниз, (0, 0) — левый верхний угол окна.
-//
-// Рисовать в мировых единицах можно двумя способами:
-//  - установить worldView() и передавать в SFML координаты toDraw(world);
-//  - перевести точку в пиксели worldToPixel() и рисовать в стандартном виде окна
-//    (так рисуется текст, чтобы он не масштабировался вместе с миром).
 namespace fighter::render {
 
 class Camera {
 public:
     struct Config {
-        float viewHeightM = 6.0f;      // сколько метров мира помещается по вертикали
-        Vec2 centerM{0.0f, 2.5f};      // центр вида: пол на 0.5 м выше нижнего края
+        float ViewHeightM = 6.0f;      ///< How many meters of world fit vertically.
+        Vec2 CenterM{0.0f, 2.5f};      ///< View center: the floor is 0.5 m above the bottom edge.
     };
 
     Camera() : Camera(Config{}) {}
-    explicit Camera(Config config);
+    explicit Camera(Config C);
 
-    // Ширина вида подстраивается под пропорции окна, высота в метрах сохраняется.
-    void setWindowSize(sf::Vector2u sizePx);
+    /// The view width follows the window aspect ratio; the height in meters is kept.
+    void setWindowSize(sf::Vector2u SizePx);
 
-    sf::Vector2f worldToPixel(Vec2 world) const;
-    Vec2 pixelToWorld(sf::Vector2f pixel) const;
+    sf::Vector2f worldToPixel(Vec2 WorldPos) const;
+    Vec2 pixelToWorld(sf::Vector2f PixelPos) const;
 
-    float pixelsPerMeter() const;
-    Vec2 viewSizeM() const { return {viewHeightM_ * aspect(), viewHeightM_}; }
-    Vec2 centerM() const { return center_; }
-    sf::Vector2u windowSize() const { return windowPx_; }
+    float getPixelsPerMeter() const;
+    Vec2 getViewSizeM() const { return {ViewHeightM * getAspect(), ViewHeightM}; }
+    Vec2 getCenterM() const { return Center; }
+    sf::Vector2u getWindowSize() const { return WindowPx; }
 
-    // Вид SFML в мировых единицах. Y в нём направлен вниз, поэтому точки
-    // переводятся через toDraw(): переворачиваем Y у координат, а не у вида —
-    // иначе текстуры отрисовывались бы вверх ногами.
-    sf::View worldView() const;
-    static sf::Vector2f toDraw(Vec2 world) { return {world.x, -world.y}; }
+    /// SFML view in world units. SFML's Y axis points down, so points go
+    /// through toDraw(): we flip Y of the coordinates rather than of the view,
+    /// otherwise textures would be drawn upside down.
+    sf::View getWorldView() const;
+    static sf::Vector2f toDraw(Vec2 WorldPos) { return {WorldPos.X, -WorldPos.Y}; }
 
-    // Вид в пикселях окна (для HUD и текста). Стандартный вид окна SFML после
-    // изменения размера не обновляется, поэтому берём его отсюда.
-    sf::View screenView() const;
+    /// View in window pixels (for the HUD and text). SFML does not update the
+    /// window's default view after a resize, so it is taken from here.
+    sf::View getScreenView() const;
 
 private:
-    float aspect() const;
+    float getAspect() const;
 
-    float viewHeightM_;
-    Vec2 center_;
-    sf::Vector2u windowPx_{1280, 720};
+    float ViewHeightM;
+    Vec2 Center;
+    sf::Vector2u WindowPx{1280, 720};
 };
 
 } // namespace fighter::render

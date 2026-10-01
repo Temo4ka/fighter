@@ -1,6 +1,6 @@
-# Имена TEST_CASE — только ASCII: ctest передаёт имя теста в Catch2 как аргумент
-# командной строки, а на Windows аргументы идут в ANSI-кодировке, и кириллица
-# превращается в «????» — тест не находится. Комментарии внутри тестов — на русском.
+# TEST_CASE names are ASCII only: ctest passes the test name to Catch2 on the
+# command line, and on Windows the arguments arrive in the ANSI code page, so
+# Cyrillic turns into "????" and the test is not found.
 add_executable(fighter_tests
     core/test_vec2.cpp
     core/test_signal.cpp
@@ -27,5 +27,5 @@ target_link_libraries(fighter_tests PRIVATE
 fighter_target_options(fighter_tests)
 
 include(Catch)
-# PRE_TEST: список тестов собирается при запуске ctest, а не при сборке.
+# PRE_TEST: the test list is collected when ctest runs, not at build time.
 catch_discover_tests(fighter_tests DISCOVERY_MODE PRE_TEST)

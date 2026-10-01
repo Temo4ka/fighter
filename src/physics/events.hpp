@@ -1,3 +1,18 @@
+//===- physics/events.hpp - Physics events for combat -----------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines the physics -> combat contract (docs/DEVELOPMENT_PLAN.md,
+/// section 4): HitEvent, emitted when one body part strikes another, and
+/// PartRef, which names a body part of a particular fighter.
+///
+/// The contract changes only through review.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>
@@ -5,24 +20,22 @@
 #include "core/body.hpp"
 #include "core/vec2.hpp"
 
-// Контракт physics → combat (docs/DEVELOPMENT_PLAN.md §4).
-// Меняется только через ревью.
 namespace fighter::physics {
 
-// Ссылка на часть тела конкретного бойца.
+/// A body part of a particular fighter.
 struct PartRef {
-    std::uint8_t fighter = 0;   // 0 — левый, 1 — правый
-    BodyPart part = BodyPart::Torso;
+    std::uint8_t Fighter = 0;   ///< 0 is the left fighter, 1 is the right one.
+    BodyPart Part = BodyPart::Torso;
 };
 
-// Удар: одна часть тела попала в другую.
-// Урон считает combat — из импульса и брони части тела жертвы.
+/// One body part hit another. Damage is computed by combat from the impulse
+/// and the armor of the victim's body part.
 struct HitEvent {
-    PartRef attacker;
-    PartRef victim;
-    Vec2 point;                 // точка контакта, м
-    float approachSpeed = 0.0f; // скорость сближения в момент удара, м/с
-    float impulse = 0.0f;       // импульс контакта, Н·с
+    PartRef Attacker;
+    PartRef Victim;
+    Vec2 Point;                 ///< Contact point, m.
+    float ApproachSpeed = 0.0f; ///< Closing speed at the moment of impact, m/s.
+    float Impulse = 0.0f;       ///< Contact impulse, N*s.
 };
 
 } // namespace fighter::physics

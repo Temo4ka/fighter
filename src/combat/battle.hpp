@@ -1,3 +1,19 @@
+//===- combat/battle.hpp - Public API of the combat module ------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares the public API of the combat module
+/// (docs/DEVELOPMENT_PLAN.md, section 4): the fight configuration, its result
+/// and Battle, which runs one fight.
+///
+/// An external project creates a Battle from a configuration, feeds it input
+/// every step and reads the result. The contracts change only through review.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <array>
@@ -9,77 +25,77 @@
 #include "core/vec2.hpp"
 #include "stats/stats.hpp"
 
-// Публичный API модуля боя (docs/DEVELOPMENT_PLAN.md §4).
-// Внешний проект создаёт Battle из конфигурации, кормит его вводом
-// и забирает результат. Контракты меняются только через ревью.
 namespace fighter::combat {
 
 struct FighterConfig {
-    stats::Stats stats;
-    stats::Loadout loadout;
-    std::string rigId = "humanoid";
+    stats::Stats Stats;
+    stats::Loadout Loadout;
+    std::string RigId = "humanoid";
 };
 
 struct ArenaConfig {
-    float halfWidthM = 5.0f;
-    Vec2 gravity{0.0f, -9.81f};
+    float HalfWidthM = 5.0f;
+    Vec2 Gravity{0.0f, -9.81f};
 };
 
 struct BattleConfig {
-    FighterConfig left;
-    FighterConfig right;
-    ArenaConfig arena;
-    double roundTimeSec = 90.0;
+    FighterConfig Left;
+    FighterConfig Right;
+    ArenaConfig Arena;
+    double RoundTimeSec = 90.0;
 };
 
 enum class Winner { Left, Right, Draw };
 
 struct FighterReport {
-    float hpLeft = 0.0f;
-    float damageDealt = 0.0f;
+    float HpLeft = 0.0f;
+    float DamageDealt = 0.0f;
 };
 
 struct BattleResult {
-    Winner winner = Winner::Draw;
-    double timeSec = 0.0;
-    FighterReport left;
-    FighterReport right;
+    Winner WinnerSide = Winner::Draw;
+    double TimeSec = 0.0;
+    FighterReport Left;
+    FighterReport Right;
 };
 
-// ЗАГЛУШКА фазы 0: бойцы — кинематические прямоугольники (ходьба, прыжок, стены),
-// ударов нет. Нужна, чтобы проверить ввод, цикл, рендер и debug-слой.
-// В фазах 1–2 внутренности заменяются на rig + физику; интерфейс остаётся.
+/// Runs one fight.
+///
+/// PLACEHOLDER for phase 0: fighters are kinematic rectangles (walking,
+/// jumping, walls) and cannot strike. It exists to test input, the loop, the
+/// renderer and the debug layer. In phases 1-2 the internals are replaced with
+/// the rig and physics; the interface stays.
 class Battle {
 public:
-    explicit Battle(const BattleConfig& config);
+    explicit Battle(const BattleConfig& Config);
 
-    void update(const PlayerCommands& left, const PlayerCommands& right, double dt);
+    void update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, double Dt);
 
-    const RenderSnapshot& snapshot() const { return snapshot_; }
-    std::optional<BattleResult> result() const { return result_; }
-    const BattleConfig& config() const { return config_; }
+    const RenderSnapshot& getSnapshot() const { return Snapshot; }
+    std::optional<BattleResult> getResult() const { return Result; }
+    const BattleConfig& getConfig() const { return Cfg; }
 
 private:
     struct FighterState {
-        Vec2 position;
-        Vec2 velocity;
-        bool grounded = true;
-        bool facingRight = true;
-        float hp = 0.0f;
-        stats::PhysicalProfile profile;
+        Vec2 Position;
+        Vec2 Velocity;
+        bool Grounded = true;
+        bool FacingRight = true;
+        float Hp = 0.0f;
+        stats::PhysicalProfile Profile;
     };
 
-    void updateFighter(FighterState& f, const PlayerCommands& cmd, float dt);
-    void finish(Winner winner);
+    void updateFighter(FighterState& F, const PlayerCommands& Cmd, float Dt);
+    void finish(Winner W);
     void publishSnapshot();
     void drawDebug() const;
 
-    BattleConfig config_;
-    std::array<FighterState, 2> fighters_;
-    double elapsedSec_ = 0.0;
-    std::uint64_t tick_ = 0;
-    RenderSnapshot snapshot_;
-    std::optional<BattleResult> result_;
+    BattleConfig Cfg;
+    std::array<FighterState, 2> Fighters;
+    double ElapsedSec = 0.0;
+    std::uint64_t Tick = 0;
+    RenderSnapshot Snapshot;
+    std::optional<BattleResult> Result;
 };
 
 } // namespace fighter::combat

@@ -18,19 +18,19 @@
 namespace fighter::app {
 namespace {
 
-constexpr unsigned kWindowWidth = 1280;
-constexpr unsigned kWindowHeight = 720;
+constexpr unsigned WindowWidth = 1280;
+constexpr unsigned WindowHeight = 720;
 
-// Тестовые бойцы. В фазе 2 они будут читаться из data/fighters/*.json.
-combat::BattleConfig sandboxBattle() {
-    combat::BattleConfig config;
-    config.left.stats = {.strength = 12, .dexterity = 10, .constitution = 10};
-    config.right.stats = {.strength = 10, .dexterity = 12, .constitution = 12};
-    return config;
+// Test fighters. In phase 2 they will be read from data/fighters/*.json.
+combat::BattleConfig makeSandboxBattle() {
+    combat::BattleConfig Config;
+    Config.Left.Stats = {.Strength = 12, .Dexterity = 10, .Constitution = 10};
+    Config.Right.Stats = {.Strength = 10, .Dexterity = 12, .Constitution = 12};
+    return Config;
 }
 
-const char* winnerName(combat::Winner w) {
-    switch (w) {
+const char* getWinnerName(combat::Winner W) {
+    switch (W) {
         case combat::Winner::Left: return "P1";
         case combat::Winner::Right: return "P2";
         case combat::Winner::Draw: return "draw";
@@ -40,176 +40,179 @@ const char* winnerName(combat::Winner w) {
 
 } // namespace
 
-App::App(Options options)
-    : options_(std::move(options)),
-      window_(sf::VideoMode({kWindowWidth, kWindowHeight}), "Fighter sandbox"),
-      resources_(options_.root),
-      battleRenderer_(resources_)
+App::App(Options Settings)
+    : Opts(std::move(Settings)),
+      Window(sf::VideoMode({WindowWidth, WindowHeight}), "Fighter sandbox"),
+      Assets(Opts.Root),
+      Renderer(Assets)
 #if FIGHTER_DEBUG
-      , overlay_(resources_)
+      , Overlay(Assets)
 #endif
 {
-    window_.setVerticalSyncEnabled(true);
-    camera_.setWindowSize(window_.getSize());
+    Window.setVerticalSyncEnabled(true);
+    Cam.setWindowSize(Window.getSize());
 
 #if FIGHTER_DEBUG
-    showcase_ = options_.showcase;
-    if (options_.mode == "both") overlay_.setMode(render::ViewMode::Both);
-    if (options_.mode == "textures") overlay_.setMode(render::ViewMode::TexturesOnly);
+    ShowcaseVisible = Opts.Showcase;
+    if (Opts.Mode == "both") Overlay.setMode(render::ViewMode::Both);
+    if (Opts.Mode == "textures") Overlay.setMode(render::ViewMode::TexturesOnly);
 #endif
 
     restartBattle();
-    log::info("sandbox started, root: {}", options_.root.string());
+    log::info("sandbox started, root: {}", Opts.Root.string());
 }
 
 int App::run() {
-    sf::Clock clock;
-    int frame = 0;
+    sf::Clock Clock;
+    int Frame = 0;
 
-    while (window_.isOpen()) {
-        const double frameSec = clock.restart().asSeconds();
+    while (Window.isOpen()) {
+        const double FrameSec = Clock.restart().asSeconds();
         handleEvents();
 
-        const double alpha = loop_.advance(frameSec, [this](double dt) { stepSimulation(dt); });
-        publishFrameStats(frameSec);
-        render(static_cast<float>(alpha));
+        const double Alpha = Loop.advance(FrameSec, [this](double Dt) { stepSimulation(Dt); });
+        publishFrameStats(FrameSec);
+        render(static_cast<float>(Alpha));
 
-        if (options_.screenshot && ++frame >= options_.frames) {
+        if (Opts.Screenshot && ++Frame >= Opts.Frames) {
             saveScreenshot();
-            window_.close();
+            Window.close();
             break;
         }
-        window_.display();
+        Window.display();
     }
     return 0;
 }
 
 void App::handleEvents() {
-    while (const std::optional event = window_.pollEvent()) {
-        if (event->is<sf::Event::Closed>()) {
-            window_.close();
-        } else if (const auto* resized = event->getIf<sf::Event::Resized>()) {
-            camera_.setWindowSize(resized->size);
-        } else if (event->is<sf::Event::FocusLost>()) {
-            input_.reset();
-        } else if (const auto* pressed = event->getIf<sf::Event::KeyPressed>()) {
-            onKeyPressed(pressed->scancode);
-        } else if (const auto* released = event->getIf<sf::Event::KeyReleased>()) {
-            // Отпускание передаём всегда, иначе клавиша может «залипнуть».
-            input_.onKey(released->scancode, false);
+    while (const std::optional Event = Window.pollEvent()) {
+        if (Event->is<sf::Event::Closed>()) {
+            Window.close();
+        } else if (const auto* Resized = Event->getIf<sf::Event::Resized>()) {
+            Cam.setWindowSize(Resized->size);
+        } else if (Event->is<sf::Event::FocusLost>()) {
+            Input.reset();
+        } else if (const auto* Pressed = Event->getIf<sf::Event::KeyPressed>()) {
+            onKeyPressed(Pressed->scancode);
+        } else if (const auto* Released = Event->getIf<sf::Event::KeyReleased>()) {
+            // Always pass releases on, otherwise a key may stick.
+            Input.onKey(Released->scancode, false);
         }
     }
 }
 
-void App::onKeyPressed(sf::Keyboard::Scancode key) {
-    if (key == sf::Keyboard::Scan::Escape) {
-        window_.close();
+void App::onKeyPressed(sf::Keyboard::Scancode Key) {
+    if (Key == sf::Keyboard::Scan::Escape) {
+        Window.close();
         return;
     }
 #if FIGHTER_DEBUG
-    if (const auto result = overlay_.handleKey(key); result.consumed) {
-        applyDebugAction(result.action);
+    if (const auto Result = Overlay.handleKey(Key); Result.Consumed) {
+        applyDebugAction(Result.Action);
         return;
     }
 #endif
-    input_.onKey(key, true);
+    Input.onKey(Key, true);
 }
 
-void App::stepSimulation(double dt) {
+void App::stepSimulation(double Dt) {
     debug::beginTick();
 
-    previous_ = battle_->snapshot();
-    battle_->update(input_.commands(0), input_.commands(1), dt);
+    Previous = CurrentBattle->getSnapshot();
+    CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
 
 #if FIGHTER_DEBUG
-    if (showcase_) drawDebugShowcase();
+    if (ShowcaseVisible) drawDebugShowcase();
 #endif
 
-    if (const auto result = battle_->result(); result && !resultReported_) {
-        resultReported_ = true;
-        log::info("round over: winner {}, {:.1f} s", winnerName(result->winner), result->timeSec);
-        debug::event(std::format("round over: winner {}", winnerName(result->winner)));
+    if (const auto Result = CurrentBattle->getResult(); Result && !ResultReported) {
+        ResultReported = true;
+        log::info("round over: winner {}, {:.1f} s", getWinnerName(Result->WinnerSide), Result->TimeSec);
+        debug::logEvent(std::format("round over: winner {}", getWinnerName(Result->WinnerSide)));
     }
 }
 
-void App::render(float alpha) {
-    window_.clear(sf::Color::Black);
-    const combat::RenderSnapshot snapshot = combat::interpolate(previous_, battle_->snapshot(), alpha);
+void App::render(float Alpha) {
+    Window.clear(sf::Color::Black);
+    const combat::RenderSnapshot Snapshot =
+        combat::interpolate(Previous, CurrentBattle->getSnapshot(), Alpha);
 
 #if FIGHTER_DEBUG
-    if (overlay_.showTextures()) {
-        battleRenderer_.drawWorld(window_, camera_, snapshot);
+    if (Overlay.shouldShowTextures()) {
+        Renderer.drawWorld(Window, Cam, Snapshot);
     } else {
-        overlay_.drawBackdrop(window_, camera_);
+        Overlay.drawBackdrop(Window, Cam);
     }
-    if (overlay_.showPrimitives()) overlay_.drawPrimitives(window_, camera_, debug::drawList());
-    battleRenderer_.drawHud(window_, camera_, snapshot);
-    overlay_.drawPanel(window_, camera_, debug::drawList());
+    if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
+    Renderer.drawHud(Window, Cam, Snapshot);
+    Overlay.drawPanel(Window, Cam, debug::getDrawList());
 #else
-    battleRenderer_.drawWorld(window_, camera_, snapshot);
-    battleRenderer_.drawHud(window_, camera_, snapshot);
+    Renderer.drawWorld(Window, Cam, Snapshot);
+    Renderer.drawHud(Window, Cam, Snapshot);
 #endif
 }
 
 void App::restartBattle() {
-    battle_ = std::make_unique<combat::Battle>(sandboxBattle());
-    previous_ = battle_->snapshot();
-    resultReported_ = false;
-    loop_.reset();
-    input_.reset();
+    CurrentBattle = std::make_unique<combat::Battle>(makeSandboxBattle());
+    Previous = CurrentBattle->getSnapshot();
+    ResultReported = false;
+    Loop.reset();
+    Input.reset();
 }
 
-void App::publishFrameStats(double frameSec) {
-    // Сглаживаем время кадра, а не FPS: среднее от 1/t завышается редкими быстрыми кадрами.
-    frameSecSmoothed_ = frameSecSmoothed_ == 0.0 ? frameSec : frameSecSmoothed_ * 0.95 + frameSec * 0.05;
+void App::publishFrameStats(double FrameSec) {
+    // Smooth the frame time rather than FPS: an average of 1/t is skewed
+    // upwards by rare fast frames.
+    FrameSecSmoothed = FrameSecSmoothed == 0.0 ? FrameSec : FrameSecSmoothed * 0.95 + FrameSec * 0.05;
     if constexpr (FIGHTER_DEBUG) {
-        const double fps = frameSecSmoothed_ > 0.0 ? 1.0 / frameSecSmoothed_ : 0.0;
-        debug::panel("fps", std::format("{:.0f}  ({:.2f} ms)", fps, frameSecSmoothed_ * 1000.0));
-        debug::panel("tick", std::format("{}  (+{} this frame)", loop_.tick(), loop_.stepsLastAdvance()));
-        debug::panel("sim", std::format("{}  x{:.2f}", loop_.paused() ? "PAUSED" : "running", loop_.timeScale()));
+        const double Fps = FrameSecSmoothed > 0.0 ? 1.0 / FrameSecSmoothed : 0.0;
+        debug::setPanel("fps", std::format("{:.0f}  ({:.2f} ms)", Fps, FrameSecSmoothed * 1000.0));
+        debug::setPanel("tick", std::format("{}  (+{} this frame)", Loop.getTick(), Loop.getStepsLastAdvance()));
+        debug::setPanel("sim", std::format("{}  x{:.2f}", Loop.isPaused() ? "PAUSED" : "running",
+                                           Loop.getTimeScale()));
     }
 }
 
 void App::saveScreenshot() {
-    sf::Texture texture(window_.getSize());
-    texture.update(window_);
-    if (texture.copyToImage().saveToFile(*options_.screenshot)) {
-        log::info("screenshot saved: {}", options_.screenshot->string());
+    sf::Texture Capture(Window.getSize());
+    Capture.update(Window);
+    if (Capture.copyToImage().saveToFile(*Opts.Screenshot)) {
+        log::info("screenshot saved: {}", Opts.Screenshot->string());
     } else {
-        log::error("failed to save screenshot: {}", options_.screenshot->string());
+        log::error("failed to save screenshot: {}", Opts.Screenshot->string());
     }
 }
 
 #if FIGHTER_DEBUG
-void App::applyDebugAction(render::DebugAction action) {
+void App::applyDebugAction(render::DebugAction Action) {
     using render::DebugAction;
-    switch (action) {
+    switch (Action) {
         case DebugAction::None:
             break;
         case DebugAction::TogglePause:
-            loop_.setPaused(!loop_.paused());
+            Loop.setPaused(!Loop.isPaused());
             break;
         case DebugAction::Step:
-            if (!loop_.paused()) loop_.setPaused(true);
-            loop_.requestSingleStep();
+            if (!Loop.isPaused()) Loop.setPaused(true);
+            Loop.requestSingleStep();
             break;
         case DebugAction::Slower:
-            loop_.setTimeScale(loop_.timeScale() * 0.5);
+            Loop.setTimeScale(Loop.getTimeScale() * 0.5);
             break;
         case DebugAction::Faster:
-            loop_.setTimeScale(loop_.timeScale() * 2.0);
+            Loop.setTimeScale(Loop.getTimeScale() * 2.0);
             break;
         case DebugAction::Restart:
             restartBattle();
-            debug::event("restart");
+            debug::logEvent("restart");
             break;
         case DebugAction::Reload:
-            // В фазе 0 перечитывать нечего: JSON-конфиги появятся в фазах 1–2.
+            // Nothing to reload in phase 0: JSON configs arrive in phases 1-2.
             restartBattle();
-            debug::event("reload: no data files yet, restarted");
+            debug::logEvent("reload: no data files yet, restarted");
             break;
         case DebugAction::ToggleShowcase:
-            showcase_ = !showcase_;
+            ShowcaseVisible = !ShowcaseVisible;
             break;
     }
 }

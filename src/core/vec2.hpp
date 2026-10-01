@@ -1,57 +1,76 @@
+//===- core/vec2.hpp - 2D vector math ---------------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file defines Vec2, the 2D vector used for all world-space math, and
+/// the free functions that operate on it (dot, cross, perp, rotate, lerp).
+///
+/// World space is measured in meters with the Y axis pointing up (see
+/// docs/DEVELOPMENT_PLAN.md, section 3.1). Components are float to match
+/// Box2D and SFML without conversions.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cmath>
 
 namespace fighter {
 
-// Вектор в мировых координатах: метры, ось Y направлена вверх (docs/DEVELOPMENT_PLAN.md §3.1).
-// float — как в Box2D и SFML, чтобы не терять время и точность на преобразованиях.
+/// A 2D vector in world space: meters, Y up.
 struct Vec2 {
-    float x = 0.0f;
-    float y = 0.0f;
+    float X = 0.0f;
+    float Y = 0.0f;
 
     constexpr Vec2() = default;
-    constexpr Vec2(float x_, float y_) : x(x_), y(y_) {}
+    constexpr Vec2(float NewX, float NewY) : X(NewX), Y(NewY) {}
 
-    constexpr Vec2 operator-() const { return {-x, -y}; }
+    constexpr Vec2 operator-() const { return {-X, -Y}; }
 
-    constexpr Vec2& operator+=(Vec2 o) { x += o.x; y += o.y; return *this; }
-    constexpr Vec2& operator-=(Vec2 o) { x -= o.x; y -= o.y; return *this; }
-    constexpr Vec2& operator*=(float s) { x *= s; y *= s; return *this; }
-    constexpr Vec2& operator/=(float s) { x /= s; y /= s; return *this; }
+    constexpr Vec2& operator+=(Vec2 O) { X += O.X; Y += O.Y; return *this; }
+    constexpr Vec2& operator-=(Vec2 O) { X -= O.X; Y -= O.Y; return *this; }
+    constexpr Vec2& operator*=(float S) { X *= S; Y *= S; return *this; }
+    constexpr Vec2& operator/=(float S) { X /= S; Y /= S; return *this; }
 
     constexpr bool operator==(const Vec2&) const = default;
 
-    constexpr float lengthSquared() const { return x * x + y * y; }
-    float length() const { return std::sqrt(lengthSquared()); }
+    constexpr float getLengthSquared() const { return X * X + Y * Y; }
+    float getLength() const { return std::sqrt(getLengthSquared()); }
 
-    // Для нулевого вектора возвращает нулевой вектор, а не NaN.
-    Vec2 normalized() const {
-        const float len = length();
-        return len > 0.0f ? Vec2{x / len, y / len} : Vec2{};
+    /// Returns a unit vector in the same direction. The zero vector maps to the
+    /// zero vector instead of NaN.
+    Vec2 getNormalized() const {
+        const float Len = getLength();
+        return Len > 0.0f ? Vec2{X / Len, Y / Len} : Vec2{};
     }
 };
 
-constexpr Vec2 operator+(Vec2 a, Vec2 b) { return a += b; }
-constexpr Vec2 operator-(Vec2 a, Vec2 b) { return a -= b; }
-constexpr Vec2 operator*(Vec2 v, float s) { return v *= s; }
-constexpr Vec2 operator*(float s, Vec2 v) { return v *= s; }
-constexpr Vec2 operator/(Vec2 v, float s) { return v /= s; }
+constexpr Vec2 operator+(Vec2 A, Vec2 B) { return A += B; }
+constexpr Vec2 operator-(Vec2 A, Vec2 B) { return A -= B; }
+constexpr Vec2 operator*(Vec2 V, float S) { return V *= S; }
+constexpr Vec2 operator*(float S, Vec2 V) { return V *= S; }
+constexpr Vec2 operator/(Vec2 V, float S) { return V /= S; }
 
-constexpr float dot(Vec2 a, Vec2 b) { return a.x * b.x + a.y * b.y; }
+constexpr float dot(Vec2 A, Vec2 B) { return A.X * B.X + A.Y * B.Y; }
 
-// Z-компонента векторного произведения: > 0, если b повёрнут от a против часовой стрелки.
-constexpr float cross(Vec2 a, Vec2 b) { return a.x * b.y - a.y * b.x; }
+/// Z component of the 3D cross product: positive when B is rotated
+/// counter-clockwise from A.
+constexpr float cross(Vec2 A, Vec2 B) { return A.X * B.Y - A.Y * B.X; }
 
-// Поворот на +90° (против часовой стрелки).
-constexpr Vec2 perp(Vec2 v) { return {-v.y, v.x}; }
+/// Rotates the vector by +90 degrees (counter-clockwise).
+constexpr Vec2 perp(Vec2 V) { return {-V.Y, V.X}; }
 
-inline Vec2 rotate(Vec2 v, float angleRad) {
-    const float c = std::cos(angleRad);
-    const float s = std::sin(angleRad);
-    return {v.x * c - v.y * s, v.x * s + v.y * c};
+/// Rotates the vector counter-clockwise by \p AngleRad radians.
+inline Vec2 rotate(Vec2 V, float AngleRad) {
+    const float C = std::cos(AngleRad);
+    const float S = std::sin(AngleRad);
+    return {V.X * C - V.Y * S, V.X * S + V.Y * C};
 }
 
-constexpr Vec2 lerp(Vec2 a, Vec2 b, float t) { return a + (b - a) * t; }
+/// Linear interpolation: \p T = 0 gives \p A, \p T = 1 gives \p B.
+constexpr Vec2 lerp(Vec2 A, Vec2 B, float T) { return A + (B - A) * T; }
 
 } // namespace fighter

@@ -9,94 +9,98 @@ namespace fighter::app {
 
 void drawDebugShowcase() {
     using debug::Cat;
-    constexpr float pi = std::numbers::pi_v<float>;
+    constexpr float Pi = std::numbers::pi_v<float>;
 
-    // Сетка ячеек в правой половине вида: левую верхнюю часть занимает панель.
-    constexpr int kPerRow = 6;
-    constexpr float kStepX = 0.95f, kFirstX = -0.3f;
-    constexpr std::array<float, 2> kRowY = {3.9f, 2.55f};
-    int slot = 0;
-    float x = kFirstX;
-    float y = kRowY[0];
-    auto next = [&] {
-        ++slot;
-        x = kFirstX + kStepX * static_cast<float>(slot % kPerRow);
-        y = kRowY[static_cast<std::size_t>(slot / kPerRow)];
+    // A grid of cells in the right half of the view: the panel occupies the top left.
+    constexpr int PerRow = 6;
+    constexpr float StepX = 0.95f, FirstX = -0.3f;
+    constexpr std::array<float, 2> RowY = {3.9f, 2.55f};
+    int Slot = 0;
+    float X = FirstX;
+    float Y = RowY[0];
+    auto Next = [&] {
+        ++Slot;
+        X = FirstX + StepX * static_cast<float>(Slot % PerRow);
+        Y = RowY[static_cast<std::size_t>(Slot / PerRow)];
     };
 
-    auto label = [&](Cat cat) { debug::text(cat, {x - 0.3f, y + 0.75f}, debug::catName(cat)); };
+    auto Label = [&](Cat C) { debug::drawText(C, {X - 0.3f, Y + 0.75f}, debug::getCatName(C)); };
 
-    {   // Hurtbox: у левого и правого бойца разные цвета
-        label(Cat::Hurtbox);
+    {   // Hurtbox: the left and right fighters have different colors.
+        Label(Cat::Hurtbox);
         {
-            debug::ScopedSide s(debug::Side::Left);
-            const std::array<Vec2, 4> box = {Vec2{x - 0.3f, y}, Vec2{x - 0.02f, y}, Vec2{x - 0.02f, y + 0.5f}, Vec2{x - 0.3f, y + 0.5f}};
-            debug::poly(Cat::Hurtbox, box);
+            debug::ScopedSide Owner(debug::Side::Left);
+            const std::array<Vec2, 4> Box = {Vec2{X - 0.3f, Y}, Vec2{X - 0.02f, Y}, Vec2{X - 0.02f, Y + 0.5f},
+                                             Vec2{X - 0.3f, Y + 0.5f}};
+            debug::drawPoly(Cat::Hurtbox, Box);
         }
         {
-            debug::ScopedSide s(debug::Side::Right);
-            const std::array<Vec2, 4> box = {Vec2{x + 0.02f, y}, Vec2{x + 0.3f, y}, Vec2{x + 0.3f, y + 0.5f}, Vec2{x + 0.02f, y + 0.5f}};
-            debug::poly(Cat::Hurtbox, box);
+            debug::ScopedSide Owner(debug::Side::Right);
+            const std::array<Vec2, 4> Box = {Vec2{X + 0.02f, Y}, Vec2{X + 0.3f, Y}, Vec2{X + 0.3f, Y + 0.5f},
+                                             Vec2{X + 0.02f, Y + 0.5f}};
+            debug::drawPoly(Cat::Hurtbox, Box);
         }
-        next();
+        Next();
     }
-    {   // Hitbox: кулак в активной фазе
-        label(Cat::Hitbox);
-        const std::array<Vec2, 4> fist = {Vec2{x - 0.12f, y + 0.15f}, Vec2{x + 0.12f, y + 0.15f}, Vec2{x + 0.12f, y + 0.35f}, Vec2{x - 0.12f, y + 0.35f}};
-        debug::poly(Cat::Hitbox, fist);
-        next();
+    {   // Hitbox: a fist in the active phase.
+        Label(Cat::Hitbox);
+        const std::array<Vec2, 4> Fist = {Vec2{X - 0.12f, Y + 0.15f}, Vec2{X + 0.12f, Y + 0.15f},
+                                          Vec2{X + 0.12f, Y + 0.35f}, Vec2{X - 0.12f, Y + 0.35f}};
+        debug::drawPoly(Cat::Hitbox, Fist);
+        Next();
     }
     {   // Block
-        label(Cat::Block);
-        const std::array<Vec2, 4> guard = {Vec2{x - 0.08f, y}, Vec2{x + 0.08f, y}, Vec2{x + 0.08f, y + 0.55f}, Vec2{x - 0.08f, y + 0.55f}};
-        debug::poly(Cat::Block, guard);
-        next();
+        Label(Cat::Block);
+        const std::array<Vec2, 4> Guard = {Vec2{X - 0.08f, Y}, Vec2{X + 0.08f, Y}, Vec2{X + 0.08f, Y + 0.55f},
+                                           Vec2{X - 0.08f, Y + 0.55f}};
+        debug::drawPoly(Cat::Block, Guard);
+        Next();
     }
     {   // Static
-        label(Cat::Static);
-        debug::line(Cat::Static, {x - 0.35f, y}, {x + 0.35f, y});
-        debug::line(Cat::Static, {x + 0.35f, y}, {x + 0.35f, y + 0.5f});
-        next();
+        Label(Cat::Static);
+        debug::drawLine(Cat::Static, {X - 0.35f, Y}, {X + 0.35f, Y});
+        debug::drawLine(Cat::Static, {X + 0.35f, Y}, {X + 0.35f, Y + 0.5f});
+        Next();
     }
-    {   // Joints: шарнир и дуга допустимых углов
-        label(Cat::Joints);
-        const Vec2 j{x, y + 0.25f};
-        debug::point(Cat::Joints, j);
-        debug::arc(Cat::Joints, j, 0.22f, -0.25f * pi, 0.75f * pi);
-        next();
+    {   // Joints: a joint and the arc of allowed angles.
+        Label(Cat::Joints);
+        const Vec2 Joint{X, Y + 0.25f};
+        debug::drawPoint(Cat::Joints, Joint);
+        debug::drawArc(Cat::Joints, Joint, 0.22f, -0.25f * Pi, 0.75f * Pi);
+        Next();
     }
-    {   // TargetPose: «призрак» конечности
-        label(Cat::TargetPose);
-        debug::line(Cat::TargetPose, {x - 0.25f, y + 0.1f}, {x, y + 0.4f});
-        debug::line(Cat::TargetPose, {x, y + 0.4f}, {x + 0.3f, y + 0.35f});
-        next();
+    {   // TargetPose: the "ghost" of a limb.
+        Label(Cat::TargetPose);
+        debug::drawLine(Cat::TargetPose, {X - 0.25f, Y + 0.1f}, {X, Y + 0.4f});
+        debug::drawLine(Cat::TargetPose, {X, Y + 0.4f}, {X + 0.3f, Y + 0.35f});
+        Next();
     }
-    {   // Motors: момент мотора — дуга со стрелкой
-        label(Cat::Motors);
-        const Vec2 j{x, y + 0.25f};
-        debug::arc(Cat::Motors, j, 0.2f, 0.0f, 0.6f * pi);
-        debug::arrow(Cat::Motors, j + Vec2{-0.2f, 0.06f}, {0.0f, -0.12f}, "12 N*m");
-        next();
+    {   // Motors: motor torque as an arc with an arrow.
+        Label(Cat::Motors);
+        const Vec2 Joint{X, Y + 0.25f};
+        debug::drawArc(Cat::Motors, Joint, 0.2f, 0.0f, 0.6f * Pi);
+        debug::drawArrow(Cat::Motors, Joint + Vec2{-0.2f, 0.06f}, {0.0f, -0.12f}, "12 N*m");
+        Next();
     }
     {   // Forces
-        label(Cat::Forces);
-        debug::arrow(Cat::Forces, {x - 0.3f, y + 0.25f}, {0.6f, 0.15f}, "J=34");
-        next();
+        Label(Cat::Forces);
+        debug::drawArrow(Cat::Forces, {X - 0.3f, Y + 0.25f}, {0.6f, 0.15f}, "J=34");
+        Next();
     }
     {   // Velocity
-        label(Cat::Velocity);
-        debug::arrow(Cat::Velocity, {x - 0.25f, y + 0.1f}, {0.45f, 0.35f}, "2.8 m/s");
-        next();
+        Label(Cat::Velocity);
+        debug::drawArrow(Cat::Velocity, {X - 0.25f, Y + 0.1f}, {0.45f, 0.35f}, "2.8 m/s");
+        Next();
     }
-    {   // Contacts: точка и нормаль
-        label(Cat::Contacts);
-        debug::point(Cat::Contacts, {x, y + 0.2f}, 0.05f);
-        debug::arrow(Cat::Contacts, {x, y + 0.2f}, {0.0f, 0.35f});
-        next();
+    {   // Contacts: a point and its normal.
+        Label(Cat::Contacts);
+        debug::drawPoint(Cat::Contacts, {X, Y + 0.2f}, 0.05f);
+        debug::drawArrow(Cat::Contacts, {X, Y + 0.2f}, {0.0f, 0.35f});
+        Next();
     }
     {   // CoM
-        label(Cat::CoM);
-        debug::cross(Cat::CoM, {x, y + 0.25f});
+        Label(Cat::CoM);
+        debug::drawCross(Cat::CoM, {X, Y + 0.25f});
     }
 }
 

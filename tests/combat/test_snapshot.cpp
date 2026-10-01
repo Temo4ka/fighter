@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <numbers>
 
 #include "combat/snapshot.hpp"
@@ -10,24 +11,24 @@ using namespace fighter::combat;
 using Catch::Approx;
 
 TEST_CASE("interpolate: positions between frames", "[combat][snapshot]") {
-    RenderSnapshot prev, curr;
-    prev.fighters[0].position = {0.0f, 0.0f};
-    curr.fighters[0].position = {1.0f, 2.0f};
-    curr.fighters[0].hp = 50.0f;
+    RenderSnapshot Prev, Curr;
+    Prev.Fighters[0].Position = {0.0f, 0.0f};
+    Curr.Fighters[0].Position = {1.0f, 2.0f};
+    Curr.Fighters[0].Hp = 50.0f;
 
-    const auto mid = interpolate(prev, curr, 0.25f);
-    CHECK(mid.fighters[0].position.x == Approx(0.25f));
-    CHECK(mid.fighters[0].position.y == Approx(0.5f));
-    CHECK(mid.fighters[0].hp == 50.0f);   // дискретные поля берутся из текущего кадра
+    const auto Mid = interpolate(Prev, Curr, 0.25f);
+    CHECK(Mid.Fighters[0].Position.X == Approx(0.25f));
+    CHECK(Mid.Fighters[0].Position.Y == Approx(0.5f));
+    CHECK(Mid.Fighters[0].Hp == 50.0f);   // discrete fields come from the current frame
 }
 
 TEST_CASE("interpolate: angle takes the shortest arc", "[combat][snapshot]") {
-    constexpr float pi = std::numbers::pi_v<float>;
-    RenderSnapshot prev, curr;
-    prev.fighters[0].parts = {PartTransform{BodyPart::Head, {}, 0.9f * pi}};
-    curr.fighters[0].parts = {PartTransform{BodyPart::Head, {}, -0.9f * pi}};
+    constexpr float Pi = std::numbers::pi_v<float>;
+    RenderSnapshot Prev, Curr;
+    Prev.Fighters[0].Parts = {PartTransform{BodyPart::Head, {}, 0.9f * Pi}};
+    Curr.Fighters[0].Parts = {PartTransform{BodyPart::Head, {}, -0.9f * Pi}};
 
-    const float mid = interpolate(prev, curr, 0.5f).fighters[0].parts[0].angle;
-    // Через ±π, а не через 0: середина около π по модулю.
-    CHECK(std::abs(std::remainder(mid - pi, 2.0f * pi)) < 0.01f);
+    const float Mid = interpolate(Prev, Curr, 0.5f).Fighters[0].Parts[0].Angle;
+    // Through +-pi rather than through 0: the midpoint is near pi modulo 2*pi.
+    CHECK(std::abs(std::remainder(Mid - Pi, 2.0f * Pi)) < 0.01f);
 }

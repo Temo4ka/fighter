@@ -7,63 +7,64 @@ using namespace fighter::combat;
 using Catch::Approx;
 
 namespace {
-constexpr double kDt = 1.0 / 60.0;
+constexpr double Dt = 1.0 / 60.0;
 
-void run(Battle& b, const PlayerCommands& l, const PlayerCommands& r, int ticks) {
-    for (int i = 0; i < ticks; ++i) b.update(l, r, kDt);
+void run(Battle& B, const PlayerCommands& L, const PlayerCommands& R, int Ticks) {
+    for (int I = 0; I < Ticks; ++I) B.update(L, R, Dt);
 }
 } // namespace
 
-// Сценарные тесты боя без окна: скриптованный ввод → ожидаемое состояние.
-// Пока проверяют кинематическую заглушку фазы 0; с появлением физики их дополнит агент D.
+// Scenario tests of a fight without a window: scripted input -> expected state.
+// For now they cover the phase 0 kinematic placeholder; agent D extends them
+// once physics arrives.
 
 TEST_CASE("Battle: fighters start on opposite sides facing each other", "[combat]") {
-    Battle b(BattleConfig{});
-    const auto& s = b.snapshot();
-    CHECK(s.fighters[0].position.x < s.fighters[1].position.x);
-    CHECK(s.fighters[0].facingRight);
-    CHECK_FALSE(s.fighters[1].facingRight);
-    CHECK(s.fighters[0].hp == s.fighters[0].maxHp);
+    Battle B(BattleConfig{});
+    const auto& S = B.getSnapshot();
+    CHECK(S.Fighters[0].Position.X < S.Fighters[1].Position.X);
+    CHECK(S.Fighters[0].FacingRight);
+    CHECK_FALSE(S.Fighters[1].FacingRight);
+    CHECK(S.Fighters[0].Hp == S.Fighters[0].MaxHp);
 }
 
 TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
-    Battle b(BattleConfig{});
-    const float x0 = b.snapshot().fighters[0].position.x;
-    run(b, {.moveX = -1.0f}, {}, 30);
-    CHECK(b.snapshot().fighters[0].position.x < x0);
+    Battle B(BattleConfig{});
+    const float X0 = B.getSnapshot().Fighters[0].Position.X;
+    run(B, {.MoveX = -1.0f}, {}, 30);
+    CHECK(B.getSnapshot().Fighters[0].Position.X < X0);
 
-    run(b, {.moveX = -1.0f}, {}, 600);
-    CHECK(b.snapshot().fighters[0].position.x > -b.config().arena.halfWidthM);   // не вышел за стену
+    run(B, {.MoveX = -1.0f}, {}, 600);
+    CHECK(B.getSnapshot().Fighters[0].Position.X > -B.getConfig().Arena.HalfWidthM);   // stayed inside
 }
 
 TEST_CASE("Battle: jump goes up and lands on the floor", "[combat]") {
-    Battle b(BattleConfig{});
-    run(b, {.jump = true}, {}, 10);
-    CHECK(b.snapshot().fighters[0].position.y > 0.1f);
-    run(b, {}, {}, 120);
-    CHECK(b.snapshot().fighters[0].position.y == Approx(0.0f));
+    Battle B(BattleConfig{});
+    run(B, {.Jump = true}, {}, 10);
+    CHECK(B.getSnapshot().Fighters[0].Position.Y > 0.1f);
+    run(B, {}, {}, 120);
+    CHECK(B.getSnapshot().Fighters[0].Position.Y == Approx(0.0f));
 }
 
 TEST_CASE("Battle: result is available when round time runs out", "[combat]") {
-    BattleConfig config;
-    config.roundTimeSec = 1.0;
-    Battle b(config);
-    CHECK_FALSE(b.result().has_value());
-    run(b, {}, {}, 61);
-    REQUIRE(b.result().has_value());
-    CHECK(b.result()->timeSec == Approx(1.0).margin(kDt));
+    BattleConfig Config;
+    Config.RoundTimeSec = 1.0;
+    Battle B(Config);
+    CHECK_FALSE(B.getResult().has_value());
+    run(B, {}, {}, 61);
+    REQUIRE(B.getResult().has_value());
+    CHECK(B.getResult()->TimeSec == Approx(1.0).margin(Dt));
 }
 
 TEST_CASE("Battle: same input gives the same result", "[combat]") {
-    Battle a(BattleConfig{});
-    Battle b(BattleConfig{});
-    for (int i = 0; i < 300; ++i) {
-        const PlayerCommands l{.moveX = (i / 40) % 2 ? 1.0f : -1.0f, .jump = i % 90 == 0};
-        const PlayerCommands r{.moveX = (i / 25) % 2 ? -1.0f : 1.0f};
-        a.update(l, r, kDt);
-        b.update(l, r, kDt);
+    Battle A(BattleConfig{});
+    Battle B(BattleConfig{});
+    for (int I = 0; I < 300; ++I) {
+        const PlayerCommands L{.MoveX = (I / 40) % 2 ? 1.0f : -1.0f, .Jump = I % 90 == 0};
+        const PlayerCommands R{.MoveX = (I / 25) % 2 ? -1.0f : 1.0f};
+        A.update(L, R, Dt);
+        B.update(L, R, Dt);
     }
-    for (std::size_t f = 0; f < 2; ++f) {
-        CHECK(a.snapshot().fighters[f].position == b.snapshot().fighters[f].position);
+    for (std::size_t F = 0; F < 2; ++F) {
+        CHECK(A.getSnapshot().Fighters[F].Position == B.getSnapshot().Fighters[F].Position);
     }
 }

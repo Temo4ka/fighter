@@ -3,7 +3,7 @@ set(render_sources
     resources.cpp
     battle_renderer.cpp
 )
-# Отладочный слой попадает в бинарник только в debug-сборке.
+# The debug layer is linked into the binary only in the debug build.
 if(FIGHTER_DEBUG)
     list(APPEND render_sources debug_overlay.cpp)
 endif()
@@ -14,6 +14,6 @@ fighter_add_module(render
     PUBLIC_DEPS
         fighter::core
         fighter::debug
-        fighter::combat   # только снимки RenderSnapshot
+        fighter::combat   # only RenderSnapshot
         SFML::Graphics
 )

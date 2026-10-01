@@ -5,107 +5,107 @@
 namespace fighter::debug {
 
 void DrawList::beginTick() {
-    primitives_.clear();
-    points_.clear();
-    textPool_.clear();
+    Primitives.clear();
+    Points.clear();
+    TextPool.clear();
 }
 
 void DrawList::clearAll() {
     beginTick();
     clearPanel();
-    events_.clear();
+    Events.clear();
 }
 
-Primitive& DrawList::push(Primitive::Kind kind, Cat cat, Side side) {
-    Primitive& p = primitives_.emplace_back();
-    p.kind = kind;
-    p.cat = cat;
-    p.side = side;
-    return p;
+Primitive& DrawList::addPrimitive(PrimitiveKind Kind, Cat C, Side Owner) {
+    Primitive& P = Primitives.emplace_back();
+    P.Kind = Kind;
+    P.Category = C;
+    P.Owner = Owner;
+    return P;
 }
 
-void DrawList::attachText(Primitive& p, std::string_view text) {
-    p.textBegin = static_cast<std::uint32_t>(textPool_.size());
-    p.textLength = static_cast<std::uint32_t>(text.size());
-    textPool_.append(text);
+void DrawList::attachText(Primitive& P, std::string_view Text) {
+    P.TextBegin = static_cast<std::uint32_t>(TextPool.size());
+    P.TextLength = static_cast<std::uint32_t>(Text.size());
+    TextPool.append(Text);
 }
 
-void DrawList::line(Cat cat, Vec2 a, Vec2 b, Side side) {
-    Primitive& p = push(Primitive::Kind::Line, cat, side);
-    p.a = a;
-    p.b = b;
+void DrawList::addLine(Cat C, Vec2 A, Vec2 B, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Line, C, Owner);
+    P.A = A;
+    P.B = B;
 }
 
-void DrawList::arrow(Cat cat, Vec2 from, Vec2 vec, std::string_view label, Side side) {
-    Primitive& p = push(Primitive::Kind::Arrow, cat, side);
-    p.a = from;
-    p.b = vec;
-    attachText(p, label);
+void DrawList::addArrow(Cat C, Vec2 From, Vec2 Vec, std::string_view Label, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Arrow, C, Owner);
+    P.A = From;
+    P.B = Vec;
+    attachText(P, Label);
 }
 
-void DrawList::circle(Cat cat, Vec2 center, float radius, Side side) {
-    Primitive& p = push(Primitive::Kind::Circle, cat, side);
-    p.a = center;
-    p.radius = radius;
+void DrawList::addCircle(Cat C, Vec2 Center, float Radius, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Circle, C, Owner);
+    P.A = Center;
+    P.Radius = Radius;
 }
 
-void DrawList::arc(Cat cat, Vec2 center, float radius, float angle0, float angle1, Side side) {
-    Primitive& p = push(Primitive::Kind::Arc, cat, side);
-    p.a = center;
-    p.radius = radius;
-    p.angle0 = angle0;
-    p.angle1 = angle1;
+void DrawList::addArc(Cat C, Vec2 Center, float Radius, float Angle0, float Angle1, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Arc, C, Owner);
+    P.A = Center;
+    P.Radius = Radius;
+    P.Angle0 = Angle0;
+    P.Angle1 = Angle1;
 }
 
-void DrawList::poly(Cat cat, std::span<const Vec2> points, Side side) {
-    Primitive& p = push(Primitive::Kind::Poly, cat, side);
-    p.pointsBegin = static_cast<std::uint32_t>(points_.size());
-    p.pointsCount = static_cast<std::uint32_t>(points.size());
-    points_.insert(points_.end(), points.begin(), points.end());
+void DrawList::addPoly(Cat C, std::span<const Vec2> Vertices, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Poly, C, Owner);
+    P.PointsBegin = static_cast<std::uint32_t>(Points.size());
+    P.PointsCount = static_cast<std::uint32_t>(Vertices.size());
+    Points.insert(Points.end(), Vertices.begin(), Vertices.end());
 }
 
-void DrawList::point(Cat cat, Vec2 at, float size, Side side) {
-    Primitive& p = push(Primitive::Kind::Point, cat, side);
-    p.a = at;
-    p.radius = size;
+void DrawList::addPoint(Cat C, Vec2 At, float Size, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Point, C, Owner);
+    P.A = At;
+    P.Radius = Size;
 }
 
-void DrawList::cross(Cat cat, Vec2 at, float size, Side side) {
-    Primitive& p = push(Primitive::Kind::Cross, cat, side);
-    p.a = at;
-    p.radius = size;
+void DrawList::addCross(Cat C, Vec2 At, float Size, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Cross, C, Owner);
+    P.A = At;
+    P.Radius = Size;
 }
 
-void DrawList::text(Cat cat, Vec2 at, std::string_view text, Side side) {
-    Primitive& p = push(Primitive::Kind::Text, cat, side);
-    p.a = at;
-    attachText(p, text);
+void DrawList::addText(Cat C, Vec2 At, std::string_view Text, Side Owner) {
+    Primitive& P = addPrimitive(PrimitiveKind::Text, C, Owner);
+    P.A = At;
+    attachText(P, Text);
 }
 
-std::span<const Vec2> DrawList::points(const Primitive& p) const {
-    return std::span<const Vec2>(points_).subspan(p.pointsBegin, p.pointsCount);
+std::span<const Vec2> DrawList::getPoints(const Primitive& P) const {
+    return std::span<const Vec2>(Points).subspan(P.PointsBegin, P.PointsCount);
 }
 
-std::string_view DrawList::text(const Primitive& p) const {
-    return std::string_view(textPool_).substr(p.textBegin, p.textLength);
+std::string_view DrawList::getText(const Primitive& P) const {
+    return std::string_view(TextPool).substr(P.TextBegin, P.TextLength);
 }
 
-void DrawList::setPanel(std::string_view key, std::string_view value) {
-    auto it = std::find_if(panel_.begin(), panel_.end(), [&](const auto& kv) { return kv.first == key; });
-    if (it != panel_.end()) {
-        it->second = value;
+void DrawList::setPanel(std::string_view Key, std::string_view Value) {
+    auto It = std::find_if(Panel.begin(), Panel.end(), [&](const auto& KV) { return KV.first == Key; });
+    if (It != Panel.end()) {
+        It->second = Value;
     } else {
-        panel_.emplace_back(std::string(key), std::string(value));
+        Panel.emplace_back(std::string(Key), std::string(Value));
     }
 }
 
 void DrawList::clearPanel() {
-    panel_.clear();
+    Panel.clear();
 }
 
-void DrawList::logEvent(std::string_view message) {
-    events_.emplace_back(message);
-    while (events_.size() > kEventLogSize) events_.pop_front();
+void DrawList::logEvent(std::string_view Message) {
+    Events.emplace_back(Message);
+    while (Events.size() > EventLogSize) Events.pop_front();
 }
 
 } // namespace fighter::debug

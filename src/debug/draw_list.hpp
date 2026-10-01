@@ -1,3 +1,24 @@
+//===- debug/draw_list.hpp - Storage for debug primitives -------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares Primitive, one debug shape in world coordinates, and
+/// DrawList, which stores the primitives of one simulation step together with
+/// the text panel and the event log.
+///
+/// Primitives are cleared at the start of every step (beginTick), so the
+/// screen always shows data from the last step and freezes together with the
+/// simulation while paused. Panel lines are not cleared: a value stays until
+/// it is overwritten.
+///
+/// Modules normally do not use DrawList directly; they call the debug::draw*
+/// functions from debug/draw.hpp.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>
@@ -13,70 +34,71 @@
 
 namespace fighter::debug {
 
-// Один отладочный примитив в мировых координатах.
+enum class PrimitiveKind : std::uint8_t { Line, Arrow, Circle, Arc, Poly, Point, Cross, Text };
+
+/// One debug primitive in world coordinates. The meaning of the fields depends
+/// on Kind.
 struct Primitive {
-    enum class Kind : std::uint8_t { Line, Arrow, Circle, Arc, Poly, Point, Cross, Text };
+    PrimitiveKind Kind = PrimitiveKind::Line;
+    Cat Category = Cat::Static;
+    Side Owner = Side::None;
 
-    Kind kind = Kind::Line;
-    Cat cat = Cat::Static;
-    Side side = Side::None;
+    Vec2 A;              ///< Line, Arrow: start. Circle, Arc, Point, Cross: center. Text: anchor.
+    Vec2 B;              ///< Line: end. Arrow: vector.
+    float Radius = 0.0f; ///< Circle, Arc: radius, m. Point, Cross: size, m.
+    float Angle0 = 0.0f; ///< Arc: start angle, rad.
+    float Angle1 = 0.0f; ///< Arc: end angle, rad.
 
-    Vec2 a;              // Line: начало; Arrow: начало; Circle/Arc/Point/Cross: центр; Text: якорь
-    Vec2 b;              // Line: конец; Arrow: вектор
-    float radius = 0.0f; // Circle/Arc: радиус, м; Point/Cross: размер, м
-    float angle0 = 0.0f; // Arc: начальный угол, рад
-    float angle1 = 0.0f; // Arc: конечный угол, рад
-
-    std::uint32_t pointsBegin = 0, pointsCount = 0;   // Poly: вершины в DrawList
-    std::uint32_t textBegin = 0, textLength = 0;      // Arrow/Text: подпись в DrawList
+    std::uint32_t PointsBegin = 0, PointsCount = 0;  ///< Poly: vertices in DrawList.
+    std::uint32_t TextBegin = 0, TextLength = 0;     ///< Arrow, Text: label in DrawList.
 };
 
-// Хранилище отладочных данных одного шага симуляции и текстовой панели.
-//
-// Примитивы очищаются в начале каждого шага (beginTick) — на экране всегда данные
-// последнего шага, а на паузе они «замирают» вместе с симуляцией.
-// Строки панели не очищаются: значение живёт, пока его не перезапишут.
 class DrawList {
 public:
-    static constexpr std::size_t kEventLogSize = 8;
+    static constexpr std::size_t EventLogSize = 8;
 
+    /// Clears the primitives of the previous step.
     void beginTick();
 
-    void line(Cat cat, Vec2 a, Vec2 b, Side side);
-    void arrow(Cat cat, Vec2 from, Vec2 vec, std::string_view label, Side side);
-    void circle(Cat cat, Vec2 center, float radius, Side side);
-    void arc(Cat cat, Vec2 center, float radius, float angle0, float angle1, Side side);
-    void poly(Cat cat, std::span<const Vec2> points, Side side);
-    void point(Cat cat, Vec2 at, float size, Side side);
-    void cross(Cat cat, Vec2 at, float size, Side side);
-    void text(Cat cat, Vec2 at, std::string_view text, Side side);
+    void addLine(Cat C, Vec2 A, Vec2 B, Side Owner);
+    void addArrow(Cat C, Vec2 From, Vec2 Vec, std::string_view Label, Side Owner);
+    void addCircle(Cat C, Vec2 Center, float Radius, Side Owner);
+    void addArc(Cat C, Vec2 Center, float Radius, float Angle0, float Angle1, Side Owner);
+    void addPoly(Cat C, std::span<const Vec2> Vertices, Side Owner);
+    void addPoint(Cat C, Vec2 At, float Size, Side Owner);
+    void addCross(Cat C, Vec2 At, float Size, Side Owner);
+    void addText(Cat C, Vec2 At, std::string_view Text, Side Owner);
 
-    std::span<const Primitive> primitives() const { return primitives_; }
-    std::span<const Vec2> points(const Primitive& p) const;
-    std::string_view text(const Primitive& p) const;
+    std::span<const Primitive> getPrimitives() const { return Primitives; }
+    std::span<const Vec2> getPoints(const Primitive& P) const;
+    std::string_view getText(const Primitive& P) const;
 
-    // --- Текстовая панель ---
-    // Строки выводятся в порядке первого появления ключа.
-    void setPanel(std::string_view key, std::string_view value);
+    /// \name Text panel
+    /// Lines are shown in the order their key first appeared.
+    /// @{
+    void setPanel(std::string_view Key, std::string_view Value);
     void clearPanel();
-    const std::vector<std::pair<std::string, std::string>>& panel() const { return panel_; }
+    const std::vector<std::pair<std::string, std::string>>& getPanel() const { return Panel; }
+    /// @}
 
-    // --- Журнал событий (например, попаданий): последние kEventLogSize строк ---
-    void logEvent(std::string_view message);
-    const std::deque<std::string>& events() const { return events_; }
+    /// \name Event log (for example, hits): the last EventLogSize lines
+    /// @{
+    void logEvent(std::string_view Message);
+    const std::deque<std::string>& getEvents() const { return Events; }
+    /// @}
 
     void clearAll();
 
 private:
-    Primitive& push(Primitive::Kind kind, Cat cat, Side side);
-    void attachText(Primitive& p, std::string_view text);
+    Primitive& addPrimitive(PrimitiveKind Kind, Cat C, Side Owner);
+    void attachText(Primitive& P, std::string_view Text);
 
-    std::vector<Primitive> primitives_;
-    std::vector<Vec2> points_;
-    std::string textPool_;
+    std::vector<Primitive> Primitives;
+    std::vector<Vec2> Points;
+    std::string TextPool;
 
-    std::vector<std::pair<std::string, std::string>> panel_;
-    std::deque<std::string> events_;
+    std::vector<std::pair<std::string, std::string>> Panel;
+    std::deque<std::string> Events;
 };
 
 } // namespace fighter::debug

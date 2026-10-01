@@ -1,4 +1,4 @@
-# Публичный API модуля боя. Без SFML: модуль встраивается в более крупный проект.
+# Public API of the combat module. No SFML: the module is embedded into a larger project.
 fighter_add_module(combat
     SOURCES
         battle.cpp

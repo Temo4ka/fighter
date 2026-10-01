@@ -1,44 +1,56 @@
+//===- physics/world.hpp - RAII wrapper over a Box2D world ------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares physics::World, which owns a Box2D world.
+///
+/// Box2D types (b2WorldId, b2Vec2, ...) never leave src/physics/
+/// (docs/DEVELOPMENT_PLAN.md, section 3.1): the rest of the code sees only our
+/// types, so the engine can be replaced without touching the combat logic.
+///
+/// Bodies, joints and contact events are added in phase 1 (the physics spike).
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>
 
 #include "core/vec2.hpp"
 
-// Обёртка над миром Box2D. Типы Box2D (b2WorldId, b2Vec2, ...) не выходят за пределы
-// src/physics/ (docs/DEVELOPMENT_PLAN.md §3.1): остальной код видит только наши типы,
-// поэтому движок можно заменить, не трогая логику боя.
-//
-// Тела, шарниры и события контактов добавляются в фазе 1 (физический спайк).
 namespace fighter::physics {
 
 class World {
 public:
     struct Config {
-        Vec2 gravity{0.0f, -9.81f};   // м/с², Y вверх
-        int subSteps = 4;             // подшаги решателя Box2D на один шаг симуляции
+        Vec2 Gravity{0.0f, -9.81f};   ///< m/s^2, Y up.
+        int SubSteps = 4;             ///< Box2D solver substeps per simulation step.
     };
 
     World() : World(Config{}) {}
-    explicit World(Config config);
+    explicit World(Config C);
     ~World();
 
-    // Мир владеет ресурсами Box2D: копировать нельзя, перемещать можно.
+    /// The world owns Box2D resources: it can be moved but not copied.
     World(const World&) = delete;
     World& operator=(const World&) = delete;
-    World(World&& other) noexcept;
-    World& operator=(World&& other) noexcept;
+    World(World&& Other) noexcept;
+    World& operator=(World&& Other) noexcept;
 
-    void step(float dt);
+    void step(float Dt);
 
-    Vec2 gravity() const;
-    int bodyCount() const;
-    bool valid() const { return id_ != 0; }
+    Vec2 getGravity() const;
+    int getBodyCount() const;
+    bool isValid() const { return Id != 0; }
 
 private:
     void destroy();
 
-    std::uint32_t id_ = 0;   // b2WorldId, упакованный через b2StoreWorldId
-    int subSteps_ = 4;
+    std::uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
+    int SubSteps = 4;
 };
 
 } // namespace fighter::physics

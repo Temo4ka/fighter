@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <string>
 
 #include "debug/draw.hpp"
 #include "debug/draw_list.hpp"
@@ -9,78 +10,78 @@
 using namespace fighter;
 using debug::Cat;
 using debug::DrawList;
-using debug::Primitive;
+using debug::PrimitiveKind;
 using debug::Side;
 
 TEST_CASE("DrawList: primitives keep data and labels", "[debug]") {
-    DrawList list;
-    list.line(Cat::Static, {0, 0}, {1, 0}, Side::None);
-    list.arrow(Cat::Forces, {0, 1}, {0.5f, 0}, "J=3", Side::Left);
-    const std::array<Vec2, 3> tri = {Vec2{0, 0}, Vec2{1, 0}, Vec2{0, 1}};
-    list.poly(Cat::Hurtbox, tri, Side::Right);
+    DrawList List;
+    List.addLine(Cat::Static, {0, 0}, {1, 0}, Side::None);
+    List.addArrow(Cat::Forces, {0, 1}, {0.5f, 0}, "J=3", Side::Left);
+    const std::array<Vec2, 3> Triangle = {Vec2{0, 0}, Vec2{1, 0}, Vec2{0, 1}};
+    List.addPoly(Cat::Hurtbox, Triangle, Side::Right);
 
-    const auto prims = list.primitives();
-    REQUIRE(prims.size() == 3);
-    CHECK(prims[0].kind == Primitive::Kind::Line);
-    CHECK(prims[1].cat == Cat::Forces);
-    CHECK(prims[1].side == Side::Left);
-    CHECK(list.text(prims[1]) == "J=3");
-    CHECK(list.text(prims[0]).empty());
-    REQUIRE(list.points(prims[2]).size() == 3);
-    CHECK(list.points(prims[2])[2] == Vec2{0, 1});
+    const auto Prims = List.getPrimitives();
+    REQUIRE(Prims.size() == 3);
+    CHECK(Prims[0].Kind == PrimitiveKind::Line);
+    CHECK(Prims[1].Category == Cat::Forces);
+    CHECK(Prims[1].Owner == Side::Left);
+    CHECK(List.getText(Prims[1]) == "J=3");
+    CHECK(List.getText(Prims[0]).empty());
+    REQUIRE(List.getPoints(Prims[2]).size() == 3);
+    CHECK(List.getPoints(Prims[2])[2] == Vec2{0, 1});
 }
 
 TEST_CASE("DrawList: beginTick clears primitives but not the panel", "[debug]") {
-    DrawList list;
-    list.point(Cat::Contacts, {0, 0}, 0.1f, Side::None);
-    list.setPanel("fps", "60");
-    list.beginTick();
-    CHECK(list.primitives().empty());
-    REQUIRE(list.panel().size() == 1);
-    CHECK(list.panel()[0].second == "60");
+    DrawList List;
+    List.addPoint(Cat::Contacts, {0, 0}, 0.1f, Side::None);
+    List.setPanel("fps", "60");
+    List.beginTick();
+    CHECK(List.getPrimitives().empty());
+    REQUIRE(List.getPanel().size() == 1);
+    CHECK(List.getPanel()[0].second == "60");
 }
 
 TEST_CASE("DrawList: panel line is overwritten by key and keeps its order", "[debug]") {
-    DrawList list;
-    list.setPanel("a", "1");
-    list.setPanel("b", "2");
-    list.setPanel("a", "3");
-    REQUIRE(list.panel().size() == 2);
-    CHECK(list.panel()[0].first == "a");
-    CHECK(list.panel()[0].second == "3");
+    DrawList List;
+    List.setPanel("a", "1");
+    List.setPanel("b", "2");
+    List.setPanel("a", "3");
+    REQUIRE(List.getPanel().size() == 2);
+    CHECK(List.getPanel()[0].first == "a");
+    CHECK(List.getPanel()[0].second == "3");
 }
 
 TEST_CASE("DrawList: event log is bounded", "[debug]") {
-    DrawList list;
-    for (int i = 0; i < 20; ++i) list.logEvent(std::to_string(i));
-    REQUIRE(list.events().size() == DrawList::kEventLogSize);
-    CHECK(list.events().back() == "19");
+    DrawList List;
+    for (int I = 0; I < 20; ++I) List.logEvent(std::to_string(I));
+    REQUIRE(List.getEvents().size() == DrawList::EventLogSize);
+    CHECK(List.getEvents().back() == "19");
 }
 
 TEST_CASE("Palette: Hurtbox color differs per fighter", "[debug]") {
-    const auto l = debug::color(Cat::Hurtbox, Side::Left);
-    const auto r = debug::color(Cat::Hurtbox, Side::Right);
-    CHECK((l.r != r.r || l.g != r.g || l.b != r.b));
-    CHECK(debug::fillColor(Cat::Hitbox).a < debug::color(Cat::Hitbox).a);
+    const auto L = debug::getColor(Cat::Hurtbox, Side::Left);
+    const auto R = debug::getColor(Cat::Hurtbox, Side::Right);
+    CHECK((L.R != R.R || L.G != R.G || L.B != R.B));
+    CHECK(debug::getFillColor(Cat::Hitbox).A < debug::getColor(Cat::Hitbox).A);
 }
 
 #if FIGHTER_DEBUG
 TEST_CASE("debug API: global sink and ScopedSide", "[debug]") {
-    debug::drawList().clearAll();
-    debug::line(Cat::Static, {0, 0}, {1, 1});
+    debug::getDrawList().clearAll();
+    debug::drawLine(Cat::Static, {0, 0}, {1, 1});
     {
-        debug::ScopedSide side(Side::Right);
-        debug::cross(Cat::CoM, {0, 1});
+        debug::ScopedSide Owner(Side::Right);
+        debug::drawCross(Cat::CoM, {0, 1});
     }
-    debug::point(Cat::Contacts, {0, 0});
+    debug::drawPoint(Cat::Contacts, {0, 0});
 
-    const auto prims = debug::drawList().primitives();
-    REQUIRE(prims.size() == 3);
-    CHECK(prims[0].side == Side::None);
-    CHECK(prims[1].side == Side::Right);
-    CHECK(prims[2].side == Side::None);   // ScopedSide восстановил прежнюю сторону
+    const auto Prims = debug::getDrawList().getPrimitives();
+    REQUIRE(Prims.size() == 3);
+    CHECK(Prims[0].Owner == Side::None);
+    CHECK(Prims[1].Owner == Side::Right);
+    CHECK(Prims[2].Owner == Side::None);   // ScopedSide restored the previous side
 
     debug::beginTick();
-    CHECK(debug::drawList().primitives().empty());
+    CHECK(debug::getDrawList().getPrimitives().empty());
 }
 #endif

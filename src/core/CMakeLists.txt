@@ -4,5 +4,5 @@ fighter_add_module(core
         fixed_step_loop.cpp
 )
 
-# FIGHTER_DEBUG=1/0 видят все модули: каждый из них зависит от core.
+# Every module depends on core, so they all see FIGHTER_DEBUG=1 or 0.
 target_compile_definitions(fighter_core PUBLIC FIGHTER_DEBUG=$<BOOL:${FIGHTER_DEBUG}>)

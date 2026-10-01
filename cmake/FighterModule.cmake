@@ -1,10 +1,10 @@
 # fighter_add_module(<name> [SOURCES ...] [PUBLIC_DEPS ...] [PRIVATE_DEPS ...])
 #
-# Создаёт статическую библиотеку fighter_<name> с псевдонимом fighter::<name>.
-# Модуль без SOURCES (пока только заголовки) становится INTERFACE-библиотекой.
-# Заголовки подключаются от корня src/: #include "core/vec2.hpp".
-# Зависимости между модулями задаются только здесь — так видно, что от чего зависит,
-# и случайная обратная зависимость не соберётся.
+# Creates the static library fighter_<name> with the alias fighter::<name>.
+# A module without SOURCES (headers only for now) becomes an INTERFACE library.
+# Headers are included from the src/ root: #include "core/vec2.hpp".
+# Dependencies between modules are declared only here, so it is visible what
+# depends on what, and an accidental reverse dependency does not build.
 function(fighter_add_module name)
     cmake_parse_arguments(ARG "" "" "SOURCES;PUBLIC_DEPS;PRIVATE_DEPS" ${ARGN})
     set(target fighter_${name})

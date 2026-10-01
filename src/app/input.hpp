@@ -1,3 +1,21 @@
+//===- app/input.hpp - Keyboard input for two players -----------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares InputSystem, which turns keyboard events into
+/// PlayerCommands for two players sharing one keyboard
+/// (docs/DEVELOPMENT_PLAN.md, task 0.7).
+///
+/// The system keeps the "is the key held" state from press and release events
+/// and builds PlayerCommands from it once per simulation step. Bindings use
+/// scancodes, the physical key position, so WASD works with any keyboard
+/// layout.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <array>
@@ -8,46 +26,41 @@
 
 #include "combat/commands.hpp"
 
-// Ввод двух игроков с одной клавиатуры (docs/DEVELOPMENT_PLAN.md, задача 0.7).
-//
-// Хранит состояние «нажата ли клавиша» по событиям нажатия и отпускания, а раз в шаг
-// симуляции собирает из него PlayerCommands. Используются scancode — физическое
-// положение клавиши: WASD работает и в русской раскладке.
 namespace fighter::app {
 
 enum class Action : std::uint8_t { Left, Right, Jump, Crouch, Punch, Kick, Block, Count };
 
 struct Binding {
-    sf::Keyboard::Scancode key;
-    int player;   // 0 — левый, 1 — правый
-    Action action;
+    sf::Keyboard::Scancode Key;
+    int Player;   ///< 0 is the left player, 1 is the right one.
+    Action Act;
 };
 
 class InputSystem {
 public:
-    static constexpr int kPlayers = 2;
+    static constexpr int PlayerCount = 2;
 
-    InputSystem() : InputSystem(defaultBindings()) {}
-    explicit InputSystem(std::vector<Binding> bindings);
+    InputSystem() : InputSystem(getDefaultBindings()) {}
+    explicit InputSystem(std::vector<Binding> NewBindings);
 
-    // Раскладка по умолчанию:
-    //   P1: A/D — ходьба, W — прыжок, S — присед, F — рука, G — нога, H — блок
-    //   P2: ←/→ — ходьба, ↑ — прыжок, ↓ — присед, K — рука, L — нога, ; — блок
-    static std::vector<Binding> defaultBindings();
+    /// The default layout:
+    ///   P1: A/D walk, W jump, S crouch, F punch, G kick, H block.
+    ///   P2: Left/Right walk, Up jump, Down crouch, K punch, L kick, ; block.
+    static std::vector<Binding> getDefaultBindings();
 
-    // Возвращает true, если клавиша назначена какому-то действию.
-    bool onKey(sf::Keyboard::Scancode key, bool pressed);
+    /// Returns true if the key is bound to some action.
+    bool onKey(sf::Keyboard::Scancode Key, bool Pressed);
 
-    // Отпустить все клавиши (окно потеряло фокус — иначе клавиша «залипнет»).
+    /// Releases every key (the window lost focus; otherwise a key would stick).
     void reset();
 
-    combat::PlayerCommands commands(int player) const;
+    combat::PlayerCommands getCommands(int Player) const;
 
 private:
     using ActionState = std::array<bool, static_cast<std::size_t>(Action::Count)>;
 
-    std::vector<Binding> bindings_;
-    std::array<ActionState, kPlayers> held_{};
+    std::vector<Binding> Bindings;
+    std::array<ActionState, PlayerCount> Held{};
 };
 
 } // namespace fighter::app

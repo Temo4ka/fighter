@@ -1,49 +1,47 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <numeric>
-
 #include "stats/stats.hpp"
 
 using namespace fighter;
 using namespace fighter::stats;
 
 namespace {
-float totalMass(const PhysicalProfile& p) {
-    float sum = 0.0f;
-    for (const PartParams& part : p.parts) sum += part.massKg;
-    return sum;
+float getTotalMass(const PhysicalProfile& Profile) {
+    float Sum = 0.0f;
+    for (const PartParams& Part : Profile.Parts) Sum += Part.MassKg;
+    return Sum;
 }
 } // namespace
 
 TEST_CASE("computeProfile: base fighter weighs about 75 kg", "[stats]") {
-    const auto p = computeProfile({}, {}, BalanceTable::defaults());
-    CHECK(totalMass(p) > 70.0f);
-    CHECK(totalMass(p) < 80.0f);
-    CHECK(p.maxHp > 0.0f);
+    const auto Profile = computeProfile({}, {}, BalanceTable::getDefaults());
+    CHECK(getTotalMass(Profile) > 70.0f);
+    CHECK(getTotalMass(Profile) < 80.0f);
+    CHECK(Profile.MaxHp > 0.0f);
 }
 
 TEST_CASE("computeProfile: stats move parameters in the right direction", "[stats]") {
-    const auto balance = BalanceTable::defaults();
-    const auto base = computeProfile({}, {}, balance);
+    const auto Balance = BalanceTable::getDefaults();
+    const auto Base = computeProfile({}, {}, Balance);
 
-    CHECK(computeProfile({.strength = 15}, {}, balance).motorMaxTorque > base.motorMaxTorque);
-    CHECK(computeProfile({.dexterity = 15}, {}, balance).motorGain > base.motorGain);
-    const auto tough = computeProfile({.constitution = 15}, {}, balance);
-    CHECK(totalMass(tough) > totalMass(base));
-    CHECK(tough.maxHp > base.maxHp);
+    CHECK(computeProfile({.Strength = 15}, {}, Balance).MotorMaxTorque > Base.MotorMaxTorque);
+    CHECK(computeProfile({.Dexterity = 15}, {}, Balance).MotorGain > Base.MotorGain);
+    const auto Tough = computeProfile({.Constitution = 15}, {}, Balance);
+    CHECK(getTotalMass(Tough) > getTotalMass(Base));
+    CHECK(Tough.MaxHp > Base.MaxHp);
 }
 
 TEST_CASE("computeProfile: equipment adds mass and armor to its body parts", "[stats]") {
-    Loadout loadout;
-    loadout.items.push_back({.id = "helmet", .slot = EquipmentSlot::Head,
-                             .covers = {BodyPart::Head}, .massKg = 2.0f, .armor = 0.3f});
-    const auto balance = BalanceTable::defaults();
-    const auto base = computeProfile({}, {}, balance);
-    const auto armored = computeProfile({}, loadout, balance);
+    Loadout Gear;
+    Gear.Items.push_back({.Id = "helmet", .Slot = EquipmentSlot::Head,
+                          .Covers = {BodyPart::Head}, .MassKg = 2.0f, .Armor = 0.3f});
+    const auto Balance = BalanceTable::getDefaults();
+    const auto Base = computeProfile({}, {}, Balance);
+    const auto Armored = computeProfile({}, Gear, Balance);
 
-    const auto head = static_cast<std::size_t>(BodyPart::Head);
-    const auto torso = static_cast<std::size_t>(BodyPart::Torso);
-    CHECK(armored.parts[head].massKg == base.parts[head].massKg + 2.0f);
-    CHECK(armored.parts[head].armor == 0.3f);
-    CHECK(armored.parts[torso].massKg == base.parts[torso].massKg);
+    const auto Head = static_cast<std::size_t>(BodyPart::Head);
+    const auto Torso = static_cast<std::size_t>(BodyPart::Torso);
+    CHECK(Armored.Parts[Head].MassKg == Base.Parts[Head].MassKg + 2.0f);
+    CHECK(Armored.Parts[Head].Armor == 0.3f);
+    CHECK(Armored.Parts[Torso].MassKg == Base.Parts[Torso].MassKg);
 }

@@ -5,5 +5,5 @@ fighter_add_module(physics
         fighter::core
         fighter::debug
     PRIVATE_DEPS
-        box2d   # PRIVATE: Box2D не виден модулям, которые зависят от physics
+        box2d   # PRIVATE: modules that depend on physics do not see Box2D
 )

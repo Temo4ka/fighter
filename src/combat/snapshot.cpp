@@ -6,30 +6,31 @@
 namespace fighter::combat {
 namespace {
 
-// Интерполяция угла по кратчайшей дуге: переход 179° → -179° не должен давать оборот.
-float lerpAngle(float a, float b, float t) {
-    constexpr float pi = std::numbers::pi_v<float>;
-    float d = std::remainder(b - a, 2.0f * pi);
-    return a + d * t;
+/// Interpolates along the shortest arc: going from 179 to -179 degrees must
+/// not spin a full turn.
+float lerpAngle(float A, float B, float T) {
+    constexpr float Pi = std::numbers::pi_v<float>;
+    const float Delta = std::remainder(B - A, 2.0f * Pi);
+    return A + Delta * T;
 }
 
 } // namespace
 
-RenderSnapshot interpolate(const RenderSnapshot& prev, const RenderSnapshot& curr, float alpha) {
-    RenderSnapshot out = curr;
-    for (std::size_t f = 0; f < out.fighters.size(); ++f) {
-        const FighterView& p = prev.fighters[f];
-        FighterView& o = out.fighters[f];
-        o.position = lerp(p.position, o.position, alpha);
+RenderSnapshot interpolate(const RenderSnapshot& Prev, const RenderSnapshot& Curr, float Alpha) {
+    RenderSnapshot Out = Curr;
+    for (std::size_t F = 0; F < Out.Fighters.size(); ++F) {
+        const FighterView& P = Prev.Fighters[F];
+        FighterView& O = Out.Fighters[F];
+        O.Position = lerp(P.Position, O.Position, Alpha);
 
-        // Части сопоставляются по индексу; если состав поменялся — берём текущий кадр.
-        if (p.parts.size() != o.parts.size()) continue;
-        for (std::size_t i = 0; i < o.parts.size(); ++i) {
-            o.parts[i].position = lerp(p.parts[i].position, o.parts[i].position, alpha);
-            o.parts[i].angle = lerpAngle(p.parts[i].angle, o.parts[i].angle, alpha);
+        // Parts are matched by index; if the set changed, use the current frame.
+        if (P.Parts.size() != O.Parts.size()) continue;
+        for (std::size_t I = 0; I < O.Parts.size(); ++I) {
+            O.Parts[I].Position = lerp(P.Parts[I].Position, O.Parts[I].Position, Alpha);
+            O.Parts[I].Angle = lerpAngle(P.Parts[I].Angle, O.Parts[I].Angle, Alpha);
         }
     }
-    return out;
+    return Out;
 }
 
 } // namespace fighter::combat

@@ -1,8 +1,20 @@
+//===- rig/rig.hpp - Physical body of a fighter -----------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// The rig module is the physical body of a fighter: body parts, joints, PD
+/// motors, balance and stiffness (docs/DEVELOPMENT_PLAN.md, phase 1 and agent
+/// A).
+///
+/// It is empty for now: the contents arrive with the physics spike (tasks
+/// 1.2-1.4). The module exists early so that its agent has its own directory
+/// and build target.
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
-// Модуль rig: физическое тело бойца — части, шарниры, PD-моторы, стабилизация,
-// жёсткость (docs/DEVELOPMENT_PLAN.md, фаза 1 и агент A).
-//
-// Пока пусто: содержимое появится в физическом спайке (задачи 1.2–1.4).
-// Модуль заведён заранее, чтобы у агента был свой каталог и своя цель сборки.
 namespace fighter::rig {}

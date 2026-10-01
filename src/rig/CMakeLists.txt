@@ -1,4 +1,4 @@
-# Пока только заголовок: исходники появятся в физическом спайке (фаза 1).
+# Headers only for now: sources arrive with the physics spike (phase 1).
 fighter_add_module(rig
     PUBLIC_DEPS
         fighter::core

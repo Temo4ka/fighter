@@ -1,7 +1,18 @@
+//===- anim/pose.hpp - Target poses and clips -------------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// The anim module holds clips of target poses, their playback and blending
+/// (docs/DEVELOPMENT_PLAN.md, agent B).
+///
+/// It is empty for now: the pose format is decided during the physics spike
+/// (task 1.4).
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
-// Модуль anim: клипы целевых поз, проигрывание, смешивание
-// (docs/DEVELOPMENT_PLAN.md, агент B).
-//
-// Пока пусто: формат позы определится в физическом спайке (задача 1.4).
 namespace fighter::anim {}

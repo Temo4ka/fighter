@@ -1,3 +1,18 @@
+//===- render/battle_renderer.hpp - Game view of a fight --------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares BattleRenderer, which draws a fight the way the player
+/// sees it: background, arena, fighters and the HUD.
+///
+/// In phase 0 fighters are colored placeholder rectangles. Agent C adds cutout
+/// sprites for body parts once PartTransform data exists (phase 2).
+///
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <SFML/Graphics/RenderTarget.hpp>
@@ -6,20 +21,17 @@
 #include "render/camera.hpp"
 #include "render/resources.hpp"
 
-// Отрисовка боя «как в игре»: фон, арена, бойцы, HUD.
-// В фазе 0 бойцы — цветные прямоугольники-плейсхолдеры; cutout-спрайты частей тела
-// добавит агент C, когда появятся PartTransform (фаза 2).
 namespace fighter::render {
 
 class BattleRenderer {
 public:
-    explicit BattleRenderer(Resources& resources);
+    explicit BattleRenderer(Resources& Res);
 
-    void drawWorld(sf::RenderTarget& target, const Camera& camera, const combat::RenderSnapshot& snapshot);
-    void drawHud(sf::RenderTarget& target, const Camera& camera, const combat::RenderSnapshot& snapshot);
+    void drawWorld(sf::RenderTarget& Target, const Camera& Cam, const combat::RenderSnapshot& Snapshot);
+    void drawHud(sf::RenderTarget& Target, const Camera& Cam, const combat::RenderSnapshot& Snapshot);
 
 private:
-    Resources& resources_;
+    Resources& Assets;
 };
 
 } // namespace fighter::render

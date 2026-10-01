@@ -1,4 +1,4 @@
-# Всё приложение, кроме main(), — библиотека: так его части (ввод) можно тестировать.
+# Everything except main() is a library so that its parts (input) can be tested.
 set(app_sources
     app.cpp
     input.cpp

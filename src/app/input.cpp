@@ -2,9 +2,9 @@
 
 namespace fighter::app {
 
-InputSystem::InputSystem(std::vector<Binding> bindings) : bindings_(std::move(bindings)) {}
+InputSystem::InputSystem(std::vector<Binding> NewBindings) : Bindings(std::move(NewBindings)) {}
 
-std::vector<Binding> InputSystem::defaultBindings() {
+std::vector<Binding> InputSystem::getDefaultBindings() {
     using Scan = sf::Keyboard::Scan;
     return {
         {Scan::A, 0, Action::Left},     {Scan::D, 0, Action::Right},
@@ -19,34 +19,34 @@ std::vector<Binding> InputSystem::defaultBindings() {
     };
 }
 
-bool InputSystem::onKey(sf::Keyboard::Scancode key, bool pressed) {
-    bool bound = false;
-    for (const Binding& b : bindings_) {
-        if (b.key != key || b.player < 0 || b.player >= kPlayers) continue;
-        held_[static_cast<std::size_t>(b.player)][static_cast<std::size_t>(b.action)] = pressed;
-        bound = true;
+bool InputSystem::onKey(sf::Keyboard::Scancode Key, bool Pressed) {
+    bool Bound = false;
+    for (const Binding& B : Bindings) {
+        if (B.Key != Key || B.Player < 0 || B.Player >= PlayerCount) continue;
+        Held[static_cast<std::size_t>(B.Player)][static_cast<std::size_t>(B.Act)] = Pressed;
+        Bound = true;
     }
-    return bound;
+    return Bound;
 }
 
 void InputSystem::reset() {
-    held_ = {};
+    Held = {};
 }
 
-combat::PlayerCommands InputSystem::commands(int player) const {
-    if (player < 0 || player >= kPlayers) return {};
-    const ActionState& s = held_[static_cast<std::size_t>(player)];
-    auto is = [&](Action a) { return s[static_cast<std::size_t>(a)]; };
+combat::PlayerCommands InputSystem::getCommands(int Player) const {
+    if (Player < 0 || Player >= PlayerCount) return {};
+    const ActionState& State = Held[static_cast<std::size_t>(Player)];
+    auto IsHeld = [&](Action A) { return State[static_cast<std::size_t>(A)]; };
 
-    combat::PlayerCommands c;
-    // Обе стороны сразу — стоим на месте.
-    c.moveX = (is(Action::Right) ? 1.0f : 0.0f) - (is(Action::Left) ? 1.0f : 0.0f);
-    c.jump = is(Action::Jump);
-    c.crouch = is(Action::Crouch);
-    c.punch = is(Action::Punch);
-    c.kick = is(Action::Kick);
-    c.block = is(Action::Block);
-    return c;
+    combat::PlayerCommands Cmd;
+    // Both directions at once means standing still.
+    Cmd.MoveX = (IsHeld(Action::Right) ? 1.0f : 0.0f) - (IsHeld(Action::Left) ? 1.0f : 0.0f);
+    Cmd.Jump = IsHeld(Action::Jump);
+    Cmd.Crouch = IsHeld(Action::Crouch);
+    Cmd.Punch = IsHeld(Action::Punch);
+    Cmd.Kick = IsHeld(Action::Kick);
+    Cmd.Block = IsHeld(Action::Block);
+    return Cmd;
 }
 
 } // namespace fighter::app
