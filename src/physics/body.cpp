@@ -23,6 +23,8 @@ constexpr int MaxShapesPerBody = 8;
 
 bool Body::isValid() const { return Id != 0 && b2Body_IsValid(loadBody(Id)); }
 
+BodyType Body::getType() const { return detail::fromBox2D(b2Body_GetType(loadBody(Id))); }
+
 Vec2 Body::getPosition() const { return fromBox2D(b2Body_GetPosition(loadBody(Id))); }
 
 float Body::getAngle() const { return b2Rot_GetAngle(b2Body_GetRotation(loadBody(Id))); }
@@ -58,6 +60,24 @@ void Body::setMass(float Kg) {
 }
 
 void Body::setLinearVelocity(Vec2 Velocity) { b2Body_SetLinearVelocity(loadBody(Id), toBox2D(Velocity)); }
+
+void Body::setAngularVelocity(float Velocity) { b2Body_SetAngularVelocity(loadBody(Id), Velocity); }
+
+void Body::setTransform(Vec2 Position, float Angle) {
+    b2Body_SetTransform(loadBody(Id), toBox2D(Position), b2MakeRot(Angle));
+}
+
+void Body::moveTo(Vec2 Position, float Angle, float Dt) {
+    // Like b2Body_SetTargetTransform, but without its "too slow to wake up"
+    // early return: that would leave the previous velocity in place, and a
+    // body that should stop would keep drifting.
+    if (Dt <= 0.0f) return;
+    const b2BodyId BodyId = loadBody(Id);
+    const b2Vec2 Offset = b2Sub(toBox2D(Position), b2Body_GetPosition(BodyId));
+    const float Turn = b2RelativeAngle(b2MakeRot(Angle), b2Body_GetRotation(BodyId));
+    b2Body_SetLinearVelocity(BodyId, b2MulSV(1.0f / Dt, Offset));
+    b2Body_SetAngularVelocity(BodyId, Turn / Dt);
+}
 
 void Body::applyForce(Vec2 Force, Vec2 WorldPoint) {
     b2Body_ApplyForce(loadBody(Id), toBox2D(Force), toBox2D(WorldPoint), true);

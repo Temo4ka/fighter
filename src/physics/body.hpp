@@ -31,7 +31,11 @@
 
 namespace fighter::physics {
 
-enum class BodyType : uint8_t { Static, Dynamic };
+/// Static bodies never move. Kinematic bodies move only as the code tells
+/// them (moveTo()): they push dynamic bodies but feel no forces and do not
+/// collide with static or other kinematic bodies. Dynamic bodies are fully
+/// simulated.
+enum class BodyType : uint8_t { Static, Kinematic, Dynamic };
 
 struct BodyDef {
     BodyType Type = BodyType::Dynamic;
@@ -68,6 +72,7 @@ public:
     Body() = default;
 
     bool isValid() const;
+    BodyType getType() const;
 
     /// \name State
     /// @{
@@ -76,14 +81,25 @@ public:
     Vec2 getWorldCenterOfMass() const;
     Vec2 getLinearVelocity() const;      ///< Of the center of mass, m/s.
     float getAngularVelocity() const;    ///< rad/s.
-    float getMass() const;               ///< kg.
+    float getMass() const;               ///< kg; 0 for static and kinematic bodies.
     Vec2 getWorldPoint(Vec2 LocalPoint) const;
     Vec2 getLocalPoint(Vec2 WorldPoint) const;
     /// @}
 
-    /// Scales the density of every shape so that the body weighs \p Kg.
+    /// Scales the density of every shape so that the body weighs \p Kg. Only
+    /// a dynamic body has a mass; the densities stay when the type changes.
     void setMass(float Kg);
     void setLinearVelocity(Vec2 Velocity);
+    void setAngularVelocity(float Velocity);
+    /// Teleports the body. Meant for setting up a scene, not for motion:
+    /// nothing is pushed out of the way.
+    void setTransform(Vec2 Position, float Angle);
+    /// Sets the velocity of a kinematic body so that it reaches \p Position
+    /// and \p Angle (radians, along the shortest turn) after \p Dt. Unlike
+    /// a teleport, the motion pushes dynamic bodies on its way. Box2D
+    /// integrates rotation approximately, so a large turn is slightly off
+    /// (about 1% of 0.2 rad); the next call corrects it, errors do not add up.
+    void moveTo(Vec2 Position, float Angle, float Dt);
 
     /// \name Forces (accumulated until the next World::step)
     /// @{

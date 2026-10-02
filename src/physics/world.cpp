@@ -68,7 +68,7 @@ void World::destroy() {
 
 Body World::createBody(const BodyDef& Def) {
     b2BodyDef BodyDefinition = b2DefaultBodyDef();
-    BodyDefinition.type = Def.Type == BodyType::Static ? b2_staticBody : b2_dynamicBody;
+    BodyDefinition.type = toBox2D(Def.Type);
     BodyDefinition.position = toBox2D(Def.Position);
     BodyDefinition.rotation = b2MakeRot(Def.Angle);
     BodyDefinition.linearDamping = Def.LinearDamping;
@@ -142,6 +142,16 @@ RevoluteJoint World::createRevoluteJoint(const RevoluteJointDef& Def) {
     return RevoluteJoint(b2StoreJointId(b2CreateRevoluteJoint(loadWorld(Id), &JointDef)));
 }
 
+void World::setBodyType(Body Target, BodyType Type) {
+    const b2BodyId BodyId = loadBody(Target.Id);
+    if (b2Body_GetType(BodyId) == b2_dynamicBody) {
+        if (const auto Slot = detail::decodePartSlot(b2Body_GetUserData(BodyId))) {
+            PartBodies[*Slot].DynamicMass = b2Body_GetMass(BodyId);
+        }
+    }
+    b2Body_SetType(BodyId, toBox2D(Type));
+}
+
 void World::step(float Dt) {
     recordPartVelocities();
     b2World_Step(loadWorld(Id), Dt, SubSteps);
@@ -186,12 +196,27 @@ void World::collectHits() {
         const float SpeedB = dot(getVelocityBeforeStep(PartB, Point), -Normal);
         const bool AttackerIsA = SpeedA >= SpeedB;
 
+        // A kinematic part is infinitely heavy for the solver: its contact
+        // impulse grows with whatever it pushes. Report the impulse of the
+        // same collision between free bodies instead (no restitution).
+        const bool HasKinematic = PartA.Handle.getType() == BodyType::Kinematic ||
+                                  PartB.Handle.getType() == BodyType::Kinematic;
+        float Impulse = 0.0f;
+        if (HasKinematic) {
+            const float MassA = getStrikeMass(PartA);
+            const float MassB = getStrikeMass(PartB);
+            const float MassSum = MassA + MassB;
+            Impulse = MassSum > 0.0f ? Event.approachSpeed * MassA * MassB / MassSum : 0.0f;
+        } else {
+            Impulse = sumContactImpulse(Event.shapeIdA, Event.shapeIdB);
+        }
+
         Hits.push_back({
             .Attacker = AttackerIsA ? PartA.Part : PartB.Part,
             .Victim = AttackerIsA ? PartB.Part : PartA.Part,
             .Point = Point,
             .ApproachSpeed = Event.approachSpeed,
-            .Impulse = sumContactImpulse(Event.shapeIdA, Event.shapeIdB),
+            .Impulse = Impulse,
         });
     }
 }
@@ -199,6 +224,10 @@ void World::collectHits() {
 Vec2 World::getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const {
     // v + w x r in 2D.
     return Entry.VelocityBeforeStep + perp(WorldPoint - Entry.CenterBeforeStep) * Entry.AngularVelocityBeforeStep;
+}
+
+float World::getStrikeMass(const PartBody& Entry) const {
+    return Entry.Handle.getType() == BodyType::Dynamic ? Entry.Handle.getMass() : Entry.DynamicMass;
 }
 
 namespace {

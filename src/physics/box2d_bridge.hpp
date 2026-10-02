@@ -23,11 +23,29 @@
 
 #include "core/vec2.hpp"
 #include "debug/category.hpp"
+#include "physics/body.hpp"
 
 namespace fighter::physics::detail {
 
 inline b2Vec2 toBox2D(Vec2 Value) { return {Value.X, Value.Y}; }
 inline Vec2 fromBox2D(b2Vec2 Value) { return {Value.x, Value.y}; }
+
+inline b2BodyType toBox2D(BodyType Type) {
+    switch (Type) {
+        case BodyType::Static: return b2_staticBody;
+        case BodyType::Kinematic: return b2_kinematicBody;
+        case BodyType::Dynamic: return b2_dynamicBody;
+    }
+    return b2_dynamicBody;
+}
+
+inline BodyType fromBox2D(b2BodyType Type) {
+    switch (Type) {
+        case b2_staticBody: return BodyType::Static;
+        case b2_kinematicBody: return BodyType::Kinematic;
+        default: return BodyType::Dynamic;
+    }
+}
 
 inline b2WorldId loadWorld(uint32_t Packed) { return b2LoadWorldId(Packed); }
 inline b2BodyId loadBody(uint64_t Packed) { return b2LoadBodyId(Packed); }
