@@ -44,12 +44,12 @@ Loadout buildLoadout(std::span<const std::string> ItemIds, const ItemCatalog& Ca
 
 std::string_view getEquipmentSlotName(EquipmentSlot Slot) {
     switch (Slot) {
-    case EquipmentSlot::Head: return "Head";
-    case EquipmentSlot::Body: return "Body";
-    case EquipmentSlot::Hands: return "Hands";
-    case EquipmentSlot::Legs: return "Legs";
-    case EquipmentSlot::Feet: return "Feet";
-    case EquipmentSlot::Weapon: return "Weapon";
+        case EquipmentSlot::Head: return "Head";
+        case EquipmentSlot::Body: return "Body";
+        case EquipmentSlot::Hands: return "Hands";
+        case EquipmentSlot::Legs: return "Legs";
+        case EquipmentSlot::Feet: return "Feet";
+        case EquipmentSlot::Weapon: return "Weapon";
     }
     return "?";
 }
