@@ -27,7 +27,10 @@ TEST_CASE("computeProfile: stats move parameters in the right direction", "[stat
     const auto Base = computeProfile({}, {}, Balance);
 
     CHECK(computeProfile({.Strength = 15}, {}, Balance).MotorMaxTorque > Base.MotorMaxTorque);
-    CHECK(computeProfile({.Dexterity = 15}, {}, Balance).MotorGain > Base.MotorGain);
+    const auto Nimble = computeProfile({.Dexterity = 15}, {}, Balance);
+    CHECK(Nimble.MotorGain > Base.MotorGain);
+    CHECK(Base.MoveSpeedScale == 1.0f);
+    CHECK(Nimble.MoveSpeedScale > Base.MoveSpeedScale);
     const auto Tough = computeProfile({.Constitution = 15}, {}, Balance);
     CHECK(getTotalMass(Tough) > getTotalMass(Base));
     CHECK(Tough.MaxHp > Base.MaxHp);
