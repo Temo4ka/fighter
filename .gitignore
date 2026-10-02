@@ -34,3 +34,14 @@
 logs/
 
 .vscode/
+
+# macOS
+.DS_Store
+
+# Build output
+build/
+out/
+run_mac
+run_mac.dSYM/
+test_physics
+test_coordinates
