@@ -43,7 +43,6 @@ constexpr float HitboxRadius = 0.16f;
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index);
 void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt);
-std::string getPhysicalParts(const rig::Rig& Body);
 
 } // namespace
 
@@ -201,7 +200,15 @@ void Battle::drawDebug() const {
                                             Controller.getX(), Controller.getVelocity(),
                                             Controller.getWalkVelocity(), Controller.getKnockback()));
             }
-            debug::setPanel(std::format("{} physical", Name), getPhysicalParts(Body));
+            std::string Physical;
+            for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+                const auto Part = static_cast<BodyPart>(Index);
+                if (Body.isKinematic(Part)) continue;
+                if (!Physical.empty()) Physical += ' ';
+                Physical += getBodyPartName(Part);
+            }
+            const bool Ragdoll = Body.getPosture() == rig::Posture::KnockedDown;
+            debug::setPanel(std::format("{} physical", Name), Ragdoll ? "all (ragdoll)" : Physical);
             debug::setPanel(std::format("{} clip", Name),
                             std::format("{} {:.2f} s{}", Player.getClipName(), Player.getClipTime(),
                                         Player.isAttackActive() ? "  ACTIVE" : ""));
@@ -299,20 +306,6 @@ void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const Combat
     } else {
         LeftMotion.shift(-Rest);
     }
-}
-
-/// Names of the parts that are physical right now, for the debug panel.
-std::string getPhysicalParts(const rig::Rig& Body) {
-    std::string Names;
-    size_t Count = 0;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const auto Part = static_cast<BodyPart>(Index);
-        if (Body.isKinematic(Part)) continue;
-        if (!Names.empty()) Names += ' ';
-        Names += getBodyPartName(Part);
-        ++Count;
-    }
-    return Count == BodyPartCount ? "all (ragdoll)" : Names;
 }
 
 } // namespace
