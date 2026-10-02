@@ -35,25 +35,23 @@ constexpr std::array ControlFields = {
     ControlField{"gainScale", &ControlParams::GainScale},
     ControlField{"maxJointSpeed", &ControlParams::MaxJointSpeed},
     ControlField{"angularDamping", &ControlParams::AngularDamping},
-    ControlField{"footLevelHeight", &ControlParams::FootLevelHeight},
-    ControlField{"uprightStiffness", &ControlParams::UprightStiffness},
-    ControlField{"uprightDamping", &ControlParams::UprightDamping},
-    ControlField{"uprightTorqueLimit", &ControlParams::UprightTorqueLimit},
-    ControlField{"standHeight", &ControlParams::StandHeight},
-    ControlField{"heightStiffness", &ControlParams::HeightStiffness},
-    ControlField{"heightDamping", &ControlParams::HeightDamping},
-    ControlField{"heightForceLimit", &ControlParams::HeightForceLimit},
-    ControlField{"groundTolerance", &ControlParams::GroundTolerance},
     ControlField{"walkSpeed", &ControlParams::WalkSpeed},
     ControlField{"backwardSpeedScale", &ControlParams::BackwardSpeedScale},
-    ControlField{"walkForceGain", &ControlParams::WalkForceGain},
-    ControlField{"walkForceLimit", &ControlParams::WalkForceLimit},
-    ControlField{"walkCycleMinRate", &ControlParams::WalkCycleMinRate},
-    ControlField{"walkStartSec", &ControlParams::WalkStartSec},
+    ControlField{"walkAcceleration", &ControlParams::WalkAcceleration},
     ControlField{"minStiffness", &ControlParams::MinStiffness},
     ControlField{"stiffnessPerImpulse", &ControlParams::StiffnessPerImpulse},
     ControlField{"stiffnessRecovery", &ControlParams::StiffnessRecovery},
+    ControlField{"knockbackScale", &ControlParams::KnockbackScale},
+    ControlField{"knockbackDecay", &ControlParams::KnockbackDecay},
+    ControlField{"knockdownSpeed", &ControlParams::KnockdownSpeed},
+    ControlField{"knockdownSec", &ControlParams::KnockdownSec},
+    ControlField{"getUpSec", &ControlParams::GetUpSec},
+    ControlField{"knockdownStiffness", &ControlParams::KnockdownStiffness},
 };
+
+/// Parameters that must be positive: they divide or set a duration.
+constexpr std::array<std::string_view, 4> PositiveFields = {"walkSpeed", "walkAcceleration", "knockdownSpeed",
+                                                            "getUpSec"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);
@@ -75,10 +73,15 @@ RigDef parseRigDef(std::string_view JsonText) {
     RigDef Result;
     try {
         const Json Root = Json::parse(JsonText);
-        checkKeys(Root, {"root", "parts", "joints", "control"}, "rig");
+        checkKeys(Root, {"root", "parts", "joints", "kinematic", "control"}, "rig");
         if (const auto RootPart = Root.find("root"); RootPart != Root.end()) Result.Root = parseBodyPart(*RootPart);
         for (const auto& Part : Root.at("parts")) Result.Parts.push_back(parsePart(Part));
         for (const auto& Joint : Root.at("joints")) Result.Joints.push_back(parseJoint(Joint));
+        // The root is always kinematic: the pelvis controller moves it.
+        Result.Kinematic.set(static_cast<size_t>(Result.Root));
+        for (const auto& Part : Root.value("kinematic", Json::array())) {
+            Result.Kinematic.set(static_cast<size_t>(parseBodyPart(Part)));
+        }
         if (const auto Control = Root.find("control"); Control != Root.end()) Result.Control = parseControl(*Control);
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());
@@ -164,6 +167,9 @@ ControlParams parseControl(const Json& Node) {
             throw std::runtime_error(std::format("control: unknown parameter '{}'", Key));
         }
         Params.*(Found->Member) = Value.get<float>();
+        if (std::ranges::find(PositiveFields, Key) != PositiveFields.end() && Params.*(Found->Member) <= 0.0f) {
+            throw std::runtime_error(std::format("control: '{}' must be positive", Key));
+        }
     }
     return Params;
 }
@@ -203,6 +209,16 @@ void validateRig(const RigDef& Def) {
         Reached.set(static_cast<size_t>(Joint.Child));
     }
     if (!Reached.all()) throw std::runtime_error("every body part except the root needs a joint");
+
+    // Kinematic parts are posed by forward kinematics from the root, so each
+    // of them hangs from another kinematic part.
+    for (const auto& Joint : Def.Joints) {
+        const bool ChildKinematic = Def.Kinematic.test(static_cast<size_t>(Joint.Child));
+        if (ChildKinematic && !Def.Kinematic.test(static_cast<size_t>(Joint.Parent))) {
+            throw std::runtime_error(std::format("kinematic part {} hangs from the physical part {}",
+                                                 getBodyPartName(Joint.Child), getBodyPartName(Joint.Parent)));
+        }
+    }
 }
 
 } // namespace

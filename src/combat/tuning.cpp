@@ -23,6 +23,7 @@ struct TuningField {
 constexpr std::array TuningFields = {
     TuningField{"spawnDistance", &CombatTuning::SpawnDistance},
     TuningField{"hitSpeedThreshold", &CombatTuning::HitSpeedThreshold},
+    TuningField{"bodyHalfWidth", &CombatTuning::BodyHalfWidth},
 };
 
 } // namespace
@@ -41,6 +42,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         throw std::runtime_error(Error.what());
     }
     if (Tuning.SpawnDistance <= 0.0f) throw std::runtime_error("spawnDistance must be positive");
+    if (Tuning.BodyHalfWidth <= 0.0f) throw std::runtime_error("bodyHalfWidth must be positive");
     return Tuning;
 }
 

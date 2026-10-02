@@ -9,9 +9,9 @@
 /// physical body (rig::Rig), the clips it plays and its health. It is
 /// internal to the combat module; the public API is Battle.
 ///
-/// PLACEHOLDER for the physics spike (phase 1): commands map straight to
-/// clips (move -> walk cycle, punch -> jab, kick -> kick) over the stance.
-/// The state machine of agent D (phase 2) replaces this controller.
+/// PLACEHOLDER until the state machine of agent D (phase 2): commands map
+/// straight to clips (move -> walk cycle, punch -> jab, kick -> kick) over
+/// the stance. A knocked-down fighter ignores commands until it stands.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -50,13 +50,18 @@ public:
     Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const ClipSet& NewClips,
             const stats::PhysicalProfile& NewProfile, const rig::RigSetup& Setup);
 
-    /// Chooses the clips for \p Cmd, sets the rig targets and applies the
-    /// rig controller. Call once per step, before the physics step.
+    /// Chooses the clips for \p Cmd, sets the rig targets and plans the
+    /// pelvis motion. Call once per step, before applyControl().
     void control(const PlayerCommands& Cmd, float Dt);
+    /// Moves the body for the next physics step (after the battle corrected
+    /// the planned pelvis motion).
+    void applyControl(float Dt);
 
-    /// This fighter was hit.
-    void onHit(const physics::HitEvent& Hit);
+    /// This fighter was hit; \p Direction is +1 if the hit pushes it to the
+    /// right, -1 to the left.
+    void onHit(const physics::HitEvent& Hit, float Direction);
 
+    rig::Rig& getRig() { return Body; }
     const rig::Rig& getRig() const { return Body; }
     const stats::PhysicalProfile& getProfile() const { return Profile; }
     float getHp() const { return Hp; }
@@ -81,7 +86,6 @@ private:
 
     bool Walking = false;                  ///< The walk cycle plays (also while finishing a step).
     float WalkTime = 0.0f;                 ///< Phase of the walk cycle, s.
-    float WalkHeldSec = 0.0f;              ///< How long walking has been requested, s.
     float WalkDirection = 1.0f;            ///< +1 forwards, -1 backwards (the cycle runs in reverse).
     const anim::Clip* Attack = nullptr;    ///< The attack being played, if any.
     float AttackTime = 0.0f;
