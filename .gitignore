@@ -45,3 +45,7 @@ run_mac
 run_mac.dSYM/
 test_physics
 test_coordinates
+
+# Claude Code: agent worktrees and personal local settings
+.claude/worktrees/
+.claude/settings.local.json
