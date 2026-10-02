@@ -42,7 +42,7 @@ constexpr float HitboxRadius = 0.16f;
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index);
-void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, float BodyHalfWidth);
+void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt);
 std::string getPhysicalParts(const rig::Rig& Body);
 
 } // namespace
@@ -58,7 +58,7 @@ struct Battle::Simulation {
 
     physics::World PhysWorld;
     ClipSet Clips;
-    float BodyHalfWidth = 0.0f;      ///< CombatTuning::BodyHalfWidth.
+    CombatTuning Tuning;
     std::vector<Fighter> Fighters;   ///< [0] left, [1] right; never resized after creation.
     std::vector<RecentHit> RecentHits;
 };
@@ -70,7 +70,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     Sim = std::make_unique<Simulation>(Simulation{
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity, .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
         .Clips = ClipSet::load(Cfg.DataDir / "poses"),
-        .BodyHalfWidth = Tuning.BodyHalfWidth,
+        .Tuning = Tuning,
     });
     addArena(Sim->PhysWorld, Cfg.Arena);
 
@@ -98,7 +98,7 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     Fighter& Right = Sim->Fighters[1];
     Left.control(LeftCmd, StepDt);
     Right.control(RightCmd, StepDt);
-    keepApart(Left, Right, Cfg.Arena.HalfWidthM, Sim->BodyHalfWidth);
+    keepApart(Left, Right, Cfg.Arena.HalfWidthM, Sim->Tuning, StepDt);
     Left.applyControl(StepDt);
     Right.applyControl(StepDt);
     Sim->PhysWorld.step(StepDt);
@@ -258,8 +258,8 @@ rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, 
 /// least a body width apart. Kinematic pelvises do not collide, so this is
 /// their "collision": the overlap is split so that the heavier fighter gives
 /// way less; a fighter against a wall cannot give way at all.
-void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, float BodyHalfWidth) {
-    const float MaxX = ArenaHalfWidth - BodyHalfWidth;
+void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt) {
+    const float MaxX = ArenaHalfWidth - Tuning.BodyHalfWidth;
     rig::Rig& LeftBody = Left.getRig();
     rig::Rig& RightBody = Right.getRig();
     const bool LeftUp = LeftBody.getPosture() != rig::Posture::KnockedDown;
@@ -268,11 +268,16 @@ void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, float BodyHa
     rig::PelvisController& RightMotion = RightBody.getController();
     if (LeftUp) LeftMotion.limit(-MaxX, MaxX);
     if (RightUp) RightMotion.limit(-MaxX, MaxX);
-    // A ragdoll on the floor is pushed by the legs of the other fighter instead.
+    // A ragdoll on the floor is not in the way: the other fighter's legs pass
+    // through it, its upper body still collides.
     if (!LeftUp || !RightUp) return;
 
-    const float MinGap = 2.0f * BodyHalfWidth;
-    const float Overlap = MinGap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
+    // The overlap goes away at a limited speed. Walking into each other is
+    // slower than that; a fighter getting up next to the other one is
+    // pushed out smoothly instead of jumping.
+    const float MinGap = 2.0f * Tuning.BodyHalfWidth;
+    const float Gap = RightMotion.getPlannedX() - LeftMotion.getPlannedX();
+    const float Overlap = std::min(MinGap - Gap, Tuning.SeparationSpeed * Dt);
     if (Overlap <= 0.0f) return;
     const float LeftMass = LeftBody.getTotalMass();
     const float RightMass = RightBody.getTotalMass();
@@ -281,7 +286,7 @@ void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, float BodyHa
     LeftMotion.limit(-MaxX, MaxX);
     RightMotion.limit(-MaxX, MaxX);
 
-    const float Rest = MinGap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
+    const float Rest = Gap + Overlap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
     if (Rest <= 0.0f) return;
     if (LeftMotion.getPlannedX() <= -MaxX) {
         RightMotion.shift(Rest);

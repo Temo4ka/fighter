@@ -31,6 +31,8 @@ struct CombatTuning {
     /// Half the width of a fighter's pushbox, m: the pelvises stay at least
     /// twice this apart and this far from the arena walls.
     float BodyHalfWidth = 0.25f;
+    /// Overlapping pelvises are pushed apart at most this fast, m/s.
+    float SeparationSpeed = 4.0f;
 };
 
 /// Parses the tuning from JSON text. Every key is optional; an unknown key
