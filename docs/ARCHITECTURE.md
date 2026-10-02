@@ -24,7 +24,7 @@ app ──► render ──► combat ──► stats ──► core
 | `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | — | — |
 | `physics` | `physics::World`, `HitEvent` | — | внутри |
 | `rig`, `anim` | пока только заголовки | — | — |
-| `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile` | — | — |
+| `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig`, `BattleResult`, `PlayerCommands`, `RenderSnapshot` | — | — |
 | `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
