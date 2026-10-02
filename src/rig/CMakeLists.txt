@@ -2,6 +2,7 @@ fighter_add_module(rig
     SOURCES
         rig_def.cpp
         rig.cpp
+        pelvis_controller.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::debug

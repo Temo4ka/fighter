@@ -119,3 +119,80 @@ TEST_CASE("physics::World: slow contacts and parts of one fighter are not hits",
     CHECK(Hits.empty());
     CHECK(Through.getPosition().X > 2.0f);   // passed through its own fighter's part
 }
+
+TEST_CASE("physics::Body: a kinematic body moves exactly to its target", "[physics]") {
+    World PhysWorld;
+    Body Slider = PhysWorld.createBody({.Type = BodyType::Kinematic, .Position = {0.0f, 1.0f}});
+    PhysWorld.addShape(Slider, {.Kind = ShapeKind::Box, .HalfExtents = {0.1f, 0.1f}});
+    CHECK(Slider.getType() == BodyType::Kinematic);
+
+    constexpr float Dt = 1.0f / 60.0f;
+    Slider.moveTo({0.3f, 1.2f}, 0.2f, Dt);
+    PhysWorld.step(Dt);
+    CHECK(Slider.getPosition().X == Approx(0.3f).margin(1e-4f));
+    CHECK(Slider.getPosition().Y == Approx(1.2f).margin(1e-4f));   // gravity does not act on it
+    // Box2D integrates rotation approximately: a large turn in one step is off
+    // slightly, and the next moveTo() corrects it.
+    CHECK(Slider.getAngle() == Approx(0.2f).margin(0.005f));
+
+    // Staying in place stops it, however slow the last correction is.
+    Slider.moveTo(Slider.getPosition(), Slider.getAngle(), Dt);
+    PhysWorld.step(Dt);
+    CHECK(Slider.getLinearVelocity().getLength() < 1e-3f);
+    CHECK(Slider.getPosition().X == Approx(0.3f).margin(1e-4f));
+}
+
+TEST_CASE("physics::World: a body keeps its mass through a kinematic phase", "[physics]") {
+    World PhysWorld;
+    Body Box = PhysWorld.createBody({.Position = {0.0f, 1.0f}});
+    PhysWorld.addShape(Box, {.Kind = ShapeKind::Box, .HalfExtents = {0.2f, 0.2f}});
+    Box.setMass(6.0f);
+
+    PhysWorld.setBodyType(Box, BodyType::Kinematic);
+    CHECK(Box.getType() == BodyType::Kinematic);
+    CHECK(Box.getMass() == 0.0f);
+    PhysWorld.setBodyType(Box, BodyType::Dynamic);
+    CHECK(Box.getMass() == Approx(6.0f));
+}
+
+TEST_CASE("physics::World: a kinematic part hitting a dynamic one is a hit", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    // Fighter 0 strikes with a kinematic ball of 2 kg at 4 m/s.
+    Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, {});
+    Striker.setMass(2.0f);
+    PhysWorld.setBodyType(Striker, BodyType::Kinematic);
+    const Body Target = addBall(PhysWorld, 1, {0.5f, 1.0f}, {});
+
+    std::vector<HitEvent> Hits;
+    constexpr float Dt = 1.0f / 60.0f;
+    for (int Step = 1; Step <= 30; ++Step) {
+        Striker.moveTo({4.0f * Dt * static_cast<float>(Step), 1.0f}, 0.0f, Dt);
+        PhysWorld.step(Dt);
+        std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    REQUIRE_FALSE(Hits.empty());
+    CHECK(Hits[0].Attacker.Fighter == 0);
+    CHECK(Hits[0].ApproachSpeed == Approx(4.0f).margin(0.5f));
+    // The impulse of two free balls of 2 and 5 kg, not of an immovable striker.
+    const float ReducedMass = 2.0f * 5.0f / 7.0f;
+    CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * ReducedMass).epsilon(0.01));
+    CHECK(Target.getLinearVelocity().X > 0.0f);   // the kinematic striker pushed it
+}
+
+TEST_CASE("physics::World: a kinematic part strikes with its strike mass", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, {});
+    PhysWorld.setBodyType(Striker, BodyType::Kinematic);
+    PhysWorld.setStrikeMass(Striker, 20.0f);   // a light fist on a heavy arm
+    addBall(PhysWorld, 1, {0.5f, 1.0f}, {});
+
+    std::vector<HitEvent> Hits;
+    constexpr float Dt = 1.0f / 60.0f;
+    for (int Step = 1; Step <= 30 && Hits.empty(); ++Step) {
+        Striker.moveTo({4.0f * Dt * static_cast<float>(Step), 1.0f}, 0.0f, Dt);
+        PhysWorld.step(Dt);
+        std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    REQUIRE(Hits.size() == 1);
+    CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * 20.0f * 5.0f / 25.0f).epsilon(0.01));
+}

@@ -34,31 +34,27 @@
     { "child": "FootR",     "parent": "ShinR",     "anchor": [0.0, 0.10],  "limits": [-45, 35],  "strength": 0.6 }
   ],
 
+  "kinematic": ["Pelvis", "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR"],
+
   "control": {
     "torqueScale": 1.0,
     "gainScale": 1.0,
     "maxJointSpeed": 15.0,
     "angularDamping": 0.5,
-    "footLevelHeight": 0.03,
-
-    "uprightStiffness": 1500.0,
-    "uprightDamping": 120.0,
-    "uprightTorqueLimit": 600.0,
-    "standHeight": 0.93,
-    "heightStiffness": 4000.0,
-    "heightDamping": 300.0,
-    "heightForceLimit": 400.0,
-    "groundTolerance": 0.05,
 
     "walkSpeed": 1.2,
     "backwardSpeedScale": 0.7,
-    "walkForceGain": 400.0,
-    "walkForceLimit": 260.0,
-    "walkCycleMinRate": 0.7,
-    "walkStartSec": 0.4,
+    "walkAcceleration": 8.0,
 
     "minStiffness": 0.25,
     "stiffnessPerImpulse": 0.03,
-    "stiffnessRecovery": 0.8
+    "stiffnessRecovery": 0.8,
+    "knockbackScale": 1.0,
+    "knockbackDecay": 4.0,
+
+    "knockdownSpeed": 0.7,
+    "knockdownSec": 1.5,
+    "getUpSec": 0.8,
+    "knockdownStiffness": 0.15
   }
 }

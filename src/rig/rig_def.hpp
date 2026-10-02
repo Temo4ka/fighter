@@ -7,7 +7,8 @@
 /// \file
 /// This file declares RigDef, the description of a fighter's body that is
 /// loaded from data/rigs/<id>.json: body parts and their shapes, joints with
-/// angle limits, and the parameters of the balance and motor controller.
+/// angle limits, which parts are kinematic, and the parameters of the body
+/// controller (pelvis controller, motors, hit reaction, knockdown).
 ///
 /// Geometry is given in the reference pose: standing straight, arms hanging
 /// down, facing right, in meters relative to the fighter origin (the floor
@@ -21,6 +22,7 @@
 
 #pragma once
 
+#include <bitset>
 #include <filesystem>
 #include <string_view>
 #include <vector>
@@ -52,56 +54,43 @@ struct JointDef {
     float Strength = 1.0f;       ///< Share of the profile's motor torque this joint gets.
 };
 
-/// Parameters of the controller that keeps the fighter standing and moving
-/// (the "control" object of a rig file; docs/TUNING.md describes each one).
-/// The "assist" forces (upright torque, height assist, walking force) act on
-/// the body from outside; they are what makes an active ragdoll playable.
+/// Parameters of the body controller (the "control" object of a rig file;
+/// docs/TUNING.md describes each one).
 struct ControlParams {
-    /// \name Motors
+    /// \name Motors of the physical parts
     /// @{
     float TorqueScale = 1.0f;          ///< Multiplies the profile's motor torque.
     float GainScale = 1.0f;            ///< Multiplies the profile's motor gain.
     float MaxJointSpeed = 15.0f;       ///< Motor speed limit, rad/s.
     float AngularDamping = 0.5f;       ///< Of every body part, 1/s.
-    /// A foot whose lowest corner is below this height keeps its sole flat
-    /// instead of following the clip, m; 0 turns foot levelling off.
-    float FootLevelHeight = 0.03f;
     /// @}
 
-    /// \name Balance assist
+    /// \name Pelvis controller
     /// @{
-    float UprightStiffness = 2000.0f;  ///< Torque per radian of lean error, N*m/rad.
-    float UprightDamping = 200.0f;     ///< N*m*s/rad.
-    float UprightTorqueLimit = 1500.0f;///< N*m, per stabilized part (pelvis, torso).
-    /// Height assist: an upward force on the pelvis when it sinks below the
-    /// standing height while a foot is on the floor. It keeps the legs from
-    /// folding into a squat the motors cannot get out of.
-    float StandHeight = 0.93f;         ///< Pelvis center height, m.
-    float HeightStiffness = 4000.0f;   ///< N/m.
-    float HeightDamping = 300.0f;      ///< N*s/m.
-    float HeightForceLimit = 400.0f;   ///< N, never pulls down.
-    /// A foot whose sole is this close to the floor counts as standing on it;
-    /// the assists and the walking force work only while grounded, m.
-    float GroundTolerance = 0.05f;
-    /// @}
-
-    /// \name Walking
-    /// @{
-    float WalkSpeed = 1.5f;            ///< m/s.
+    float WalkSpeed = 1.2f;            ///< m/s; the profile's MoveSpeedScale (DEX) multiplies it.
     float BackwardSpeedScale = 0.7f;   ///< Walking backwards is slower.
-    float WalkForceGain = 300.0f;      ///< N per m/s of speed error.
-    float WalkForceLimit = 400.0f;     ///< N.
-    /// The walk cycle plays at the rate of the distance covered; while the
-    /// first step starts it plays at least this fast (a share of the normal rate).
-    float WalkCycleMinRate = 0.7f;
-    float WalkStartSec = 0.4f;         ///< How long the first step lasts, s.
+    float WalkAcceleration = 8.0f;     ///< How fast the walking speed is gained and lost, m/s^2.
     /// @}
 
-    /// \name Stiffness after hits
+    /// \name Hit reaction
     /// @{
-    float MinStiffness = 0.2f;         ///< Lowest stiffness after a hit.
+    float MinStiffness = 0.25f;        ///< Lowest stiffness after a hit.
     float StiffnessPerImpulse = 0.03f; ///< Stiffness lost per N*s of hit impulse.
-    float StiffnessRecovery = 1.0f;    ///< Stiffness regained per second.
+    float StiffnessRecovery = 0.8f;    ///< Stiffness regained per second.
+    /// Multiplies the knockback speed, impulse / mass of the whole fighter.
+    float KnockbackScale = 1.0f;
+    float KnockbackDecay = 4.0f;       ///< Exponential decay of the knockback speed, 1/s.
+    /// @}
+
+    /// \name Knockdown
+    /// @{
+    /// A hit whose knockback speed (impulse / mass) reaches this knocks the
+    /// fighter down: the threshold impulse grows with the fighter's mass, m/s.
+    float KnockdownSpeed = 0.7f;
+    float KnockdownSec = 1.5f;         ///< Time on the floor, s.
+    float GetUpSec = 0.8f;             ///< Time to get back into the stance, s.
+    /// Motor stiffness while down; it ramps back to 1 while getting up.
+    float KnockdownStiffness = 0.15f;
     /// @}
 };
 
@@ -109,6 +98,10 @@ struct RigDef {
     std::vector<PartDef> Parts;    ///< Every body part exactly once.
     std::vector<JointDef> Joints;  ///< Parents before children; every part except the root is a child once.
     BodyPart Root = BodyPart::Pelvis;
+    /// Parts that the code moves while the fighter stands (the "kinematic"
+    /// list of the file): the root and a chain from it, posed from the clips.
+    /// The other parts are physical, driven by joint motors.
+    std::bitset<BodyPartCount> Kinematic;
     ControlParams Control;
 
     const PartDef& getPart(BodyPart Part) const;

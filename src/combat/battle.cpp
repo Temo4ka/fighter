@@ -5,7 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <ranges>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -13,6 +15,8 @@
 #include "combat/tuning.hpp"
 #include "debug/draw.hpp"
 #include "physics/world.hpp"
+#include "rig/pelvis_controller.hpp"
+#include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
 
 namespace fighter::combat {
@@ -38,6 +42,7 @@ constexpr float HitboxRadius = 0.16f;
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index);
+void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt);
 
 } // namespace
 
@@ -52,6 +57,7 @@ struct Battle::Simulation {
 
     physics::World PhysWorld;
     ClipSet Clips;
+    CombatTuning Tuning;
     std::vector<Fighter> Fighters;   ///< [0] left, [1] right; never resized after creation.
     std::vector<RecentHit> RecentHits;
 };
@@ -63,6 +69,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     Sim = std::make_unique<Simulation>(Simulation{
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity, .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
         .Clips = ClipSet::load(Cfg.DataDir / "poses"),
+        .Tuning = Tuning,
     });
     addArena(Sim->PhysWorld, Cfg.Arena);
 
@@ -85,27 +92,44 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     if (Result) return;
     const float StepDt = static_cast<float>(Dt);
 
-    // Explicit order: controllers -> physics -> hits.
-    Sim->Fighters[0].control(LeftCmd, StepDt);
-    Sim->Fighters[1].control(RightCmd, StepDt);
+    // Explicit order: controllers plan -> spacing -> bodies move -> physics -> hits.
+    Fighter& Left = Sim->Fighters[0];
+    Fighter& Right = Sim->Fighters[1];
+    Left.control(LeftCmd, StepDt);
+    Right.control(RightCmd, StepDt);
+    keepApart(Left, Right, Cfg.Arena.HalfWidthM, Sim->Tuning, StepDt);
+    Left.applyControl(StepDt);
+    Right.applyControl(StepDt);
     Sim->PhysWorld.step(StepDt);
 
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
 
-    Hits.clear();
+    // Physics guesses the attacker from the velocities; the attack state
+    // decides. Contacts without a striking limb (feet bumping while walking,
+    // a chest pushing) are not hits. An attack lands once: the strongest of
+    // its contacts in the step it first touches the opponent.
+    std::array<std::optional<physics::HitEvent>, 2> Strikes;
     for (const auto& Contact : Sim->PhysWorld.getHitEvents()) {
-        // Physics guesses the attacker from the velocities; the attack state
-        // decides. Contacts without a striking limb (feet bumping while
-        // walking, a chest pushing) are not hits.
         physics::HitEvent Hit = Contact;
         const auto IsStrike = [&] { return Sim->Fighters[Hit.Attacker.Fighter].isStrikingWith(Hit.Attacker.Part); };
         if (!IsStrike()) std::swap(Hit.Attacker, Hit.Victim);
         if (!IsStrike()) continue;
+        std::optional<physics::HitEvent>& Strongest = Strikes[Hit.Attacker.Fighter];
+        if (!Strongest || Hit.Impulse > Strongest->Impulse) Strongest = Hit;
+    }
 
+    Hits.clear();
+    for (const auto& Strike : Strikes) {
+        if (!Strike) continue;
+        const physics::HitEvent& Hit = *Strike;
         Fighter& Attacker = Sim->Fighters[Hit.Attacker.Fighter];
         Fighter& Victim = Sim->Fighters[Hit.Victim.Fighter];
-        Victim.onHit(Hit);
+        Attacker.onStrikeLanded();
+        // A hit pushes the victim away from the attacker.
+        const float AttackerX = Attacker.getRig().getPartPosition(BodyPart::Pelvis).X;
+        const float VictimX = Victim.getRig().getPartPosition(BodyPart::Pelvis).X;
+        Victim.onHit(Hit, VictimX >= AttackerX ? 1.0f : -1.0f);
         Hits.push_back(Hit);
 
         const Vec2 Direction = (Victim.getRig().getPartPosition(Hit.Victim.Part) -
@@ -161,24 +185,40 @@ void Battle::drawDebug() const {
             }
 
             const Vec2 Feet = Body.getFloorPoint();
-            debug::setPanel(std::format("{} pos", Name), std::format("({:+.2f}, {:+.2f}) m  {}", Feet.X, Feet.Y,
-                                                                    Body.isGrounded() ? "ground" : "air"));
+            debug::setPanel(std::format("{} pos", Name), std::format("({:+.2f}, {:+.2f}) m", Feet.X, Feet.Y));
+            std::string State(rig::getPostureName(Body.getPosture()));
+            if (Body.getPosture() != rig::Posture::Standing) State += std::format(" {:.2f} s", Body.getPostureSec());
+            debug::setPanel(std::format("{} state", Name), State);
+            const rig::PelvisController& Controller = Body.getController();
+            if (Body.getPosture() == rig::Posture::KnockedDown) {
+                debug::setPanel(std::format("{} pelvis", Name),
+                                std::format("x {:+.2f} m, ragdoll (no controller)",
+                                            Body.getPartPosition(BodyPart::Pelvis).X));
+            } else {
+                debug::setPanel(std::format("{} pelvis", Name),
+                                std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f})",
+                                            Controller.getPositionX(), Controller.getVelocity(),
+                                            Controller.getWalkVelocity(), Controller.getKnockback()));
+            }
+            std::string Physical;
+            for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+                const auto Part = static_cast<BodyPart>(Index);
+                if (Body.isKinematic(Part)) continue;
+                if (!Physical.empty()) Physical += ' ';
+                Physical += getBodyPartName(Part);
+            }
+            const bool Ragdoll = Body.getPosture() == rig::Posture::KnockedDown;
+            debug::setPanel(std::format("{} physical", Name), Ragdoll ? "all (ragdoll)" : Physical);
             debug::setPanel(std::format("{} clip", Name),
                             std::format("{} {:.2f} s{}", Player.getClipName(), Player.getClipTime(),
                                         Player.isAttackActive() ? "  ACTIVE" : ""));
             debug::setPanel(std::format("{} stiffness", Name), std::format("{:.2f}", Body.getStiffness()));
             debug::setPanel(std::format("{} body", Name),
-                            std::format("{:.1f} kg, motors {:.0f} Nm max, gain {:.1f}/s", Body.getTotalMass(),
-                                        Body.getMotorMaxTorque(), Body.getMotorGain()));
+                            std::format("{:.1f} kg, motors {:.0f} Nm max, gain {:.1f}/s, walk {:.2f} m/s",
+                                        Body.getTotalMass(), Body.getMotorMaxTorque(), Body.getMotorGain(),
+                                        Body.getWalkSpeed()));
             debug::setPanel(std::format("{} torque", Name),
                             std::format("{:.0f} Nm total", Body.getMotorTorqueSum()));
-            // The assists are external "cheat" forces: keep an eye on how much
-            // of the body they carry.
-            const float Weight = Body.getTotalMass() * Cfg.Arena.Gravity.getLength();
-            debug::setPanel(std::format("{} assist", Name),
-                            std::format("lift {:.0f} N ({:.0f}% of weight), upright {:.0f} / {:.0f} Nm",
-                                        Body.getLiftForce(), Body.getLiftForce() / Weight * 100.0f,
-                                        Body.getPelvisUprightTorque(), Body.getTorsoUprightTorque()));
             debug::setPanel(std::format("{} hp", Name),
                             std::format("{:.0f} / {:.0f}", Player.getHp(), Player.getProfile().MaxHp));
         }
@@ -223,7 +263,49 @@ rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, 
     for (auto&& [Mass, Part] : std::views::zip(Setup.MassKg, Profile.Parts)) Mass = Part.MassKg;
     Setup.MotorMaxTorque = Profile.MotorMaxTorque;
     Setup.MotorGain = Profile.MotorGain;
+    Setup.MoveSpeedScale = Profile.MoveSpeedScale;
     return Setup;
+}
+
+/// Keeps the planned pelvis positions inside the arena and the fighters at
+/// least a body width apart. Kinematic pelvises do not collide, so this is
+/// their "collision": the overlap is split so that the heavier fighter gives
+/// way less; a fighter against a wall cannot give way at all.
+void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt) {
+    const float MaxX = ArenaHalfWidth - Tuning.BodyHalfWidth;
+    rig::Rig& LeftBody = Left.getRig();
+    rig::Rig& RightBody = Right.getRig();
+    const bool LeftUp = LeftBody.getPosture() != rig::Posture::KnockedDown;
+    const bool RightUp = RightBody.getPosture() != rig::Posture::KnockedDown;
+    rig::PelvisController& LeftMotion = LeftBody.getController();
+    rig::PelvisController& RightMotion = RightBody.getController();
+    if (LeftUp) LeftMotion.limit(-MaxX, MaxX);
+    if (RightUp) RightMotion.limit(-MaxX, MaxX);
+    // A ragdoll on the floor is not in the way: the other fighter's legs pass
+    // through it, its upper body still collides.
+    if (!LeftUp || !RightUp) return;
+
+    // The overlap goes away at a limited speed. Walking into each other is
+    // slower than that; a fighter getting up next to the other one is
+    // pushed out smoothly instead of jumping.
+    const float MinGap = 2.0f * Tuning.BodyHalfWidth;
+    const float Gap = RightMotion.getPlannedX() - LeftMotion.getPlannedX();
+    const float Overlap = std::min(MinGap - Gap, Tuning.SeparationSpeed * Dt);
+    if (Overlap <= 0.0f) return;
+    const float LeftMass = LeftBody.getTotalMass();
+    const float RightMass = RightBody.getTotalMass();
+    LeftMotion.shift(-Overlap * RightMass / (LeftMass + RightMass));
+    RightMotion.shift(Overlap * LeftMass / (LeftMass + RightMass));
+    LeftMotion.limit(-MaxX, MaxX);
+    RightMotion.limit(-MaxX, MaxX);
+
+    const float Rest = Gap + Overlap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
+    if (Rest <= 0.0f) return;
+    if (LeftMotion.getPlannedX() <= -MaxX) {
+        RightMotion.shift(Rest);
+    } else {
+        LeftMotion.shift(-Rest);
+    }
 }
 
 } // namespace

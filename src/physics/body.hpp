@@ -31,7 +31,11 @@
 
 namespace fighter::physics {
 
-enum class BodyType : uint8_t { Static, Dynamic };
+/// Static bodies never move. Kinematic bodies move only as the code tells
+/// them (moveTo()): they push dynamic bodies but feel no forces and do not
+/// collide with static or other kinematic bodies. Dynamic bodies are fully
+/// simulated.
+enum class BodyType : uint8_t { Static, Kinematic, Dynamic };
 
 struct BodyDef {
     BodyType Type = BodyType::Dynamic;
@@ -59,6 +63,10 @@ struct ShapeDef {
     /// Shapes with the same negative group never collide with each other
     /// (all parts of one fighter); zero means no group.
     int CollisionGroup = 0;
+    /// Filter bits: two shapes collide only if the category of each one is
+    /// in the mask of the other.
+    uint64_t CollisionCategory = 1;
+    uint64_t CollisionMask = ~uint64_t{0};
     bool EnableHitEvents = false;
 };
 
@@ -68,6 +76,7 @@ public:
     Body() = default;
 
     bool isValid() const;
+    BodyType getType() const;
 
     /// \name State
     /// @{
@@ -76,22 +85,27 @@ public:
     Vec2 getWorldCenterOfMass() const;
     Vec2 getLinearVelocity() const;      ///< Of the center of mass, m/s.
     float getAngularVelocity() const;    ///< rad/s.
-    float getMass() const;               ///< kg.
+    float getMass() const;               ///< kg; 0 for static and kinematic bodies.
     Vec2 getWorldPoint(Vec2 LocalPoint) const;
     Vec2 getLocalPoint(Vec2 WorldPoint) const;
     /// @}
 
-    /// Scales the density of every shape so that the body weighs \p Kg.
+    /// Scales the density of every shape so that the body weighs \p Kg. Only
+    /// a dynamic body has a mass; the densities stay when the type changes.
     void setMass(float Kg);
     void setLinearVelocity(Vec2 Velocity);
-
-    /// \name Forces (accumulated until the next World::step)
-    /// @{
-    void applyForce(Vec2 Force, Vec2 WorldPoint);
-    void applyForceToCenter(Vec2 Force);
-    void applyTorque(float Torque);
-    void applyLinearImpulseToCenter(Vec2 Impulse);
-    /// @}
+    void setAngularVelocity(float Velocity);
+    /// Teleports the body. Meant for setting up a scene, not for motion:
+    /// nothing is pushed out of the way.
+    void setTransform(Vec2 Position, float Angle);
+    /// Sets the velocity of a kinematic body so that it reaches \p Position
+    /// and \p Angle (radians, along the shortest turn) after \p Dt. Unlike
+    /// a teleport, the motion pushes dynamic bodies on its way. Box2D
+    /// integrates rotation approximately, so a large turn is slightly off
+    /// (about 1% of 0.2 rad); the next call corrects it, errors do not add up.
+    void moveTo(Vec2 Position, float Angle, float Dt);
+    /// Sets ShapeDef::CollisionMask of every shape of the body.
+    void setCollisionMask(uint64_t Mask);
 
     bool operator==(const Body&) const = default;
 

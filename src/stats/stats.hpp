@@ -34,6 +34,7 @@ struct PhysicalProfile {
     PerBodyPart<PartParams> Parts{};
     float MotorMaxTorque = 0.0f;   ///< N*m, from STR.
     float MotorGain = 0.0f;        ///< 1/s, from DEX: how fast a motor reaches the pose.
+    float MoveSpeedScale = 1.0f;   ///< From DEX: multiplies the walking speed of the rig.
     float MaxHp = 0.0f;            ///< From CON.
 };
 
@@ -67,6 +68,7 @@ struct BalanceTable {
     float TorquePerStr = 0.06f;
     float BaseMotorGain = 12.0f;
     float GainPerDex = 0.05f;
+    float MoveSpeedPerDex = 0.03f;     ///< +3% walking speed per DEX point above 10.
     float BaseHp = 100.0f;
     float HpPerCon = 8.0f;
 

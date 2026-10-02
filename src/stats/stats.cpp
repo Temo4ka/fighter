@@ -47,6 +47,8 @@ PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, cons
         Balance.BaseMotorTorque * (1.0f + Balance.TorquePerStr * static_cast<float>(BaseStats.Strength - 10));
     Profile.MotorGain =
         Balance.BaseMotorGain * (1.0f + Balance.GainPerDex * static_cast<float>(BaseStats.Dexterity - 10));
+    Profile.MoveSpeedScale =
+        std::max(1.0f + Balance.MoveSpeedPerDex * static_cast<float>(BaseStats.Dexterity - 10), 0.5f);
     Profile.MaxHp = Balance.BaseHp + Balance.HpPerCon * static_cast<float>(BaseStats.Constitution - 10);
     return Profile;
 }

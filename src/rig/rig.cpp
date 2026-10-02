@@ -4,7 +4,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <limits>
 #include <numbers>
 #include <ranges>
 #include <utility>
@@ -20,32 +22,53 @@ constexpr float Pi = std::numbers::pi_v<float>;
 /// @{
 constexpr float JointLimitRadius = 0.07f;   ///< m.
 constexpr float MotorArcRadius = 0.045f;    ///< m.
-constexpr float UprightArcRadius = 0.22f;   ///< m.
-constexpr float WalkForceScale = 0.002f;    ///< m per N.
 constexpr float VelocityScale = 0.1f;       ///< m per m/s.
+constexpr float ControllerScale = 0.3f;     ///< m per m/s, the pelvis controller arrows.
 constexpr float MinDrawnSpeed = 0.05f;      ///< m/s.
 constexpr int CapsuleCapSegments = 6;
+/// @}
+
+/// \name Collision categories of body parts (the arena keeps bit 0)
+/// A knocked-down fighter ignores the posed parts of the other fighter: a
+/// kick still moving through the falling body would fling it, as nothing
+/// stops a kinematic leg.
+/// @{
+constexpr uint64_t PosedPartBit = uint64_t{1} << 1;
+constexpr uint64_t PhysicalPartBit = uint64_t{1} << 2;
+constexpr uint64_t CollideWithAll = ~uint64_t{0};
 /// @}
 
 PartDef mirrorPart(const PartDef& Source, float Facing);
 PartDef moveShape(const PartDef& Source, Vec2 Offset);
 Vec2 getBoundsCenter(const PartDef& Shape);
 Vec2 getBoundsSize(const PartDef& Shape);
-physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup);
+physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup, uint64_t Category);
+float getLowestPoint(const PartDef& Shape, Vec2 Position, float Angle);
 float wrapAngle(float Angle);
-bool isFoot(BodyPart Part);
+float smoothStep(float T);
 Vec2 getDirection(float Angle);
 void drawShape(debug::Cat Category, const PartDef& Shape, Vec2 Position, float Angle);
 
 } // namespace
 
+std::string_view getPostureName(Posture State) {
+    switch (State) {
+        case Posture::Standing: return "standing";
+        case Posture::KnockedDown: return "knocked down";
+        case Posture::GettingUp: return "getting up";
+    }
+    return "?";
+}
+
 Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
-    : Control(Def.Control),
+    : Physics(&PhysWorld),
+      Control(Def.Control),
       Root(Def.Root),
       Facing(Setup.FacingRight ? 1.0f : -1.0f),
       FighterIndex(Setup.FighterIndex),
       MotorMaxTorque(Setup.MotorMaxTorque * Def.Control.TorqueScale),
-      MotorGain(Setup.MotorGain * Def.Control.GainScale) {
+      MotorGain(Setup.MotorGain * Def.Control.GainScale),
+      MoveSpeedScale(Setup.MoveSpeedScale) {
     // All parts of one fighter share a negative group: no self-collision.
     const int CollisionGroup = -(static_cast<int>(Setup.FighterIndex) + 1);
 
@@ -61,14 +84,19 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
         PartState& State = Parts[Index];
         State.Shape = moveShape(Mirrored, -Center);
         State.Size = getBoundsSize(Mirrored);
+        State.Kinematic = Def.Kinematic.test(Index);
         State.Handle = PhysWorld.createBody({
             .Position = Setup.Origin + Center,
             .AngularDamping = Control.AngularDamping,
             .Part = physics::PartRef{Setup.FighterIndex, Source.Part},
         });
-        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup));
+        PhysWorld.addShape(State.Handle,
+                           makeShapeDef(State.Shape, CollisionGroup, State.Kinematic ? PosedPartBit : PhysicalPartBit));
+        // The mass is set while the body is dynamic; the densities stay when
+        // it becomes kinematic.
         State.Handle.setMass(Setup.MassKg[Index]);
-        TotalMass += State.Handle.getMass();
+        State.Mass = State.Handle.getMass();
+        TotalMass += State.Mass;
     }
 
     for (const auto& Source : Def.Joints) {
@@ -93,6 +121,24 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
             .MaxMotorTorque = MotorMaxTorque * Source.Strength,
         });
     }
+
+    for (auto& Part : Parts) {
+        if (Part.Kinematic) PhysWorld.setBodyType(Part.Handle, physics::BodyType::Kinematic);
+    }
+    // A posed limb strikes with everything between the touching part and
+    // the root: a foot kicks with the whole leg.
+    PerBodyPart<float> LimbMass{};
+    for (const auto& Joint : Joints) {
+        const PartState& Child = getPart(Joint.Child);
+        if (!Child.Kinematic) continue;
+        const float Above = Joint.Parent == Root ? 0.0f : LimbMass[static_cast<size_t>(Joint.Parent)];
+        float& Limb = LimbMass[static_cast<size_t>(Joint.Child)];
+        Limb = Child.Mass + Above;
+        PhysWorld.setStrikeMass(Child.Handle, Limb);
+    }
+    Controller = PelvisController(getPart(Root).Handle.getPosition().X,
+                                  {.WalkAcceleration = Control.WalkAcceleration,
+                                   .KnockbackDecay = Control.KnockbackDecay});
 }
 
 void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
@@ -103,68 +149,63 @@ void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
     }
 }
 
-void Rig::setMoveVelocity(float Velocity) { MoveVelocity = Velocity; }
+void Rig::setMoveVelocity(float Velocity) { Controller.setTargetVelocity(Velocity); }
 
 void Rig::setBaseStiffness(float Stiffness) { BaseStiffness = Stiffness; }
 
+void Rig::snapToTargets() {
+    Controller.reset(Controller.getPositionX());
+    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot());
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        Part.Handle.setTransform(Target.Position, Target.Angle);
+        Part.Handle.setLinearVelocity({});
+        Part.Handle.setAngularVelocity(0.0f);
+    }
+}
+
+void Rig::planMotion(float Dt) {
+    // A ragdoll on the floor goes where physics takes it.
+    if (CurrentPosture == Posture::KnockedDown) return;
+    Controller.plan(Dt);
+}
+
 void Rig::applyControl(float Dt) {
     HitFactor = std::min(1.0f, HitFactor + Control.StiffnessRecovery * Dt);
-    const float Stiffness = getStiffness();
 
-    // PD-style motors: a velocity motor whose speed is proportional to the
-    // angle error behaves like a stiff spring with damping, and its torque
-    // limit is the "strength" of the joint.
-    for (auto& Joint : Joints) {
-        float Target = Joint.Target;
-        if (isFoot(Joint.Child) && getLowestPoint(Joint.Child) < Control.FootLevelHeight) {
-            // Foot levelling: a foot on the floor keeps its sole flat instead
-            // of following the clip, otherwise the fighter ends up on tiptoe.
-            const float ShinAngle = getPart(Joint.Parent).Handle.getAngle();
-            Target = std::clamp(-wrapAngle(ShinAngle), Joint.LowerAngle, Joint.UpperAngle);
-        }
-        // Stiffness scales both the response speed and the torque limit: a
-        // stiff joint snaps to its target, a weak one lags and gives way.
-        const float Speed = (Target - Joint.Handle.getAngle()) * MotorGain * Stiffness;
-        Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
-        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * Stiffness);
+    PostureSec += Dt;
+    if (CurrentPosture == Posture::KnockedDown && PostureSec >= Control.KnockdownSec) {
+        startGettingUp();
+    } else if (CurrentPosture == Posture::GettingUp && PostureSec >= Control.GetUpSec) {
+        CurrentPosture = Posture::Standing;
+        PostureSec = 0.0f;
     }
 
-    // Upright assist: world-space torques on the pelvis and the torso. Hits
-    // weaken them, attacks do not make them stronger.
-    const float PelvisTarget = TargetAngles[static_cast<size_t>(Root)] * Facing;
-    const float TorsoTarget = PelvisTarget + TargetAngles[static_cast<size_t>(BodyPart::Torso)] * Facing;
-    PelvisUprightTorque = getUprightTorque(Root, PelvisTarget) * HitFactor;
-    TorsoUprightTorque = getUprightTorque(BodyPart::Torso, TorsoTarget) * HitFactor;
-    Parts[static_cast<size_t>(Root)].Handle.applyTorque(PelvisUprightTorque);
-    Parts[static_cast<size_t>(BodyPart::Torso)].Handle.applyTorque(TorsoUprightTorque);
-
-    // Height assist: an external force that only ever pushes up.
-    LiftForce = 0.0f;
-    if (isGrounded()) {
-        const physics::Body& Pelvis = Parts[static_cast<size_t>(Root)].Handle;
-        const float Sag = Control.StandHeight - Pelvis.getPosition().Y;
-        const float Lift = Sag * Control.HeightStiffness - Pelvis.getLinearVelocity().Y * Control.HeightDamping;
-        LiftForce = std::clamp(Lift, 0.0f, Control.HeightForceLimit) * HitFactor;
-        Parts[static_cast<size_t>(Root)].Handle.applyForceToCenter({0.0f, LiftForce});
+    if (CurrentPosture != Posture::KnockedDown) {
+        Controller.commit(Dt);
+        moveKinematicParts(Dt);
     }
-
-    // Walking: the legs play the walk cycle, this force sets the speed. It is
-    // spread over the parts by mass, like gravity, so it moves the body
-    // without tipping it over when the way is blocked.
-    WalkForce = {};
-    if (MoveVelocity != 0.0f && isGrounded()) {
-        const float Error = MoveVelocity - getCenterOfMassVelocity().X;
-        WalkForce.X = std::clamp(Error * Control.WalkForceGain, -Control.WalkForceLimit, Control.WalkForceLimit) *
-                      HitFactor;
-        for (auto& Part : Parts) {
-            Part.Handle.applyForceToCenter(WalkForce * (Part.Handle.getMass() / TotalMass));
-        }
-    }
+    driveMotors();
 }
 
-void Rig::applyHit(float Impulse) {
+void Rig::applyHit(float Impulse, float Direction) {
     HitFactor = std::max(Control.MinStiffness, HitFactor - Impulse * Control.StiffnessPerImpulse);
+    if (CurrentPosture == Posture::KnockedDown) return;
+
+    // The whole fighter takes the impulse: heavier fighters (CON, armor)
+    // are pushed back less.
+    const float Speed = Impulse * Control.KnockbackScale / TotalMass;
+    if (CurrentPosture == Posture::Standing && Speed >= Control.KnockdownSpeed) {
+        knockDown(Speed * Direction);
+        return;
+    }
+    Controller.addKnockback(Speed * Direction);
 }
+
+bool Rig::isKinematic(BodyPart Part) const {
+    return getPart(Part).Kinematic && CurrentPosture != Posture::KnockedDown;
+}
+
+float Rig::getStiffness() const { return BaseStiffness * HitFactor * getPostureStiffness(); }
 
 float Rig::getMotorTorqueSum() const {
     float Sum = 0.0f;
@@ -174,39 +215,18 @@ float Rig::getMotorTorqueSum() const {
 
 Vec2 Rig::getCenterOfMass() const {
     Vec2 Weighted;
-    for (const auto& Part : Parts) Weighted += Part.Handle.getWorldCenterOfMass() * Part.Handle.getMass();
+    for (const auto& Part : Parts) Weighted += Part.Handle.getWorldCenterOfMass() * Part.Mass;
     return Weighted / TotalMass;
 }
 
-Vec2 Rig::getCenterOfMassVelocity() const {
-    Vec2 Momentum;
-    for (const auto& Part : Parts) Momentum += Part.Handle.getLinearVelocity() * Part.Handle.getMass();
-    return Momentum / TotalMass;
-}
-
 Vec2 Rig::getFloorPoint() const {
-    const Vec2 LeftPos = getPartPosition(BodyPart::FootL);
-    const Vec2 RightPos = getPartPosition(BodyPart::FootR);
-    const float Sole = std::min(getLowestPoint(BodyPart::FootL), getLowestPoint(BodyPart::FootR));
+    const PartState& Left = getPart(BodyPart::FootL);
+    const PartState& Right = getPart(BodyPart::FootR);
+    const Vec2 LeftPos = Left.Handle.getPosition();
+    const Vec2 RightPos = Right.Handle.getPosition();
+    const float Sole = std::min(getLowestPoint(Left.Shape, LeftPos, Left.Handle.getAngle()),
+                                getLowestPoint(Right.Shape, RightPos, Right.Handle.getAngle()));
     return {(LeftPos.X + RightPos.X) * 0.5f, std::max(0.0f, Sole)};
-}
-
-bool Rig::isGrounded() const {
-    return std::min(getLowestPoint(BodyPart::FootL), getLowestPoint(BodyPart::FootR)) < Control.GroundTolerance;
-}
-
-float Rig::getLowestPoint(BodyPart Part) const {
-    // The lowest corner of the part's bounds: a foot standing on its toes
-    // still touches the floor.
-    const PartState& State = getPart(Part);
-    const Vec2 Center = State.Handle.getPosition();
-    const float Angle = State.Handle.getAngle();
-    const Vec2 Half = State.Size * 0.5f;
-    float Lowest = Center.Y;
-    const std::array<Vec2, 4> Corners = {Vec2{-Half.X, -Half.Y}, Vec2{Half.X, -Half.Y}, Vec2{Half.X, Half.Y},
-                                         Vec2{-Half.X, Half.Y}};
-    for (const auto& Corner : Corners) Lowest = std::min(Lowest, Center.Y + rotate(Corner, Angle).Y);
-    return Lowest;
 }
 
 Vec2 Rig::getPartPosition(BodyPart Part) const { return getPart(Part).Handle.getPosition(); }
@@ -238,7 +258,7 @@ void Rig::drawDebug() const {
         debug::ScopedSide Owner(FighterIndex == 0 ? debug::Side::Left : debug::Side::Right);
         drawJointsAndMotors();
         drawTargetPose();
-        drawForces();
+        drawController();
 
         for (const auto& Part : Parts) {
             const Vec2 Velocity = Part.Handle.getLinearVelocity();
@@ -254,32 +274,119 @@ void Rig::drawDebug() const {
     }
 }
 
-float Rig::getUprightTorque(BodyPart Part, float TargetAngle) const {
-    const physics::Body& Handle = getPart(Part).Handle;
-    const float Error = wrapAngle(TargetAngle - Handle.getAngle());
-    const float Torque = Error * Control.UprightStiffness - Handle.getAngularVelocity() * Control.UprightDamping;
-    return std::clamp(Torque, -Control.UprightTorqueLimit, Control.UprightTorqueLimit);
+PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement) const {
+    PerBodyPart<Placement> Pose{};
+    Pose[static_cast<size_t>(Root)] = RootPlacement;
+    for (const auto& Joint : Joints) {
+        const Placement& Parent = Pose[static_cast<size_t>(Joint.Parent)];
+        const float Angle = Parent.Angle + Joint.Target;
+        const Vec2 Anchor = Parent.Position + rotate(Joint.AnchorInParent, Parent.Angle);
+        Pose[static_cast<size_t>(Joint.Child)] = {.Position = Anchor + rotate(Joint.ChildFromAnchor, Angle),
+                                                  .Angle = Angle};
+    }
+    return Pose;
+}
+
+Rig::Placement Rig::getStandingRoot() const {
+    // Pose the body with the root on the floor line, then lift it so that
+    // the lowest kinematic part (a sole) just touches the floor.
+    const Placement OnFloor{.Position = {Controller.getPositionX(), 0.0f},
+                            .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
+    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor);
+    float Lowest = std::numeric_limits<float>::max();
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Lowest = std::min(Lowest, getLowestPoint(Part.Shape, Target.Position, Target.Angle));
+    }
+    return {.Position = {OnFloor.Position.X, -Lowest}, .Angle = OnFloor.Angle};
+}
+
+float Rig::getPostureStiffness() const {
+    switch (CurrentPosture) {
+        case Posture::Standing:
+            return 1.0f;
+        case Posture::KnockedDown:
+            return Control.KnockdownStiffness;
+        case Posture::GettingUp: {
+            const float Progress = std::clamp(PostureSec / Control.GetUpSec, 0.0f, 1.0f);
+            return Control.KnockdownStiffness + (1.0f - Control.KnockdownStiffness) * Progress;
+        }
+    }
+    return 1.0f;
+}
+
+void Rig::moveKinematicParts(float Dt) {
+    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot());
+    // Getting up blends from where the parts lay to the stance.
+    const bool Blending = CurrentPosture == Posture::GettingUp;
+    const float Blend = Blending ? smoothStep(std::clamp(PostureSec / Control.GetUpSec, 0.0f, 1.0f)) : 1.0f;
+
+    for (auto&& [Part, Target, From] : std::views::zip(Parts, Pose, GetUpFrom)) {
+        if (!Part.Kinematic) continue;
+        Placement Goal = Target;
+        if (Blending) {
+            Goal.Position = lerp(From.Position, Target.Position, Blend);
+            Goal.Angle = From.Angle + wrapAngle(Target.Angle - From.Angle) * Blend;
+        }
+        Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
+    }
+}
+
+void Rig::driveMotors() {
+    const float Stiffness = getStiffness();
+    // PD-style motors: a velocity motor whose speed is proportional to the
+    // angle error behaves like a stiff spring with damping, and its torque
+    // limit is the "strength" of the joint. A kinematic child needs none.
+    for (auto& Joint : Joints) {
+        if (isKinematic(Joint.Child)) {
+            Joint.Handle.setMotorSpeed(0.0f);
+            Joint.Handle.setMaxMotorTorque(0.0f);
+            continue;
+        }
+        // Stiffness scales both the response speed and the torque limit: a
+        // stiff joint snaps to its target, a weak one lags and gives way.
+        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * Stiffness;
+        Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
+        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * Stiffness);
+    }
+}
+
+void Rig::knockDown(float Velocity) {
+    CurrentPosture = Posture::KnockedDown;
+    PostureSec = 0.0f;
+    // The whole body takes the momentum of the hit: every part moves with
+    // the knockback speed, the feet catch on the floor and it topples. The
+    // motion the parts had is dropped: a physical part hit by a kinematic
+    // leg moves as fast as the leg, which says nothing about the whole body.
+    for (auto& Part : Parts) {
+        if (Part.Kinematic) Physics->setBodyType(Part.Handle, physics::BodyType::Dynamic);
+        Part.Handle.setCollisionMask(CollideWithAll & ~PosedPartBit);
+        Part.Handle.setLinearVelocity({Velocity, 0.0f});
+        Part.Handle.setAngularVelocity(0.0f);
+    }
+    Controller.reset(getPartPosition(Root).X);
+}
+
+void Rig::startGettingUp() {
+    CurrentPosture = Posture::GettingUp;
+    PostureSec = 0.0f;
+    for (auto&& [Part, From] : std::views::zip(Parts, GetUpFrom)) {
+        Part.Handle.setCollisionMask(CollideWithAll);
+        if (!Part.Kinematic) continue;
+        From = {.Position = Part.Handle.getPosition(), .Angle = Part.Handle.getAngle()};
+        Physics->setBodyType(Part.Handle, physics::BodyType::Kinematic);
+    }
+    Controller.reset(getPartPosition(Root).X);
 }
 
 void Rig::drawTargetPose() const {
     // Forward kinematics of the target angles from the real pelvis position:
-    // the "ghost" shows where the motors are pulling the body.
-    PerBodyPart<Vec2> Positions{};
-    PerBodyPart<float> Angles{};
-    const auto RootIndex = static_cast<size_t>(Root);
-    Positions[RootIndex] = getPart(Root).Handle.getPosition();
-    Angles[RootIndex] = TargetAngles[RootIndex] * Facing;
-
-    for (const auto& Joint : Joints) {
-        const auto Parent = static_cast<size_t>(Joint.Parent);
-        const auto Child = static_cast<size_t>(Joint.Child);
-        Angles[Child] = Angles[Parent] + Joint.Target;
-        const Vec2 Anchor = Positions[Parent] + rotate(Joint.AnchorInParent, Angles[Parent]);
-        Positions[Child] = Anchor + rotate(Joint.ChildFromAnchor, Angles[Child]);
-    }
-
-    for (auto&& [Part, Position, Angle] : std::views::zip(Parts, Positions, Angles)) {
-        drawShape(debug::Cat::TargetPose, Part.Shape, Position, Angle);
+    // the "ghost" shows where the motors are pulling the physical parts.
+    // Standing, the kinematic parts match it exactly.
+    const Placement RootPlacement{.Position = getPart(Root).Handle.getPosition(),
+                                  .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
+    const PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        drawShape(debug::Cat::TargetPose, Part.Shape, Target.Position, Target.Angle);
     }
 }
 
@@ -303,29 +410,22 @@ void Rig::drawJointsAndMotors() const {
     }
 }
 
-void Rig::drawForces() const {
-    const Vec2 Pelvis = getPart(Root).Handle.getWorldCenterOfMass();
-    const Vec2 Torso = getPart(BodyPart::Torso).Handle.getWorldCenterOfMass();
-    const float Limit = Control.UprightTorqueLimit;
-    const std::array<std::pair<Vec2, float>, 2> Upright = {{
-        {Pelvis, PelvisUprightTorque},
-        {Torso, TorsoUprightTorque},
-    }};
-    for (const auto& [Center, Torque] : Upright) {
-        if (std::abs(Torque) < 1.0f) continue;
-        debug::drawArc(debug::Cat::Forces, Center, UprightArcRadius, Pi * 0.5f, Pi * 0.5f + Torque / Limit * Pi);
-        debug::drawText(debug::Cat::Forces, Center + Vec2{UprightArcRadius, 0.0f},
-                        std::format("{:.0f} Nm", Torque));
+void Rig::drawController() const {
+    if (CurrentPosture == Posture::KnockedDown) return;
+    // Under the pelvis, on the floor: the controller velocity and, below it,
+    // the knockback part of it.
+    const Vec2 Base{Controller.getPositionX(), 0.05f};
+    debug::drawLine(debug::Cat::Velocity, Base, getPart(Root).Handle.getPosition());
+    const float Velocity = Controller.getVelocity();
+    if (std::abs(Velocity) >= MinDrawnSpeed) {
+        debug::drawArrow(debug::Cat::Velocity, Base, {Velocity * ControllerScale, 0.0f},
+                         std::format("v {:+.2f}", Velocity));
     }
-    if (WalkForce.X != 0.0f) {
-        debug::drawArrow(debug::Cat::Forces, Pelvis, WalkForce * WalkForceScale);
-        debug::drawText(debug::Cat::Forces, Pelvis + WalkForce * WalkForceScale + Vec2{0.0f, -0.08f},
-                        std::format("walk {:.0f} N", WalkForce.X));
-    }
-    if (LiftForce > 1.0f) {
-        debug::drawArrow(debug::Cat::Forces, Pelvis, {0.0f, LiftForce * WalkForceScale});
-        debug::drawText(debug::Cat::Forces, Pelvis + Vec2{-0.35f, -0.08f},
-                        std::format("lift {:.0f} N", LiftForce));
+    const float Knockback = Controller.getKnockback();
+    if (std::abs(Knockback) >= MinDrawnSpeed) {
+        const Vec2 Below = Base + Vec2{0.0f, -0.1f};
+        debug::drawArrow(debug::Cat::Velocity, Below, {Knockback * ControllerScale, 0.0f},
+                         std::format("kb {:+.2f}", Knockback));
     }
 }
 
@@ -374,7 +474,7 @@ Vec2 getBoundsSize(const PartDef& Shape) {
     return High - Low;
 }
 
-physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup) {
+physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup, uint64_t Category) {
     return {
         .Kind = Shape.Shape,
         .Center = Shape.Center,
@@ -384,13 +484,35 @@ physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup) {
         .Radius = Shape.Radius,
         .Friction = Shape.Friction,
         .CollisionGroup = CollisionGroup,
+        .CollisionCategory = Category,
         .EnableHitEvents = true,
     };
 }
 
+/// World height of the lowest point of a shape (in body coordinates) placed
+/// at \p Position and turned by \p Angle, m.
+float getLowestPoint(const PartDef& Shape, Vec2 Position, float Angle) {
+    switch (Shape.Shape) {
+        case physics::ShapeKind::Circle:
+            return Position.Y + rotate(Shape.Center, Angle).Y - Shape.Radius;
+        case physics::ShapeKind::Capsule:
+            return Position.Y + std::min(rotate(Shape.Begin, Angle).Y, rotate(Shape.End, Angle).Y) - Shape.Radius;
+        case physics::ShapeKind::Box: {
+            const Vec2 Half = Shape.HalfExtents;
+            const std::array<Vec2, 4> Corners = {Vec2{-Half.X, -Half.Y}, Vec2{Half.X, -Half.Y},
+                                                 Vec2{Half.X, Half.Y}, Vec2{-Half.X, Half.Y}};
+            float Lowest = std::numeric_limits<float>::max();
+            for (const auto& Corner : Corners) Lowest = std::min(Lowest, rotate(Shape.Center + Corner, Angle).Y);
+            return Position.Y + Lowest;
+        }
+    }
+    return Position.Y;
+}
+
 float wrapAngle(float Angle) { return std::remainder(Angle, 2.0f * Pi); }
 
-bool isFoot(BodyPart Part) { return Part == BodyPart::FootL || Part == BodyPart::FootR; }
+/// Eases a 0..1 progress in and out: no jerk at the start and the end.
+float smoothStep(float T) { return T * T * (3.0f - 2.0f * T); }
 
 Vec2 getDirection(float Angle) { return {std::cos(Angle), std::sin(Angle)}; }
 

@@ -16,8 +16,9 @@
 /// Scripts:
 ///  - walk:  P1 walks forward, then back, in a loop; P2 moves the same way;
 ///  - fight: P1 walks into range of P2 (a standing dummy) and attacks:
-///           three jabs, then a kick;
-///  - kick:  P1 walks into range of P2 and kicks.
+///           three jabs from close, then a kick from kicking range (it
+///           steps back for it); a clean kick knocks the dummy down;
+///  - kick:  P1 walks into kicking range of P2 and kicks.
 ///
 //===----------------------------------------------------------------------===//
 
