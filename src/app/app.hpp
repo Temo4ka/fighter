@@ -21,6 +21,7 @@
 
 #include <SFML/Graphics/RenderWindow.hpp>
 
+#include "app/demo_script.hpp"
 #include "app/input.hpp"
 #include "combat/battle.hpp"
 #include "core/fixed_step_loop.hpp"
@@ -40,6 +41,7 @@ struct Options {
     int Frames = 60;                                  ///< Frame on which the screenshot is taken.
     std::optional<std::string> Mode;                  ///< debug | both | textures (debug build only).
     bool Showcase = false;                            ///< Samples of every debug category.
+    std::optional<DemoScript> Demo;                   ///< Scripted input instead of the keyboard.
 };
 
 class App {
@@ -52,7 +54,9 @@ private:
     void onKeyPressed(sf::Keyboard::Scancode Key);
     void stepSimulation(double Dt);
     void render(float Alpha);
-    void restartBattle();
+    /// Creates a new battle from the data files. If they are broken, keeps
+    /// the current battle, reports the error and returns false.
+    bool restartBattle();
     void publishFrameStats(double FrameSec);
     void saveScreenshot();
 

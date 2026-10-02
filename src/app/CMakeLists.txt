@@ -2,6 +2,7 @@
 set(app_sources
     app.cpp
     input.cpp
+    demo_script.cpp
 )
 if(FIGHTER_DEBUG)
     list(APPEND app_sources debug_showcase.cpp)

@@ -16,6 +16,7 @@ add_executable(fighter_tests
     combat/test_tuning.cpp
     render/test_camera.cpp
     app/test_input.cpp
+    app/test_demo_script.cpp
 )
 
 target_link_libraries(fighter_tests PRIVATE
