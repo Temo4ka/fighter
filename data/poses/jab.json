@@ -1,0 +1,14 @@
+{
+  "loop": false,
+  "duration": 0.38,
+  "active": [0.06, 0.22],
+  "strikers": ["ForearmL"],
+  "stiffness": 1.6,
+  "allowMove": true,
+  "keys": [
+    { "t": 0.00, "pose": { "Torso": -8,  "UpperArmL": 45, "ForearmL": 110 } },
+    { "t": 0.10, "pose": { "Torso": -20, "UpperArmL": 92, "ForearmL": 2 } },
+    { "t": 0.20, "pose": { "Torso": -20, "UpperArmL": 92, "ForearmL": 2 } },
+    { "t": 0.34, "pose": { "Torso": -8,  "UpperArmL": 45, "ForearmL": 110 } }
+  ]
+}
