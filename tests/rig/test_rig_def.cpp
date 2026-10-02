@@ -91,21 +91,14 @@ TEST_CASE("parseRigDef: the kinematic parts form a chain from the root", "[rig]"
     CHECK(Legs.Kinematic.test(static_cast<size_t>(BodyPart::ShinL)));
 
     CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "kinematic": ["Calf"])")), std::runtime_error);
-    // Every part of the minimal rig hangs from the pelvis; in the humanoid a
-    // shin hangs from a thigh, so a kinematic shin needs a kinematic thigh.
-    std::string Humanoid = R"({ "parts": [)";
-    std::string Joints;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const std::string Name(getBodyPartName(static_cast<BodyPart>(Index)));
-        if (Index > 0) Humanoid += ",";
-        Humanoid += R"({ "part": ")" + Name + R"(", "shape": "circle", "center": [0, 1], "radius": 0.1 })";
-        if (Name == "Pelvis") continue;
-        const std::string Parent = Name == "ShinL" ? "ThighL" : "Pelvis";
-        if (!Joints.empty()) Joints += ",";
-        Joints += R"({ "child": ")" + Name + R"(", "parent": ")" + Parent + R"(", "anchor": [0, 1], "limits": [0, 0] })";
-    }
-    Humanoid += R"(], "joints": [)" + Joints + R"(], "kinematic": ["ShinL"] })";
-    CHECK_THROWS_AS(parseRigDef(Humanoid), std::runtime_error);
+    // A kinematic shin hanging from a physical thigh cannot be posed from the root.
+    std::string ShinOnThigh = makeRigJson(R"(, "kinematic": ["ShinL"])");
+    const std::string FromPelvis = R"("child": "ShinL", "parent": "Pelvis")";
+    ShinOnThigh.replace(ShinOnThigh.find(FromPelvis), FromPelvis.size(), R"("child": "ShinL", "parent": "ThighL")");
+    CHECK_THROWS_AS(parseRigDef(ShinOnThigh), std::runtime_error);
+    // With the thigh kinematic too, it can.
+    ShinOnThigh.replace(ShinOnThigh.find(R"(["ShinL"])"), 9, R"(["ThighL", "ShinL"])");
+    CHECK(parseRigDef(ShinOnThigh).Kinematic.count() == 3);
 }
 
 TEST_CASE("parseRigDef: durations and speeds must be positive", "[rig]") {
