@@ -9,6 +9,7 @@ add_executable(fighter_tests
     physics/test_world.cpp
     stats/test_stats.cpp
     stats/test_equipment.cpp
+    stats/test_loading.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
     render/test_camera.cpp
@@ -26,6 +27,8 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::app_lib
 )
 fighter_target_options(fighter_tests)
+# Tests read the sample files in data/ from the source tree.
+target_compile_definitions(fighter_tests PRIVATE FIGHTER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 include(Catch)
 # PRE_TEST: the test list is collected when ctest runs, not at build time.
