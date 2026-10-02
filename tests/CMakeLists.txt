@@ -7,6 +7,8 @@ add_executable(fighter_tests
     core/test_fixed_step_loop.cpp
     debug/test_draw_list.cpp
     physics/test_world.cpp
+    rig/test_rig_def.cpp
+    rig/test_rig.cpp
     stats/test_stats.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
@@ -19,12 +21,16 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::core
     fighter::debug
     fighter::physics
+    fighter::rig
+    fighter::anim
     fighter::stats
     fighter::combat
     fighter::render
     fighter::app_lib
 )
 fighter_target_options(fighter_tests)
+# Rigs and clips for the tests that build real fighters.
+target_compile_definitions(fighter_tests PRIVATE FIGHTER_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
 
 include(Catch)
 # PRE_TEST: the test list is collected when ctest runs, not at build time.

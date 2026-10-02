@@ -22,6 +22,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "core/vec2.hpp"
@@ -55,12 +56,25 @@ constexpr std::string_view getBodyPartName(BodyPart Part) {
     return Index < Names.size() ? Names[Index] : "?";
 }
 
+/// The body part called \p Name (as returned by getBodyPartName), if any.
+/// Data files (rigs, poses) name parts this way.
+constexpr std::optional<BodyPart> findBodyPart(std::string_view Name) {
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto Part = static_cast<BodyPart>(Index);
+        if (getBodyPartName(Part) == Name) return Part;
+    }
+    return std::nullopt;
+}
+
 /// World placement of one body part. This is all the renderer knows about the
 /// physical body.
 struct PartTransform {
     BodyPart Part = BodyPart::Torso;
     Vec2 Position;       ///< Center of the part, m.
     float Angle = 0.0f;  ///< Radians, counter-clockwise.
+    /// Size of the part in its own frame (X across, Y along the limb in the
+    /// reference pose), m. The renderer draws a placeholder of this size.
+    Vec2 Size;
 };
 
 } // namespace fighter
