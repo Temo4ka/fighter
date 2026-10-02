@@ -154,7 +154,7 @@ void Rig::setMoveVelocity(float Velocity) { Controller.setTargetVelocity(Velocit
 void Rig::setBaseStiffness(float Stiffness) { BaseStiffness = Stiffness; }
 
 void Rig::snapToTargets() {
-    Controller.reset(Controller.getX());
+    Controller.reset(Controller.getPositionX());
     const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot());
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         Part.Handle.setTransform(Target.Position, Target.Angle);
@@ -290,7 +290,7 @@ PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement) cons
 Rig::Placement Rig::getStandingRoot() const {
     // Pose the body with the root on the floor line, then lift it so that
     // the lowest kinematic part (a sole) just touches the floor.
-    const Placement OnFloor{.Position = {Controller.getX(), 0.0f},
+    const Placement OnFloor{.Position = {Controller.getPositionX(), 0.0f},
                             .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
     const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor);
     float Lowest = std::numeric_limits<float>::max();
@@ -414,7 +414,7 @@ void Rig::drawController() const {
     if (CurrentPosture == Posture::KnockedDown) return;
     // Under the pelvis, on the floor: the controller velocity and, below it,
     // the knockback part of it.
-    const Vec2 Base{Controller.getX(), 0.05f};
+    const Vec2 Base{Controller.getPositionX(), 0.05f};
     debug::drawLine(debug::Cat::Velocity, Base, getPart(Root).Handle.getPosition());
     const float Velocity = Controller.getVelocity();
     if (std::abs(Velocity) >= MinDrawnSpeed) {

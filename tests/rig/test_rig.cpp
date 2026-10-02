@@ -131,7 +131,7 @@ TEST_CASE("Rig: the pelvis follows the controller", "[rig]") {
 
     // After the acceleration the walking speed is the requested one.
     CHECK(Body.getController().getVelocity() == Approx(1.0f));
-    CHECK(Body.getPartPosition(BodyPart::Pelvis).X == Approx(Body.getController().getX()).margin(1e-3f));
+    CHECK(Body.getPartPosition(BodyPart::Pelvis).X == Approx(Body.getController().getPositionX()).margin(1e-3f));
     CHECK(Body.getPartPosition(BodyPart::Pelvis).X - StartX > 0.8f);
     CHECK(Body.getPartPosition(BodyPart::Head).Y > 1.5f);
 }
@@ -231,9 +231,9 @@ TEST_CASE("PelvisController: walking accelerates to the target speed", "[rig]") 
     Controller.plan(0.1f);
     CHECK(Controller.getWalkVelocity() == Approx(0.6f));
     CHECK(Controller.getPlannedX() == Approx(1.06f));
-    CHECK(Controller.getX() == 1.0f);   // nothing moves before commit
+    CHECK(Controller.getPositionX() == 1.0f);   // nothing moves before commit
     Controller.commit(0.1f);
-    CHECK(Controller.getX() == Approx(1.06f));
+    CHECK(Controller.getPositionX() == Approx(1.06f));
     CHECK(Controller.getVelocity() == Approx(0.6f));
 
     for (int Step = 0; Step < 10; ++Step) {
@@ -256,7 +256,7 @@ TEST_CASE("PelvisController: knockback decays and walls stop it", "[rig]") {
         Controller.plan(0.01f);
         Controller.commit(0.01f);
     }
-    CHECK(Controller.getX() == Approx(0.2f + 2.0f * std::exp(-0.5f) / 5.0f).margin(0.01f));
+    CHECK(Controller.getPositionX() == Approx(0.2f + 2.0f * std::exp(-0.5f) / 5.0f).margin(0.01f));
 
     Controller.addKnockback(3.0f);
     Controller.plan(0.1f);
@@ -266,5 +266,5 @@ TEST_CASE("PelvisController: knockback decays and walls stop it", "[rig]") {
 
     Controller.shift(-0.2f);
     Controller.commit(0.1f);
-    CHECK(Controller.getX() == Approx(0.3f));
+    CHECK(Controller.getPositionX() == Approx(0.3f));
 }

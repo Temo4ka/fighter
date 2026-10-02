@@ -14,7 +14,7 @@ constexpr float KnockbackRest = 1e-3f;
 void PelvisController::plan(float Dt) {
     const float MaxChange = Config.WalkAcceleration * Dt;
     WalkVelocity += std::clamp(TargetVelocity - WalkVelocity, -MaxChange, MaxChange);
-    PlannedX = X + (WalkVelocity + Knockback) * Dt;
+    PlannedX = PositionX + (WalkVelocity + Knockback) * Dt;
 
     Knockback *= std::exp(-Config.KnockbackDecay * Dt);
     if (std::abs(Knockback) < KnockbackRest) Knockback = 0.0f;
@@ -33,12 +33,12 @@ void PelvisController::limit(float MinX, float MaxX) {
 }
 
 void PelvisController::commit(float Dt) {
-    Velocity = Dt > 0.0f ? (PlannedX - X) / Dt : 0.0f;
-    X = PlannedX;
+    Velocity = Dt > 0.0f ? (PlannedX - PositionX) / Dt : 0.0f;
+    PositionX = PlannedX;
 }
 
 void PelvisController::reset(float NewX) {
-    X = NewX;
+    PositionX = NewX;
     PlannedX = NewX;
     Velocity = 0.0f;
     WalkVelocity = 0.0f;

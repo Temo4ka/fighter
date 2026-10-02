@@ -32,7 +32,7 @@ public:
     };
 
     PelvisController() = default;
-    PelvisController(float StartX, Params Settings) : X(StartX), PlannedX(StartX), Config(Settings) {}
+    PelvisController(float StartX, Params Settings) : PositionX(StartX), PlannedX(StartX), Config(Settings) {}
 
     /// Walking speed the fighter wants, m/s (positive is to the right).
     void setTargetVelocity(float Requested) { TargetVelocity = Requested; }
@@ -53,7 +53,7 @@ public:
     /// Stands still at \p NewX: no walking, no knockback.
     void reset(float NewX);
 
-    float getX() const { return X; }
+    float getPositionX() const { return PositionX; }
     float getPlannedX() const { return PlannedX; }
     /// Actual velocity over the last committed step, after corrections, m/s.
     float getVelocity() const { return Velocity; }
@@ -61,7 +61,7 @@ public:
     float getKnockback() const { return Knockback; }
 
 private:
-    float X = 0.0f;
+    float PositionX = 0.0f;
     float PlannedX = 0.0f;
     float Velocity = 0.0f;
     float TargetVelocity = 0.0f;

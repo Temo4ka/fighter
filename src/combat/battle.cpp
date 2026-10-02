@@ -197,7 +197,7 @@ void Battle::drawDebug() const {
             } else {
                 debug::setPanel(std::format("{} pelvis", Name),
                                 std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f})",
-                                            Controller.getX(), Controller.getVelocity(),
+                                            Controller.getPositionX(), Controller.getVelocity(),
                                             Controller.getWalkVelocity(), Controller.getKnockback()));
             }
             std::string Physical;
