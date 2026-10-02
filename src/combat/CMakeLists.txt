@@ -2,13 +2,16 @@
 fighter_add_module(combat
     SOURCES
         battle.cpp
+        fighter.cpp
         snapshot.cpp
+        tuning.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::stats
+        fighter::physics   # only the HitEvent contract (events.hpp); Box2D stays private to physics
     PRIVATE_DEPS
         fighter::debug
-        fighter::physics
         fighter::rig
         fighter::anim
+        nlohmann_json::nlohmann_json
 )

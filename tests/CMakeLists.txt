@@ -13,6 +13,7 @@ add_executable(fighter_tests
     stats/test_stats.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
+    combat/test_tuning.cpp
     render/test_camera.cpp
     app/test_input.cpp
 )

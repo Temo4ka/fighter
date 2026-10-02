@@ -4,8 +4,10 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <ranges>
+#include <vector>
 
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/Sprite.hpp>
@@ -24,6 +26,44 @@ sf::RectangleShape makeWorldRect(Vec2 BottomLeft, Vec2 Size) {
     // Y is flipped in the world view: the top of the rectangle is BottomLeft.Y + Size.Y.
     Rect.setPosition(Camera::toDraw({BottomLeft.X, BottomLeft.Y + Size.Y}));
     return Rect;
+}
+
+/// Parts of the far side (the "R" limbs of a fighter seen from its left) are
+/// drawn first and darker, so the near limbs stay on top.
+bool isFarSide(BodyPart Part) {
+    switch (Part) {
+        case BodyPart::UpperArmR:
+        case BodyPart::ForearmR:
+        case BodyPart::ThighR:
+        case BodyPart::ShinR:
+        case BodyPart::FootR:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void drawPart(sf::RenderTarget& Target, const PartTransform& Part, sf::Color Color) {
+    sf::RectangleShape Box({Part.Size.X, Part.Size.Y});
+    Box.setOrigin({Part.Size.X * 0.5f, Part.Size.Y * 0.5f});
+    Box.setPosition(Camera::toDraw(Part.Position));
+    // Y is flipped in the world view, so counter-clockwise becomes clockwise.
+    Box.setRotation(sf::radians(-Part.Angle));
+    Box.setFillColor(Color);
+    Box.setOutlineColor(sf::Color::Black);
+    Box.setOutlineThickness(-0.015f);
+    Target.draw(Box);
+}
+
+void drawParts(sf::RenderTarget& Target, const std::vector<PartTransform>& Parts, sf::Color Color) {
+    const sf::Color Far(static_cast<uint8_t>(Color.r * 3 / 5), static_cast<uint8_t>(Color.g * 3 / 5),
+                        static_cast<uint8_t>(Color.b * 3 / 5));
+    for (const auto& Part : Parts) {
+        if (isFarSide(Part.Part)) drawPart(Target, Part, Far);
+    }
+    for (const auto& Part : Parts) {
+        if (!isFarSide(Part.Part)) drawPart(Target, Part, Color);
+    }
 }
 
 } // namespace
@@ -52,8 +92,13 @@ void BattleRenderer::drawWorld(sf::RenderTarget& Target, const Camera& Cam,
     Floor.setFillColor(sf::Color(45, 40, 38));
     Target.draw(Floor);
 
-    // Placeholder fighters.
+    // Placeholder fighters: a colored box per body part, or one rectangle
+    // when there are no parts.
     for (auto&& [Fighter, Color] : std::views::zip(Snapshot.Fighters, FighterColors)) {
+        if (!Fighter.Parts.empty()) {
+            drawParts(Target, Fighter.Parts, Color);
+            continue;
+        }
         sf::RectangleShape Body =
             makeWorldRect({Fighter.Position.X - Fighter.Size.X * 0.5f, Fighter.Position.Y}, Fighter.Size);
         Body.setFillColor(Color);
