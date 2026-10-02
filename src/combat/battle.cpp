@@ -191,10 +191,16 @@ void Battle::drawDebug() const {
             if (Body.getPosture() != rig::Posture::Standing) State += std::format(" {:.2f} s", Body.getPostureSec());
             debug::setPanel(std::format("{} state", Name), State);
             const rig::PelvisController& Controller = Body.getController();
-            debug::setPanel(std::format("{} pelvis", Name),
-                            std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f})",
-                                        Controller.getX(), Controller.getVelocity(), Controller.getWalkVelocity(),
-                                        Controller.getKnockback()));
+            if (Body.getPosture() == rig::Posture::KnockedDown) {
+                debug::setPanel(std::format("{} pelvis", Name),
+                                std::format("x {:+.2f} m, ragdoll (no controller)",
+                                            Body.getPartPosition(BodyPart::Pelvis).X));
+            } else {
+                debug::setPanel(std::format("{} pelvis", Name),
+                                std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f})",
+                                            Controller.getX(), Controller.getVelocity(),
+                                            Controller.getWalkVelocity(), Controller.getKnockback()));
+            }
             debug::setPanel(std::format("{} physical", Name), getPhysicalParts(Body));
             debug::setPanel(std::format("{} clip", Name),
                             std::format("{} {:.2f} s{}", Player.getClipName(), Player.getClipTime(),

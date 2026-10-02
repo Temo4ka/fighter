@@ -9,9 +9,11 @@ constexpr uint64_t PressTicks = 3;
 /// P1 attacks once in this many ticks while in range.
 constexpr uint64_t AttackPeriod = TicksPerSecond * 2 / 3;
 /// Distance between the fighters (floor points) at which P1 stops walking
-/// and attacks, m.
+/// and attacks, m. The kick lands with the foot from a little further away.
 constexpr float JabRange = 0.72f;
 constexpr float KickRange = 0.95f;
+/// Closer than KickRange by this much, P1 steps back before kicking, m.
+constexpr float KickRangeSlack = 0.1f;
 
 /// Is a button pressed on \p Tick if it is pressed once every \p Period ticks?
 bool isPressedEvery(uint64_t Tick, uint64_t Period) { return Tick % Period < PressTicks; }
@@ -45,15 +47,24 @@ DemoInput getDemoInput(DemoScript Script, uint64_t Tick, const combat::RenderSna
             break;
         }
         case DemoScript::Fight: {
-            // Walk into range, then a combo: three jabs and a kick.
-            if (getDistance(State) > JabRange) {
+            // A combo: three jabs from close range, then a kick from kicking
+            // range. The kick is held through its turn, so it starts as soon
+            // as P1 is in range.
+            const bool KickTurn = Tick / AttackPeriod % 4 == 3;
+            const float Distance = getDistance(State);
+            if (Distance > (KickTurn ? KickRange : JabRange)) {
                 Left.MoveX = 1.0f;
                 break;
             }
-            const bool KickTurn = Tick / AttackPeriod % 4 == 3;
-            const bool Press = isPressedEvery(Tick, AttackPeriod);
-            Left.Punch = Press && !KickTurn;
-            Left.Kick = Press && KickTurn;
+            if (KickTurn) {
+                if (Distance < KickRange - KickRangeSlack) {
+                    Left.MoveX = -1.0f;
+                } else {
+                    Left.Kick = true;
+                }
+                break;
+            }
+            Left.Punch = isPressedEvery(Tick, AttackPeriod);
             break;
         }
         case DemoScript::Kick:
