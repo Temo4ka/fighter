@@ -8,6 +8,7 @@ add_executable(fighter_tests
     debug/test_draw_list.cpp
     physics/test_world.cpp
     stats/test_stats.cpp
+    stats/test_equipment.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
     render/test_camera.cpp
