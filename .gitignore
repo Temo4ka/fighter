@@ -45,3 +45,6 @@ run_mac
 run_mac.dSYM/
 test_physics
 test_coordinates
+
+# Claude Code: git worktrees of background agents
+.claude/worktrees/
