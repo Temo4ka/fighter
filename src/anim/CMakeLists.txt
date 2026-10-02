@@ -1,5 +1,8 @@
-# Headers only for now: the pose format is decided during the physics spike (phase 1).
 fighter_add_module(anim
+    SOURCES
+        clip.cpp
     PUBLIC_DEPS
         fighter::core
+    PRIVATE_DEPS
+        nlohmann_json::nlohmann_json
 )

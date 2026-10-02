@@ -1,6 +1,9 @@
 fighter_add_module(physics
     SOURCES
         world.cpp
+        body.cpp
+        joint.cpp
+        debug_draw.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::debug

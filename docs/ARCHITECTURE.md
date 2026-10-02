@@ -20,12 +20,13 @@ app ──► render ──► combat ──► stats ──► core
 
 | Модуль | Что внутри | SFML | Box2D |
 |---|---|---|---|
-| `core` | `Vec2`, `log`, `Signal`/`Connection`, `FixedStepLoop`, `BodyPart`, `PartTransform` | — | — |
+| `core` | `Vec2`, `log`, `Signal`/`Connection`, `FixedStepLoop`, `BodyPart`, `PartTransform`, `readTextFile` | — | — |
 | `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | — | — |
-| `physics` | `physics::World`, `HitEvent` | — | внутри |
-| `rig`, `anim` | пока только заголовки | — | — |
+| `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body`, `RevoluteJoint`, `HitEvent`; Box2D debug draw → `debug::` | — | внутри |
+| `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — active ragdoll: PD-моторы, вспомогательные силы, жёсткость | — | — |
+| `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
-| `combat` | `Battle`, `BattleConfig`, `BattleResult`, `PlayerCommands`, `RenderSnapshot` | — | — |
+| `combat` | `Battle`, `BattleConfig`, `BattleResult`, `PlayerCommands`, `RenderSnapshot`; внутри — `Fighter`, `CombatTuning` (`data/combat.json`) | — | — |
 | `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
@@ -55,6 +56,17 @@ app ──► render ──► combat ──► stats ──► core
 **Рендер не видит физику.** `Battle` после каждого шага публикует `RenderSnapshot`
 (позиции, HP, таймер). Рендер читает только снимки.
 
+**Данные и live-тюнинг.** Риги, клипы и параметры боя лежат в `data/` (JSON) и читаются
+при создании `Battle` из `BattleConfig::DataDir`. Новый `Battle` — значит, перечитанные файлы:
+в песочнице `F5` (и `R`) создают бой заново; если файл испорчен, остаётся старый бой,
+а ошибка пишется в журнал. Неизвестный ключ в файле — ошибка. Список параметров —
+[TUNING.md](TUNING.md).
+
+**Шаг боя.** `Battle::update()`: контроллеры бойцов (клипы → целевые углы → моторы и
+вспомогательные силы) → `World::step()` → разбор `HitEvent` (попадание — только контакт
+ударной части в активной фазе атаки) → снимок для рендера → отладочные примитивы.
+Пользовательских колбэков внутри шага Box2D нет.
+
 **События.** Опрос и события делят работу так:
 
 - *Опросом* идёт всё, что нужно каждый шаг или кадр: ввод (`PlayerCommands`),
@@ -80,6 +92,8 @@ App после шага:                 ▼
   решает, повторять ли звуки и эффекты, а сам бой об этом не знает.
 - Внутри симуляции модули обмениваются данными напрямую: физика после шага отдаёт
   список `HitEvent`, бой обрабатывает его в фиксированном порядке.
+- Сейчас (фаза 1) попадания наружу отдаёт `Battle::getHits()` — предшественник
+  `getEvents()`; в фазе 2 его заменит общий список событий.
 
 ## Отладочный слой
 

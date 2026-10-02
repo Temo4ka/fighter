@@ -10,6 +10,7 @@
 //   --frames <N>                frame on which the screenshot is taken (default 60)
 //   --mode debug|both|textures  initial mode of the debug layer (debug build)
 //   --showcase                  samples of every debug category (debug build)
+//   --demo walk|fight|kick      scripted input instead of the keyboard
 //   --log <file>                duplicate the log to a file
 //
 // Project root (assets/, data/): the FIGHTER_ROOT environment variable,
@@ -30,6 +31,9 @@ int main(int Argc, char** Argv) {
             Opts.Frames = std::atoi(Argv[++ArgIndex]);
         } else if (Arg == "--mode" && HasValue) {
             Opts.Mode = Argv[++ArgIndex];
+        } else if (Arg == "--demo" && HasValue) {
+            Opts.Demo = app::findDemoScript(Argv[++ArgIndex]);
+            if (!Opts.Demo) log::warn("unknown demo script: {}", Argv[ArgIndex]);
         } else if (Arg == "--showcase") {
             Opts.Showcase = true;
         } else if (Arg == "--log" && HasValue) {

@@ -25,8 +25,8 @@ TEST_CASE("interpolate: positions between frames", "[combat][snapshot]") {
 TEST_CASE("interpolate: angle takes the shortest arc", "[combat][snapshot]") {
     constexpr float Pi = std::numbers::pi_v<float>;
     RenderSnapshot Prev, Curr;
-    Prev.Fighters[0].Parts = {PartTransform{BodyPart::Head, {}, 0.9f * Pi}};
-    Curr.Fighters[0].Parts = {PartTransform{BodyPart::Head, {}, -0.9f * Pi}};
+    Prev.Fighters[0].Parts = {PartTransform{.Part = BodyPart::Head, .Angle = 0.9f * Pi}};
+    Curr.Fighters[0].Parts = {PartTransform{.Part = BodyPart::Head, .Angle = -0.9f * Pi}};
 
     const float Mid = interpolate(Prev, Curr, 0.5f).Fighters[0].Parts[0].Angle;
     // Through +-pi rather than through 0: the midpoint is near pi modulo 2*pi.

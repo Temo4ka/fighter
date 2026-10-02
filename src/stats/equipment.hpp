@@ -7,8 +7,8 @@
 /// \file
 /// This file declares ItemCatalog, the set of known equipment items, and
 /// buildLoadout(), which turns a list of item ids into a checked Loadout.
-/// It also maps equipment slots and body parts to and from their names, as
-/// they are written in data files.
+/// It also maps equipment slots to and from their names, as they are written
+/// in data files (body part names: findBodyPart() in core/body.hpp).
 ///
 //===----------------------------------------------------------------------===//
 
@@ -65,10 +65,6 @@ std::string_view getEquipmentSlotName(EquipmentSlot Slot);
 
 /// The slot with this name, or nullopt. Names are case-sensitive.
 std::optional<EquipmentSlot> findEquipmentSlot(std::string_view Name);
-
-/// The body part with this name (getBodyPartName()), or nullopt. Names are
-/// case-sensitive.
-std::optional<BodyPart> findBodyPart(std::string_view Name);
 
 /// "A, B, C": the names of all slots, for error messages.
 std::string listEquipmentSlotNames();

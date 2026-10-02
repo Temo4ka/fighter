@@ -1,7 +1,11 @@
 #include "app/app.hpp"
 
+#include <exception>
+#include <filesystem>
 #include <format>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include <SFML/Graphics/Image.hpp>
 #include <SFML/Graphics/Texture.hpp>
@@ -23,10 +27,11 @@ constexpr unsigned WindowWidth = 1280;
 constexpr unsigned WindowHeight = 720;
 
 // Test fighters. In phase 2 they will be read from data/fighters/*.json.
-combat::BattleConfig makeSandboxBattle() {
+combat::BattleConfig makeSandboxBattle(const std::filesystem::path& Root) {
     combat::BattleConfig Config;
     Config.Left.Stats = {.Strength = 12, .Dexterity = 10, .Constitution = 10};
     Config.Right.Stats = {.Strength = 10, .Dexterity = 12, .Constitution = 12};
+    Config.DataDir = Root / "data";
     return Config;
 }
 
@@ -68,11 +73,14 @@ int App::run() {
     int Frame = 0;
 
     while (Window.isOpen()) {
-        const double FrameSec = Clock.restart().asSeconds();
+        // A screenshot run advances exactly one step per frame, so frame N
+        // always shows tick N regardless of the display rate.
+        const double RealFrameSec = Clock.restart().asSeconds();
+        const double FrameSec = Opts.Screenshot ? Loop.getStepSec() : RealFrameSec;
         handleEvents();
 
         const double Alpha = Loop.advance(FrameSec, [this](double Dt) { stepSimulation(Dt); });
-        publishFrameStats(FrameSec);
+        publishFrameStats(RealFrameSec);
         render(static_cast<float>(Alpha));
 
         if (Opts.Screenshot && ++Frame >= Opts.Frames) {
@@ -120,7 +128,12 @@ void App::stepSimulation(double Dt) {
     debug::beginTick();
 
     Previous = CurrentBattle->getSnapshot();
-    CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
+    if (Opts.Demo) {
+        const DemoInput Scripted = getDemoInput(*Opts.Demo, Loop.getTick(), Previous);
+        CurrentBattle->update(Scripted.Left, Scripted.Right, Dt);
+    } else {
+        CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
+    }
 
 #if FIGHTER_DEBUG
     if (ShowcaseVisible) drawDebugShowcase();
@@ -153,12 +166,24 @@ void App::render(float Alpha) {
 #endif
 }
 
-void App::restartBattle() {
-    CurrentBattle = std::make_unique<combat::Battle>(makeSandboxBattle());
+bool App::restartBattle() {
+    // The battle reads the data files (rigs, poses) when it is created.
+    std::unique_ptr<combat::Battle> Fresh;
+    try {
+        Fresh = std::make_unique<combat::Battle>(makeSandboxBattle(Opts.Root));
+    } catch (const std::exception& Error) {
+        if (!CurrentBattle) throw;   // at startup there is nothing to fall back to
+        // A typo in a JSON file during live tuning must not close the sandbox.
+        log::error("cannot restart the battle: {}", Error.what());
+        debug::logEvent(std::format("reload failed: {}", Error.what()));
+        return false;
+    }
+    CurrentBattle = std::move(Fresh);
     Previous = CurrentBattle->getSnapshot();
     ResultReported = false;
     Loop.reset();
     Input.reset();
+    return true;
 }
 
 void App::publishFrameStats(double FrameSec) {
@@ -204,13 +229,11 @@ void App::applyDebugAction(render::DebugAction Action) {
             Loop.setTimeScale(Loop.getTimeScale() * 2.0);
             break;
         case DebugAction::Restart:
-            restartBattle();
-            debug::logEvent("restart");
+            if (restartBattle()) debug::logEvent("restart");
             break;
         case DebugAction::Reload:
-            // Nothing to reload in phase 0: JSON configs arrive in phases 1-2.
-            restartBattle();
-            debug::logEvent("reload: no data files yet, restarted");
+            // A new battle re-reads data/rigs and data/poses.
+            if (restartBattle()) debug::logEvent("reload: data files re-read, battle restarted");
             break;
         case DebugAction::ToggleShowcase:
             ShowcaseVisible = !ShowcaseVisible;

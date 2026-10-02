@@ -61,16 +61,6 @@ std::optional<EquipmentSlot> findEquipmentSlot(std::string_view Name) {
     return std::nullopt;
 }
 
-std::optional<BodyPart> findBodyPart(std::string_view Name) {
-    // Walk the enum instead of keeping a second name table, so a change to
-    // BodyPart only needs getBodyPartName() to be updated.
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const auto Part = static_cast<BodyPart>(Index);
-        if (getBodyPartName(Part) == Name) return Part;
-    }
-    return std::nullopt;
-}
-
 std::string listEquipmentSlotNames() {
     std::string Names;
     for (EquipmentSlot Slot : EquipmentSlots) {

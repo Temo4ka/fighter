@@ -1,0 +1,210 @@
+#include "rig/rig_def.hpp"
+
+#include <algorithm>
+#include <array>
+#include <bitset>
+#include <cstddef>
+#include <format>
+#include <initializer_list>
+#include <numbers>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+
+#include <nlohmann/json.hpp>
+
+#include "core/text_file.hpp"
+
+namespace fighter::rig {
+namespace {
+
+using Json = nlohmann::json;
+
+constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
+/// Box2D accepts joint limits within +-0.99 pi.
+constexpr float MaxLimitDegrees = 175.0f;
+
+/// A key of the "control" object and the parameter it sets.
+struct ControlField {
+    std::string_view Key;
+    float ControlParams::*Member;
+};
+
+constexpr std::array ControlFields = {
+    ControlField{"torqueScale", &ControlParams::TorqueScale},
+    ControlField{"gainScale", &ControlParams::GainScale},
+    ControlField{"maxJointSpeed", &ControlParams::MaxJointSpeed},
+    ControlField{"angularDamping", &ControlParams::AngularDamping},
+    ControlField{"footLevelHeight", &ControlParams::FootLevelHeight},
+    ControlField{"uprightStiffness", &ControlParams::UprightStiffness},
+    ControlField{"uprightDamping", &ControlParams::UprightDamping},
+    ControlField{"uprightTorqueLimit", &ControlParams::UprightTorqueLimit},
+    ControlField{"standHeight", &ControlParams::StandHeight},
+    ControlField{"heightStiffness", &ControlParams::HeightStiffness},
+    ControlField{"heightDamping", &ControlParams::HeightDamping},
+    ControlField{"heightForceLimit", &ControlParams::HeightForceLimit},
+    ControlField{"groundTolerance", &ControlParams::GroundTolerance},
+    ControlField{"walkSpeed", &ControlParams::WalkSpeed},
+    ControlField{"backwardSpeedScale", &ControlParams::BackwardSpeedScale},
+    ControlField{"walkForceGain", &ControlParams::WalkForceGain},
+    ControlField{"walkForceLimit", &ControlParams::WalkForceLimit},
+    ControlField{"walkCycleMinRate", &ControlParams::WalkCycleMinRate},
+    ControlField{"walkStartSec", &ControlParams::WalkStartSec},
+    ControlField{"minStiffness", &ControlParams::MinStiffness},
+    ControlField{"stiffnessPerImpulse", &ControlParams::StiffnessPerImpulse},
+    ControlField{"stiffnessRecovery", &ControlParams::StiffnessRecovery},
+};
+
+void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
+PartDef parsePart(const Json& Node);
+JointDef parseJoint(const Json& Node);
+ControlParams parseControl(const Json& Node);
+BodyPart parseBodyPart(const Json& Node);
+Vec2 parseVec2(const Json& Node);
+void validateRig(const RigDef& Def);
+
+} // namespace
+
+const PartDef& RigDef::getPart(BodyPart Part) const {
+    const auto Found = std::ranges::find(Parts, Part, &PartDef::Part);
+    if (Found == Parts.end()) throw std::runtime_error(std::format("rig has no part {}", getBodyPartName(Part)));
+    return *Found;
+}
+
+RigDef parseRigDef(std::string_view JsonText) {
+    RigDef Result;
+    try {
+        const Json Root = Json::parse(JsonText);
+        checkKeys(Root, {"root", "parts", "joints", "control"}, "rig");
+        if (const auto RootPart = Root.find("root"); RootPart != Root.end()) Result.Root = parseBodyPart(*RootPart);
+        for (const auto& Part : Root.at("parts")) Result.Parts.push_back(parsePart(Part));
+        for (const auto& Joint : Root.at("joints")) Result.Joints.push_back(parseJoint(Joint));
+        if (const auto Control = Root.find("control"); Control != Root.end()) Result.Control = parseControl(*Control);
+    } catch (const Json::exception& Error) {
+        throw std::runtime_error(Error.what());
+    }
+    validateRig(Result);
+    return Result;
+}
+
+RigDef loadRigDef(const std::filesystem::path& Path) {
+    try {
+        return parseRigDef(readTextFile(Path));
+    } catch (const std::runtime_error& Error) {
+        throw std::runtime_error(std::format("{}: {}", Path.string(), Error.what()));
+    }
+}
+
+namespace {
+
+/// Throws if \p Node has a key that is not in \p Known: a typo in a data
+/// file must not be silently ignored during live tuning.
+void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where) {
+    if (!Node.is_object()) throw std::runtime_error(std::format("{}: expected a JSON object", Where));
+    for (const auto& Item : Node.items()) {
+        if (std::ranges::find(Known, Item.key()) == Known.end()) {
+            throw std::runtime_error(std::format("{}: unknown key '{}'", Where, Item.key()));
+        }
+    }
+}
+
+PartDef parsePart(const Json& Node) {
+    PartDef Part;
+    Part.Part = parseBodyPart(Node.at("part"));
+    checkKeys(Node, {"part", "shape", "from", "to", "center", "halfExtents", "radius", "friction"},
+              std::format("part {}", getBodyPartName(Part.Part)));
+    Part.Radius = Node.value("radius", 0.0f);
+    Part.Friction = Node.value("friction", Part.Friction);
+
+    const std::string Shape = Node.at("shape").get<std::string>();
+    if (Shape == "capsule") {
+        Part.Shape = physics::ShapeKind::Capsule;
+        Part.Begin = parseVec2(Node.at("from"));
+        Part.End = parseVec2(Node.at("to"));
+    } else if (Shape == "circle") {
+        Part.Shape = physics::ShapeKind::Circle;
+        Part.Center = parseVec2(Node.at("center"));
+    } else if (Shape == "box") {
+        Part.Shape = physics::ShapeKind::Box;
+        Part.Center = parseVec2(Node.at("center"));
+        Part.HalfExtents = parseVec2(Node.at("halfExtents"));
+    } else {
+        throw std::runtime_error(std::format("part {}: unknown shape '{}'", getBodyPartName(Part.Part), Shape));
+    }
+    return Part;
+}
+
+JointDef parseJoint(const Json& Node) {
+    JointDef Joint;
+    Joint.Child = parseBodyPart(Node.at("child"));
+    checkKeys(Node, {"child", "parent", "anchor", "limits", "strength"},
+              std::format("joint {}", getBodyPartName(Joint.Child)));
+    Joint.Parent = parseBodyPart(Node.at("parent"));
+    Joint.Anchor = parseVec2(Node.at("anchor"));
+    const Json& Limits = Node.at("limits");
+    const float Lower = Limits.at(0).get<float>();
+    const float Upper = Limits.at(1).get<float>();
+    if (Lower > Upper || Lower < -MaxLimitDegrees || Upper > MaxLimitDegrees) {
+        throw std::runtime_error(std::format("joint {}: limits must be ordered and within +-{} degrees",
+                                             getBodyPartName(Joint.Child), MaxLimitDegrees));
+    }
+    Joint.LowerAngle = Lower * RadiansPerDegree;
+    Joint.UpperAngle = Upper * RadiansPerDegree;
+    Joint.Strength = Node.value("strength", 1.0f);
+    return Joint;
+}
+
+ControlParams parseControl(const Json& Node) {
+    // Every key is optional (the default stays), but an unknown key is an
+    // error: a typo during live tuning must not be silently ignored.
+    ControlParams Params;
+    for (const auto& [Key, Value] : Node.items()) {
+        const auto Found = std::ranges::find(ControlFields, Key, &ControlField::Key);
+        if (Found == ControlFields.end()) {
+            throw std::runtime_error(std::format("control: unknown parameter '{}'", Key));
+        }
+        Params.*(Found->Member) = Value.get<float>();
+    }
+    return Params;
+}
+
+BodyPart parseBodyPart(const Json& Node) {
+    const std::string Name = Node.get<std::string>();
+    const auto Part = findBodyPart(Name);
+    if (!Part) throw std::runtime_error(std::format("unknown body part '{}'", Name));
+    return *Part;
+}
+
+Vec2 parseVec2(const Json& Node) { return {Node.at(0).get<float>(), Node.at(1).get<float>()}; }
+
+void validateRig(const RigDef& Def) {
+    std::bitset<BodyPartCount> Defined;
+    for (const auto& Part : Def.Parts) {
+        const auto Index = static_cast<size_t>(Part.Part);
+        if (Defined.test(Index)) {
+            throw std::runtime_error(std::format("part {} is defined twice", getBodyPartName(Part.Part)));
+        }
+        Defined.set(Index);
+    }
+    if (!Defined.all()) throw std::runtime_error("every body part must be defined");
+
+    // Walking the joints in order must reach every part from the root, with
+    // each parent placed before its children.
+    std::bitset<BodyPartCount> Reached;
+    Reached.set(static_cast<size_t>(Def.Root));
+    for (const auto& Joint : Def.Joints) {
+        if (!Reached.test(static_cast<size_t>(Joint.Parent))) {
+            throw std::runtime_error(std::format("joint {}: parent {} is not attached yet",
+                                                 getBodyPartName(Joint.Child), getBodyPartName(Joint.Parent)));
+        }
+        if (Reached.test(static_cast<size_t>(Joint.Child))) {
+            throw std::runtime_error(std::format("part {} has two parents", getBodyPartName(Joint.Child)));
+        }
+        Reached.set(static_cast<size_t>(Joint.Child));
+    }
+    if (!Reached.all()) throw std::runtime_error("every body part except the root needs a joint");
+}
+
+} // namespace
+
+} // namespace fighter::rig

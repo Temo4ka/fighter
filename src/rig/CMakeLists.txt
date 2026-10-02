@@ -1,7 +1,11 @@
-# Headers only for now: sources arrive with the physics spike (phase 1).
 fighter_add_module(rig
+    SOURCES
+        rig_def.cpp
+        rig.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::debug
         fighter::physics
+    PRIVATE_DEPS
+        nlohmann_json::nlohmann_json
 )

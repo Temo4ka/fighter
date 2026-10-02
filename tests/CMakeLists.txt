@@ -7,13 +7,18 @@ add_executable(fighter_tests
     core/test_fixed_step_loop.cpp
     debug/test_draw_list.cpp
     physics/test_world.cpp
+    rig/test_rig_def.cpp
+    rig/test_rig.cpp
+    anim/test_clip.cpp
     stats/test_stats.cpp
     stats/test_equipment.cpp
     stats/test_loading.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
+    combat/test_tuning.cpp
     render/test_camera.cpp
     app/test_input.cpp
+    app/test_demo_script.cpp
 )
 
 target_link_libraries(fighter_tests PRIVATE
@@ -21,12 +26,16 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::core
     fighter::debug
     fighter::physics
+    fighter::rig
+    fighter::anim
     fighter::stats
     fighter::combat
     fighter::render
     fighter::app_lib
 )
 fighter_target_options(fighter_tests)
+# Rigs and clips for the tests that build real fighters.
+target_compile_definitions(fighter_tests PRIVATE FIGHTER_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
 # Tests read the sample files in data/ from the source tree.
 target_compile_definitions(fighter_tests PRIVATE FIGHTER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
