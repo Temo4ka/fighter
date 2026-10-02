@@ -1,0 +1,20 @@
+{
+    "items": [
+        {
+            "id": "short_sword",
+            "name": "Short sword",
+            "slot": "Weapon",
+            "covers": ["ForearmR"],
+            "mass_kg": 1.2,
+            "armor": 0.0
+        },
+        {
+            "id": "war_hammer",
+            "name": "War hammer",
+            "slot": "Weapon",
+            "covers": ["ForearmR"],
+            "mass_kg": 3.5,
+            "armor": 0.0
+        }
+    ]
+}

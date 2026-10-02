@@ -48,6 +48,7 @@ enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, Weapon };
 
 struct EquipmentItem {
     std::string Id;
+    std::string Name;               ///< Display name for menus and the debug panel.
     EquipmentSlot Slot = EquipmentSlot::Body;
     std::vector<BodyPart> Covers;   ///< Body parts that get heavier and protected.
     float MassKg = 0.0f;            ///< Split evenly between the parts in Covers.

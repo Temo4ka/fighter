@@ -1,0 +1,16 @@
+{
+    "name": "Knight",
+    "stats": {
+        "strength": 14,
+        "dexterity": 8,
+        "constitution": 14
+    },
+    "items": [
+        "iron_helmet",
+        "chainmail",
+        "iron_gauntlets",
+        "plate_greaves",
+        "iron_boots",
+        "war_hammer"
+    ]
+}

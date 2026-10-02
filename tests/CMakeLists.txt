@@ -11,6 +11,8 @@ add_executable(fighter_tests
     rig/test_rig.cpp
     anim/test_clip.cpp
     stats/test_stats.cpp
+    stats/test_equipment.cpp
+    stats/test_loading.cpp
     combat/test_battle.cpp
     combat/test_snapshot.cpp
     combat/test_tuning.cpp
@@ -34,6 +36,8 @@ target_link_libraries(fighter_tests PRIVATE
 fighter_target_options(fighter_tests)
 # Rigs and clips for the tests that build real fighters.
 target_compile_definitions(fighter_tests PRIVATE FIGHTER_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+# Tests read the sample files in data/ from the source tree.
+target_compile_definitions(fighter_tests PRIVATE FIGHTER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 include(Catch)
 # PRE_TEST: the test list is collected when ctest runs, not at build time.

@@ -25,7 +25,7 @@ app ──► render ──► combat ──► stats ──► core
 | `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body`, `RevoluteJoint`, `HitEvent`; Box2D debug draw → `debug::` | — | внутри |
 | `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — active ragdoll: PD-моторы, вспомогательные силы, жёсткость | — | — |
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
-| `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile` | — | — |
+| `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig`, `BattleResult`, `PlayerCommands`, `RenderSnapshot`; внутри — `Fighter`, `CombatTuning` (`data/combat.json`) | — | — |
 | `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
