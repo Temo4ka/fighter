@@ -70,9 +70,11 @@ public:
     float getClipTime() const;
     /// Is an attack in its striking phase?
     bool isAttackActive() const;
-    /// Is \p Part a striking part of an attack in its striking phase? Only
-    /// such contacts are hits; the rest are bumps.
+    /// Is \p Part a striking part of an attack in its striking phase that
+    /// has not landed yet? Only such contacts are hits; the rest are bumps.
     bool isStrikingWith(BodyPart Part) const;
+    /// The current attack hit: it hits only once, later contacts are bumps.
+    void onStrikeLanded() { AttackLanded = true; }
 
     void fillView(FighterView& View) const;
 
@@ -89,6 +91,7 @@ private:
     float WalkDirection = 1.0f;            ///< +1 forwards, -1 backwards (the cycle runs in reverse).
     const anim::Clip* Attack = nullptr;    ///< The attack being played, if any.
     float AttackTime = 0.0f;
+    bool AttackLanded = false;
 };
 
 } // namespace fighter::combat

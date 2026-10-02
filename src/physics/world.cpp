@@ -99,6 +99,8 @@ void World::addShape(Body Target, const ShapeDef& Shape) {
     Def.material.restitution = Shape.Restitution;
     Def.material.customColor = detail::encodeDebugColor(Category, Owner);
     Def.filter.groupIndex = Shape.CollisionGroup;
+    Def.filter.categoryBits = Shape.CollisionCategory;
+    Def.filter.maskBits = Shape.CollisionMask;
     Def.enableHitEvents = Shape.EnableHitEvents;
 
     switch (Shape.Kind) {
@@ -150,6 +152,12 @@ void World::setBodyType(Body Target, BodyType Type) {
         }
     }
     b2Body_SetType(BodyId, toBox2D(Type));
+}
+
+void World::setStrikeMass(Body Target, float Kg) {
+    if (const auto Slot = detail::decodePartSlot(b2Body_GetUserData(loadBody(Target.Id)))) {
+        PartBodies[*Slot].StrikeMass = Kg;
+    }
 }
 
 void World::step(float Dt) {
@@ -227,7 +235,8 @@ Vec2 World::getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const 
 }
 
 float World::getStrikeMass(const PartBody& Entry) const {
-    return Entry.Handle.getType() == BodyType::Dynamic ? Entry.Handle.getMass() : Entry.DynamicMass;
+    if (Entry.Handle.getType() == BodyType::Dynamic) return Entry.Handle.getMass();
+    return Entry.StrikeMass > 0.0f ? Entry.StrikeMass : Entry.DynamicMass;
 }
 
 namespace {

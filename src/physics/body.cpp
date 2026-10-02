@@ -79,16 +79,14 @@ void Body::moveTo(Vec2 Position, float Angle, float Dt) {
     b2Body_SetAngularVelocity(BodyId, Turn / Dt);
 }
 
-void Body::applyForce(Vec2 Force, Vec2 WorldPoint) {
-    b2Body_ApplyForce(loadBody(Id), toBox2D(Force), toBox2D(WorldPoint), true);
-}
-
-void Body::applyForceToCenter(Vec2 Force) { b2Body_ApplyForceToCenter(loadBody(Id), toBox2D(Force), true); }
-
-void Body::applyTorque(float Torque) { b2Body_ApplyTorque(loadBody(Id), Torque, true); }
-
-void Body::applyLinearImpulseToCenter(Vec2 Impulse) {
-    b2Body_ApplyLinearImpulseToCenter(loadBody(Id), toBox2D(Impulse), true);
+void Body::setCollisionMask(uint64_t Mask) {
+    std::array<b2ShapeId, MaxShapesPerBody> Shapes{};
+    const int Count = b2Body_GetShapes(loadBody(Id), Shapes.data(), MaxShapesPerBody);
+    for (const auto& Shape : std::span(Shapes).first(static_cast<size_t>(Count))) {
+        b2Filter Filter = b2Shape_GetFilter(Shape);
+        Filter.maskBits = Mask;
+        b2Shape_SetFilter(Shape, Filter);
+    }
 }
 
 } // namespace fighter::physics

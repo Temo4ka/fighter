@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <limits>
 #include <numbers>
@@ -27,11 +28,21 @@ constexpr float MinDrawnSpeed = 0.05f;      ///< m/s.
 constexpr int CapsuleCapSegments = 6;
 /// @}
 
+/// \name Collision categories of body parts (the arena keeps bit 0)
+/// A knocked-down fighter ignores the posed parts of the other fighter: a
+/// kick still moving through the falling body would fling it, as nothing
+/// stops a kinematic leg.
+/// @{
+constexpr uint64_t PosedPartBit = uint64_t{1} << 1;
+constexpr uint64_t PhysicalPartBit = uint64_t{1} << 2;
+constexpr uint64_t CollideWithAll = ~uint64_t{0};
+/// @}
+
 PartDef mirrorPart(const PartDef& Source, float Facing);
 PartDef moveShape(const PartDef& Source, Vec2 Offset);
 Vec2 getBoundsCenter(const PartDef& Shape);
 Vec2 getBoundsSize(const PartDef& Shape);
-physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup);
+physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup, uint64_t Category);
 float getLowestPoint(const PartDef& Shape, Vec2 Position, float Angle);
 float wrapAngle(float Angle);
 float smoothStep(float T);
@@ -79,7 +90,8 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
             .AngularDamping = Control.AngularDamping,
             .Part = physics::PartRef{Setup.FighterIndex, Source.Part},
         });
-        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup));
+        PhysWorld.addShape(State.Handle,
+                           makeShapeDef(State.Shape, CollisionGroup, State.Kinematic ? PosedPartBit : PhysicalPartBit));
         // The mass is set while the body is dynamic; the densities stay when
         // it becomes kinematic.
         State.Handle.setMass(Setup.MassKg[Index]);
@@ -112,6 +124,17 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
 
     for (auto& Part : Parts) {
         if (Part.Kinematic) PhysWorld.setBodyType(Part.Handle, physics::BodyType::Kinematic);
+    }
+    // A posed limb strikes with everything between the touching part and
+    // the root: a foot kicks with the whole leg.
+    PerBodyPart<float> LimbMass{};
+    for (const auto& Joint : Joints) {
+        const PartState& Child = getPart(Joint.Child);
+        if (!Child.Kinematic) continue;
+        const float Above = Joint.Parent == Root ? 0.0f : LimbMass[static_cast<size_t>(Joint.Parent)];
+        float& Limb = LimbMass[static_cast<size_t>(Joint.Child)];
+        Limb = Child.Mass + Above;
+        PhysWorld.setStrikeMass(Child.Handle, Limb);
     }
     Controller = PelvisController(getPart(Root).Handle.getPosition().X,
                                   {.WalkAcceleration = Control.WalkAcceleration,
@@ -330,14 +353,15 @@ void Rig::driveMotors() {
 void Rig::knockDown(float Velocity) {
     CurrentPosture = Posture::KnockedDown;
     PostureSec = 0.0f;
-    // Every part keeps its motion and gets the knockback: the body flies off
-    // as a whole, the feet catch on the floor and it topples.
+    // The whole body takes the momentum of the hit: every part moves with
+    // the knockback speed, the feet catch on the floor and it topples. The
+    // motion the parts had is dropped: a physical part hit by a kinematic
+    // leg moves as fast as the leg, which says nothing about the whole body.
     for (auto& Part : Parts) {
-        const Vec2 Linear = Part.Handle.getLinearVelocity();
-        const float Angular = Part.Handle.getAngularVelocity();
         if (Part.Kinematic) Physics->setBodyType(Part.Handle, physics::BodyType::Dynamic);
-        Part.Handle.setLinearVelocity(Linear + Vec2{Velocity, 0.0f});
-        Part.Handle.setAngularVelocity(Angular);
+        Part.Handle.setCollisionMask(CollideWithAll & ~PosedPartBit);
+        Part.Handle.setLinearVelocity({Velocity, 0.0f});
+        Part.Handle.setAngularVelocity(0.0f);
     }
     Controller.reset(getPartPosition(Root).X);
 }
@@ -346,6 +370,7 @@ void Rig::startGettingUp() {
     CurrentPosture = Posture::GettingUp;
     PostureSec = 0.0f;
     for (auto&& [Part, From] : std::views::zip(Parts, GetUpFrom)) {
+        Part.Handle.setCollisionMask(CollideWithAll);
         if (!Part.Kinematic) continue;
         From = {.Position = Part.Handle.getPosition(), .Angle = Part.Handle.getAngle()};
         Physics->setBodyType(Part.Handle, physics::BodyType::Kinematic);
@@ -449,7 +474,7 @@ Vec2 getBoundsSize(const PartDef& Shape) {
     return High - Low;
 }
 
-physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup) {
+physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup, uint64_t Category) {
     return {
         .Kind = Shape.Shape,
         .Center = Shape.Center,
@@ -459,6 +484,7 @@ physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup) {
         .Radius = Shape.Radius,
         .Friction = Shape.Friction,
         .CollisionGroup = CollisionGroup,
+        .CollisionCategory = Category,
         .EnableHitEvents = true,
     };
 }

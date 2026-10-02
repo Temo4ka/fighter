@@ -11,7 +11,7 @@ constexpr uint64_t AttackPeriod = TicksPerSecond * 2 / 3;
 /// Distance between the fighters (floor points) at which P1 stops walking
 /// and attacks, m.
 constexpr float JabRange = 0.72f;
-constexpr float KickRange = 0.8f;
+constexpr float KickRange = 0.95f;
 
 /// Is a button pressed on \p Tick if it is pressed once every \p Period ticks?
 bool isPressedEvery(uint64_t Tick, uint64_t Period) { return Tick % Period < PressTicks; }

@@ -50,9 +50,9 @@
     "stiffnessPerImpulse": 0.03,
     "stiffnessRecovery": 0.8,
     "knockbackScale": 1.0,
-    "knockbackDecay": 5.0,
+    "knockbackDecay": 4.0,
 
-    "knockdownSpeed": 1.5,
+    "knockdownSpeed": 0.7,
     "knockdownSec": 1.5,
     "getUpSec": 0.8,
     "knockdownStiffness": 0.15

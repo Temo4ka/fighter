@@ -178,3 +178,21 @@ TEST_CASE("physics::World: a kinematic part hitting a dynamic one is a hit", "[p
     CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * ReducedMass).epsilon(0.01));
     CHECK(Target.getLinearVelocity().X > 0.0f);   // the kinematic striker pushed it
 }
+
+TEST_CASE("physics::World: a kinematic part strikes with its strike mass", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, {});
+    PhysWorld.setBodyType(Striker, BodyType::Kinematic);
+    PhysWorld.setStrikeMass(Striker, 20.0f);   // a light fist on a heavy arm
+    addBall(PhysWorld, 1, {0.5f, 1.0f}, {});
+
+    std::vector<HitEvent> Hits;
+    constexpr float Dt = 1.0f / 60.0f;
+    for (int Step = 1; Step <= 30 && Hits.empty(); ++Step) {
+        Striker.moveTo({4.0f * Dt * static_cast<float>(Step), 1.0f}, 0.0f, Dt);
+        PhysWorld.step(Dt);
+        std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    REQUIRE(Hits.size() == 1);
+    CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * 20.0f * 5.0f / 25.0f).epsilon(0.01));
+}

@@ -28,7 +28,7 @@ class PelvisController {
 public:
     struct Params {
         float WalkAcceleration = 8.0f;   ///< m/s^2.
-        float KnockbackDecay = 5.0f;     ///< 1/s.
+        float KnockbackDecay = 4.0f;     ///< 1/s.
     };
 
     PelvisController() = default;

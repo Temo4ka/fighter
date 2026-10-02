@@ -79,14 +79,14 @@ struct ControlParams {
     float StiffnessRecovery = 0.8f;    ///< Stiffness regained per second.
     /// Multiplies the knockback speed, impulse / mass of the whole fighter.
     float KnockbackScale = 1.0f;
-    float KnockbackDecay = 5.0f;       ///< Exponential decay of the knockback speed, 1/s.
+    float KnockbackDecay = 4.0f;       ///< Exponential decay of the knockback speed, 1/s.
     /// @}
 
     /// \name Knockdown
     /// @{
     /// A hit whose knockback speed (impulse / mass) reaches this knocks the
     /// fighter down: the threshold impulse grows with the fighter's mass, m/s.
-    float KnockdownSpeed = 1.5f;
+    float KnockdownSpeed = 0.7f;
     float KnockdownSec = 1.5f;         ///< Time on the floor, s.
     float GetUpSec = 0.8f;             ///< Time to get back into the stance, s.
     /// Motor stiffness while down; it ramps back to 1 while getting up.

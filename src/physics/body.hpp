@@ -63,6 +63,10 @@ struct ShapeDef {
     /// Shapes with the same negative group never collide with each other
     /// (all parts of one fighter); zero means no group.
     int CollisionGroup = 0;
+    /// Filter bits: two shapes collide only if the category of each one is
+    /// in the mask of the other.
+    uint64_t CollisionCategory = 1;
+    uint64_t CollisionMask = ~uint64_t{0};
     bool EnableHitEvents = false;
 };
 
@@ -100,14 +104,8 @@ public:
     /// integrates rotation approximately, so a large turn is slightly off
     /// (about 1% of 0.2 rad); the next call corrects it, errors do not add up.
     void moveTo(Vec2 Position, float Angle, float Dt);
-
-    /// \name Forces (accumulated until the next World::step)
-    /// @{
-    void applyForce(Vec2 Force, Vec2 WorldPoint);
-    void applyForceToCenter(Vec2 Force);
-    void applyTorque(float Torque);
-    void applyLinearImpulseToCenter(Vec2 Impulse);
-    /// @}
+    /// Sets ShapeDef::CollisionMask of every shape of the body.
+    void setCollisionMask(uint64_t Mask);
 
     bool operator==(const Body&) const = default;
 

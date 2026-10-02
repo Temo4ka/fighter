@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -105,18 +106,27 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
 
-    Hits.clear();
+    // Physics guesses the attacker from the velocities; the attack state
+    // decides. Contacts without a striking limb (feet bumping while walking,
+    // a chest pushing) are not hits. An attack lands once: the strongest of
+    // its contacts in the step it first touches the opponent.
+    std::array<std::optional<physics::HitEvent>, 2> Strikes;
     for (const auto& Contact : Sim->PhysWorld.getHitEvents()) {
-        // Physics guesses the attacker from the velocities; the attack state
-        // decides. Contacts without a striking limb (feet bumping while
-        // walking, a chest pushing) are not hits.
         physics::HitEvent Hit = Contact;
         const auto IsStrike = [&] { return Sim->Fighters[Hit.Attacker.Fighter].isStrikingWith(Hit.Attacker.Part); };
         if (!IsStrike()) std::swap(Hit.Attacker, Hit.Victim);
         if (!IsStrike()) continue;
+        std::optional<physics::HitEvent>& Strongest = Strikes[Hit.Attacker.Fighter];
+        if (!Strongest || Hit.Impulse > Strongest->Impulse) Strongest = Hit;
+    }
 
+    Hits.clear();
+    for (const auto& Strike : Strikes) {
+        if (!Strike) continue;
+        const physics::HitEvent& Hit = *Strike;
         Fighter& Attacker = Sim->Fighters[Hit.Attacker.Fighter];
         Fighter& Victim = Sim->Fighters[Hit.Victim.Fighter];
+        Attacker.onStrikeLanded();
         // A hit pushes the victim away from the attacker.
         const float AttackerX = Attacker.getRig().getPartPosition(BodyPart::Pelvis).X;
         const float VictimX = Victim.getRig().getPartPosition(BodyPart::Pelvis).X;

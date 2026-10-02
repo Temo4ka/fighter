@@ -69,10 +69,12 @@ struct BattleResult {
 
 /// Runs one fight.
 ///
-/// Phase 1 (physics spike): each fighter is an active ragdoll (rig::Rig in a
-/// Box2D world) that walks, jabs and kicks; hits make the victim's motors
-/// weaker for a moment. There is no damage, blocking or knockout yet: that is
-/// the state machine of phase 2. The interface stays.
+/// Phase 1.5 (hybrid body): each fighter is a rig::Rig in a Box2D world whose
+/// pelvis and legs are moved by code and whose upper body is physical; it
+/// walks, jabs and kicks. A hit sways the victim's upper body, knocks it back
+/// (impulse / mass) and weakens its motors for a moment; a strong one knocks
+/// it down. There is no damage, blocking or knockout yet: that is the state
+/// machine of phase 2. The interface stays.
 ///
 /// The physics, rig and clip types stay inside the implementation, so this
 /// header does not pull them in.
@@ -91,7 +93,8 @@ public:
     const RenderSnapshot& getSnapshot() const { return Snapshot; }
     std::optional<BattleResult> getResult() const { return Result; }
     /// Strikes that landed during the last update(): contacts of a striking
-    /// limb in the active phase of an attack. Bumps are not included.
+    /// limb in the active phase of an attack, at most one per attack. Bumps
+    /// are not included.
     std::span<const physics::HitEvent> getHits() const { return Hits; }
     const BattleConfig& getConfig() const { return Cfg; }
 

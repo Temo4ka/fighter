@@ -19,7 +19,8 @@
 /// Body parts may be kinematic (moved by code, see Body::moveTo). The solver
 /// treats them as infinitely heavy, so the contact impulse of a hit that
 /// involves one says nothing about the strike; such hits report the impulse
-/// of the same collision between free bodies with the parts' masses instead.
+/// of the same collision between free bodies with the parts' masses instead
+/// (for a kinematic part, the mass of the limb it strikes with).
 ///
 //===----------------------------------------------------------------------===//
 
@@ -68,6 +69,10 @@ public:
     /// part while it is dynamic: a kinematic body has no mass in the solver,
     /// and the world keeps the last dynamic mass for the impulse of hits.
     void setBodyType(Body Target, BodyType Type);
+    /// The mass a body part hits with while it is kinematic, kg: a posed limb
+    /// strikes with the limb behind it, not only with the touching part. By
+    /// default it is the part's own last dynamic mass.
+    void setStrikeMass(Body Target, float Kg);
 
     /// Advances the simulation by \p Dt and collects the hits of this step.
     void step(float Dt);
@@ -97,14 +102,16 @@ private:
         float AngularVelocityBeforeStep = 0.0f;
         /// Mass of the body while it was last dynamic, kg.
         float DynamicMass = 0.0f;
+        /// setStrikeMass(); 0 means DynamicMass.
+        float StrikeMass = 0.0f;
     };
 
     void destroy();
     void recordPartVelocities();
     void collectHits();
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
-    /// Mass of a part for the impulse of a hit: its last dynamic mass if it
-    /// is kinematic now, kg.
+    /// Mass of a part for the impulse of a hit: its strike mass if it is
+    /// kinematic now, kg.
     float getStrikeMass(const PartBody& Entry) const;
 
     uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.

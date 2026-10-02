@@ -92,7 +92,9 @@ float Fighter::getClipTime() const {
 
 bool Fighter::isAttackActive() const { return Attack && Attack->isActiveAt(AttackTime); }
 
-bool Fighter::isStrikingWith(BodyPart Part) const { return isAttackActive() && Attack->isStriker(Part); }
+bool Fighter::isStrikingWith(BodyPart Part) const {
+    return isAttackActive() && !AttackLanded && Attack->isStriker(Part);
+}
 
 void Fighter::fillView(FighterView& View) const {
     View.Position = Body.getFloorPoint();
@@ -105,6 +107,7 @@ void Fighter::fillView(FighterView& View) const {
 void Fighter::startAttack(const anim::Clip& NewAttack) {
     Attack = &NewAttack;
     AttackTime = 0.0f;
+    AttackLanded = false;
 }
 
 } // namespace fighter::combat
