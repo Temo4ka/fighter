@@ -26,6 +26,7 @@ add_executable(fighter_tests
     render/test_effects.cpp
     app/test_input.cpp
     app/test_demo_script.cpp
+    tools/test_placeholder_gen.cpp
 )
 
 target_link_libraries(fighter_tests PRIVATE
@@ -39,6 +40,7 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::combat
     fighter::render
     fighter::app_lib
+    fighter::placeholder_lib
 )
 fighter_target_options(fighter_tests)
 # Rigs and clips for the tests that build real fighters.
