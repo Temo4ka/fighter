@@ -1,0 +1,29 @@
+{
+    "location": {
+        "Head": 1.5,
+        "Torso": 1.0,
+        "Pelvis": 0.9,
+        "UpperArmL": 0.6, "ForearmL": 0.5,
+        "UpperArmR": 0.6, "ForearmR": 0.5,
+        "ThighL": 0.8, "ShinL": 0.9, "FootL": 0.6,
+        "ThighR": 0.8, "ShinR": 0.9, "FootR": 0.6
+    },
+    "damage_per_strength": 4.0,
+    "levels": [
+        { "level": "Touch",     "min_strength": 0.3, "stun_sec": 0.0 },
+        { "level": "Flinch",    "min_strength": 1.0, "stun_sec": 0.15 },
+        { "level": "Stagger",   "min_strength": 2.0, "stun_sec": 0.35 },
+        { "level": "Knockback", "min_strength": 3.5, "stun_sec": 0.5 },
+        { "level": "Knockdown", "min_strength": 5.5, "stun_sec": 0.0 }
+    ],
+    "buildup": {
+        "per_strength": 1.0,
+        "decay_per_sec": 1.5,
+        "threshold_drop": 0.08
+    },
+    "block": {
+        "damage_scale": 0.2,
+        "max_level": "Touch",
+        "stamina_per_strength": 3.0
+    }
+}

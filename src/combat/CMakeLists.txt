@@ -3,6 +3,7 @@ fighter_add_module(combat
     SOURCES
         battle.cpp
         fighter.cpp
+        moves.cpp
         snapshot.cpp
         tuning.cpp
     PUBLIC_DEPS

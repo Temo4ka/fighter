@@ -12,6 +12,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include "combat/battle.hpp"
@@ -30,9 +32,9 @@ using Catch::Approx;
 // sway the opponent, knockback depends on the mass, a strong hit knocks the
 // fighter down and it gets up, and the simulation is deterministic.
 //
-// Jumping, crouching and blocking are not implemented yet
-// (PlayerCommands::Jump/Crouch/Block are ignored), so there are no tests for
-// them.
+// Crouching, blocking, the heavy punch and the low kick are not implemented
+// yet (phase 2: the battle ignores those commands), so there are no tests
+// for them.
 
 namespace {
 
@@ -58,6 +60,15 @@ void run(Battle& Fight, const PlayerCommands& LeftCmd, const PlayerCommands& Rig
 }
 
 const PartTransform& getPart(const FighterView& View, BodyPart Part) { return View.Parts[static_cast<size_t>(Part)]; }
+
+/// The strikes that landed during the last update().
+std::vector<physics::HitEvent> getHits(const Battle& Fight) {
+    std::vector<physics::HitEvent> Hits;
+    for (const BattleEvent& Event : Fight.getEvents()) {
+        if (const auto* Landed = std::get_if<StrikeLanded>(&Event)) Hits.push_back(Landed->Contact);
+    }
+    return Hits;
+}
 
 const FighterView& getLeft(const Battle& Fight) { return Fight.getSnapshot().Fighters[0]; }
 const FighterView& getRight(const Battle& Fight) { return Fight.getSnapshot().Fighters[1]; }
@@ -110,12 +121,12 @@ AttackLog attackDummy(Battle& Fight, bool Kick, int Period, int Ticks, float Ran
             LeftCmd.MoveX = 1.0f;
         } else {
             const bool Press = AttackTick++ % Period < 3;
-            LeftCmd.Punch = Press && !Kick;
-            LeftCmd.Kick = Press && Kick;
+            LeftCmd.Jab = Press && !Kick;
+            LeftCmd.BodyKick = Press && Kick;
         }
         Fight.update(LeftCmd, {}, Dt);
 
-        std::ranges::copy(Fight.getHits(), std::back_inserter(Log.Hits));
+        std::ranges::copy(getHits(Fight), std::back_inserter(Log.Hits));
         if (!Log.Hits.empty() && !Log.FirstHitTick) Log.FirstHitTick = Tick;
         if (isDown(getRight(Fight)) && !Log.DownTick) Log.DownTick = Tick;
         Log.LargestSway = std::max(Log.LargestSway, std::abs(getTorsoLean(getRight(Fight)) - RestLean));
@@ -215,7 +226,7 @@ TEST_CASE("Battle: an idle fighter stands still for 60 s", "[combat][dod]") {
     CHECK(getLeft(Fight).Position.Y == Approx(0.0f).margin(0.005f));
     // The physical upper body settles and stays.
     CHECK(HeadDrift < 0.02f);
-    CHECK(Fight.getHits().empty());
+    CHECK(getHits(Fight).empty());
 }
 
 TEST_CASE("Battle: walking speed matches the data", "[combat][dod]") {
@@ -299,7 +310,7 @@ TEST_CASE("Battle: a jab moves the fist forward", "[combat][dod]") {
     const float GuardReach = getReach();
 
     float LongestReach = GuardReach;
-    Fight.update({.Punch = true}, {}, Dt);
+    Fight.update({.Jab = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) {
         Fight.update({}, {}, Dt);
         LongestReach = std::max(LongestReach, getReach());
@@ -316,7 +327,7 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
     const Vec2 Start = getPart(getLeft(Fight), BodyPart::FootL).Position;
 
     Vec2 Highest = Start;
-    Fight.update({.Kick = true}, {}, Dt);
+    Fight.update({.BodyKick = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
         Fight.update({}, {}, Dt);
         const Vec2 Foot = getPart(getLeft(Fight), BodyPart::FootL).Position;
@@ -426,8 +437,8 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     std::optional<int> HitTick;
     for (int Tick = 0; Tick < Ticks && !UpTick; ++Tick) {
         const bool InRange = getRight(Again).Position.X - getLeft(Again).Position.X <= KickRange;
-        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .Kick = InRange && !HitTick}, {}, Dt);
-        if (!HitTick && !Again.getHits().empty()) HitTick = Tick;
+        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .BodyKick = InRange && !HitTick}, {}, Dt);
+        if (!HitTick && !getHits(Again).empty()) HitTick = Tick;
         if (HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
     }
     REQUIRE(UpTick.has_value());
@@ -449,14 +460,14 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
         const int Phase = Tick % 150;
         const PlayerCommands LeftCmd{
             .MoveX = Distance > KickRange ? 1.0f : 0.0f,
-            .Punch = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .Kick = Distance <= KickRange && Phase < 3,
+            .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
+            .BodyKick = Distance <= KickRange && Phase < 3,
         };
-        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Punch = Tick % 53 == 0};
+        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
         First.update(LeftCmd, RightCmd, Dt);
         Second.update(LeftCmd, RightCmd, Dt);
-        REQUIRE(First.getHits().size() == Second.getHits().size());
-        HitCount += First.getHits().size();
+        REQUIRE(getHits(First).size() == getHits(Second).size());
+        HitCount += getHits(First).size();
         KnockedDown = KnockedDown || isDown(getRight(First)) || isDown(getLeft(First));
     }
     for (auto&& [Lhs, Rhs] : std::views::zip(First.getSnapshot().Fighters, Second.getSnapshot().Fighters)) {
@@ -501,4 +512,91 @@ TEST_CASE("Battle: result is available when round time runs out", "[combat]") {
     run(Fight, {}, {}, TicksPerSecond + 1);
     REQUIRE(Fight.getResult().has_value());
     CHECK(Fight.getResult()->TimeSec == Approx(1.0).margin(Dt));
+}
+
+// Phase 2 contracts (tasks 2.0.1, 2.0.4): what the stub battle already
+// reports through events, the snapshot and the result.
+
+TEST_CASE("Battle: a knockdown kick is told by events and the result", "[combat][events]") {
+    BattleConfig Config = makeConfig();
+    Config.RoundTimeSec = 6.0;
+    Battle Fight(Config);
+
+    std::vector<BattleEvent> Log;
+    bool Kicked = false;
+    while (!Fight.getResult()) {
+        const bool InRange = getRight(Fight).Position.X - getLeft(Fight).Position.X <= KickRange;
+        Fight.update({.MoveX = Kicked || InRange ? 0.0f : 1.0f, .BodyKick = InRange && !Kicked}, {}, Dt);
+        Kicked = Kicked || InRange;
+        std::ranges::copy(Fight.getEvents(), std::back_inserter(Log));
+    }
+
+    // In order: the kick starts, lands, the dummy falls and gets up, the time runs out.
+    const auto findEvent = [&]<class Event>(std::type_identity<Event>, size_t From) {
+        for (size_t Index = From; Index < Log.size(); ++Index) {
+            if (std::holds_alternative<Event>(Log[Index])) return Index;
+        }
+        return Log.size();
+    };
+    const size_t Started = findEvent(std::type_identity<StrikeStarted>{}, 0);
+    const size_t Landed = findEvent(std::type_identity<StrikeLanded>{}, Started);
+    const size_t Down = findEvent(std::type_identity<KnockedDown>{}, Landed);
+    const size_t Up = findEvent(std::type_identity<GotUp>{}, Down);
+    REQUIRE(Up < Log.size());
+    CHECK(std::get<StrikeStarted>(Log[Started]).Fighter == 0);
+    CHECK(std::get<StrikeStarted>(Log[Started]).MoveId == "body_kick");
+    CHECK(std::get<StrikeLanded>(Log[Landed]).Contact.Victim.Fighter == 1);
+    CHECK(std::get<KnockedDown>(Log[Down]).Fighter == 1);
+    CHECK(std::get<GotUp>(Log[Up]).Fighter == 1);
+    REQUIRE(std::holds_alternative<BattleOver>(Log.back()));
+    CHECK(std::get<BattleOver>(Log.back()).End == BattleEnd::TimeUp);
+
+    const BattleResult& Result = *Fight.getResult();
+    CHECK(Result.End == BattleEnd::TimeUp);
+    CHECK(Result.TimeSec == Approx(Config.RoundTimeSec).margin(Dt));
+    CHECK(Result.WinnerSide == Winner::Draw);   // no damage yet
+    const StrikeStats& Kick = Result.Fighters[0].Moves.at("body_kick");
+    CHECK(Kick.Thrown == 1);
+    CHECK(Kick.Landed == 1);
+    uint32_t HitsTaken = 0;
+    for (const PartReport& Part : Result.Fighters[1].HitsTaken) HitsTaken += Part.Hits;
+    CHECK(HitsTaken == 1);
+    CHECK(Result.Fighters[1].Knockdowns == 1);
+    CHECK(Result.Fighters[0].Knockdowns == 0);
+    CHECK(Result.Fighters[0].Hp == getLeft(Fight).Hp);
+
+    // After the end nothing happens any more.
+    Fight.update({}, {}, Dt);
+    CHECK(Fight.getEvents().empty());
+}
+
+TEST_CASE("Battle: starting HP comes from the config", "[combat][config]") {
+    BattleConfig Config = makeConfig();
+    Config.Left.StartHp = 30.0f;
+    Config.Right.StartHp = 1.0e6f;
+    const Battle Fight(Config);
+    CHECK(getLeft(Fight).Hp == 30.0f);
+    CHECK(getRight(Fight).Hp == getRight(Fight).MaxHp);   // clamped
+    CHECK(getRight(Fight).MaxHp > 30.0f);
+}
+
+TEST_CASE("Battle: the snapshot shows the phases of an attack", "[combat][snapshot]") {
+    Battle Fight(makeConfig());
+    run(Fight, {}, {}, TicksPerSecond / 4);
+    CHECK(getLeft(Fight).State == FighterState::Idle);
+    CHECK(getLeft(Fight).MoveId.empty());
+
+    Fight.update({.Jab = true}, {}, Dt);
+    std::vector<AttackPhase> Phases;
+    for (int Tick = 0; Tick < TicksPerSecond && getLeft(Fight).State == FighterState::Attacking; ++Tick) {
+        CHECK(getLeft(Fight).MoveId == "jab");
+        if (Phases.empty() || Phases.back() != getLeft(Fight).Phase) Phases.push_back(getLeft(Fight).Phase);
+        Fight.update({}, {}, Dt);
+    }
+    CHECK(Phases == std::vector{AttackPhase::Startup, AttackPhase::Active, AttackPhase::Recovery});
+    CHECK(getLeft(Fight).State == FighterState::Idle);
+    CHECK(getLeft(Fight).Phase == AttackPhase::None);
+
+    Fight.update({.MoveX = 1.0f}, {}, Dt);
+    CHECK(getLeft(Fight).State == FighterState::Walking);
 }

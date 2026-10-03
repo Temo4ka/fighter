@@ -1,0 +1,8 @@
+{
+    "button": "Jab",
+    "clip": "jab",
+    "damage": 0.6,
+    "min_reaction": "Touch",
+    "stamina": 5,
+    "min_startup_sec": 0.15
+}

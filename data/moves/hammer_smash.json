@@ -1,0 +1,9 @@
+{
+    "button": "HeavyPunch",
+    "clip": "hammer_smash",
+    "weapon": "hammer",
+    "damage": 1.8,
+    "min_reaction": "Stagger",
+    "stamina": 20,
+    "min_startup_sec": 0.4
+}

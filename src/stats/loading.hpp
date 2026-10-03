@@ -26,14 +26,23 @@
 ///      "covers": ["Head"], "mass_kg": 2.5, "armor": 0.3}
 ///   ]}
 ///
+///   // data/items/weapons.json: "weapon" only in the Weapon slot
+///   {"items": [
+///     {"id": "short_sword", "slot": "Weapon", "covers": ["ForearmR"],
+///      "mass_kg": 1.2, "armor": 0.0,
+///      "weapon": {"class": "sword", "reach_m": 0.55,
+///                 "speed_scale": 1.0, "power_scale": 1.2}}
+///   ]}
+///
 ///   // data/fighters/knight.json
 ///   {"name": "Knight",
 ///    "stats": {"strength": 14, "dexterity": 8, "constitution": 14},
 ///    "items": ["iron_helmet", "chainmail"]}
 /// \endcode
 ///
-/// "name" of an item is optional and defaults to its id; every other field
-/// is required.
+/// "name" of an item is optional and defaults to its id; "weapon" is optional
+/// (an item in the Weapon slot without it is not a weapon yet); every other
+/// field is required, including all four fields of "weapon".
 ///
 //===----------------------------------------------------------------------===//
 

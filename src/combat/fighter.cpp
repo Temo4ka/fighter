@@ -4,13 +4,6 @@
 #include <cmath>
 
 namespace fighter::combat {
-namespace {
-
-/// Stick input below this does not count as walking.
-constexpr float MoveDeadZone = 0.1f;
-
-} // namespace
-
 ClipSet ClipSet::load(const std::filesystem::path& PosesDir) {
     return {
         .Stance = anim::loadClip(PosesDir / "stance.json"),
@@ -21,22 +14,28 @@ ClipSet ClipSet::load(const std::filesystem::path& PosesDir) {
 }
 
 Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const ClipSet& NewClips,
-                 const stats::PhysicalProfile& NewProfile, const rig::RigSetup& Setup)
-    : Body(PhysWorld, Description, Setup), Clips(&NewClips), Profile(NewProfile), Hp(NewProfile.MaxHp) {
+                 const stats::PhysicalProfile& NewProfile, const rig::RigSetup& Setup, std::optional<float> StartHp)
+    : Body(PhysWorld, Description, Setup), Clips(&NewClips), Profile(NewProfile),
+      Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)) {
     Body.setTargetAngles(anim::sampleClip(NewClips.Stance, 0.0f).Angles);
     Body.snapToTargets();
 }
 
-void Fighter::control(const PlayerCommands& Cmd, float Dt) {
+bool Fighter::control(const PlayerCommands& Cmd, float Dt) {
     // Knocked down or getting up: no attacks, no walking, the stance waits.
     const bool Standing = Body.getPosture() == rig::Posture::Standing;
     if (Attack) {
         AttackTime += Dt;
         if (!Standing || Attack->isFinishedAt(AttackTime)) Attack = nullptr;
     }
-    // Holding the button repeats the attack.
-    if (Standing && !Attack && Cmd.Punch) startAttack(Clips->Jab);
-    if (Standing && !Attack && Cmd.Kick) startAttack(Clips->Kick);
+    // Holding the button repeats the attack. PLACEHOLDER until 2.2/2.3: the
+    // heavy punch and the low kick have no clips yet, blocking and crouching
+    // are ignored.
+    // PLACEHOLDER move ids until the moves are read from data/moves/ (2.3).
+    const bool CanAttack = Standing && !Attack;
+    if (CanAttack && Cmd.Jab) startAttack(Clips->Jab, "jab");
+    if (CanAttack && !Attack && Cmd.BodyKick) startAttack(Clips->Kick, "body_kick");
+    const bool Started = CanAttack && Attack;
 
     const rig::ControlParams& Control = Body.getControl();
     const bool CanMove = Standing && (!Attack || Attack->AllowMove);
@@ -74,6 +73,7 @@ void Fighter::control(const PlayerCommands& Cmd, float Dt) {
     Body.setMoveVelocity(Velocity);
     Body.setBaseStiffness(Attack ? Attack->Stiffness : 1.0f);
     Body.planMotion(Dt);
+    return Started;
 }
 
 void Fighter::applyControl(float Dt) { Body.applyControl(Dt); }
@@ -101,11 +101,32 @@ void Fighter::fillView(FighterView& View) const {
     View.FacingRight = Body.isFacingRight();
     View.Hp = Hp;
     View.MaxHp = Profile.MaxHp;
+    // PLACEHOLDER until the state machine (2.3): no stamina, crouch, block,
+    // reactions or walls yet.
+    View.Stamina = 0.0f;
+    View.MaxStamina = 0.0f;
+    View.MoveId = getMoveId();
+    View.Phase = AttackPhase::None;
+    if (Attack) {
+        View.Phase = AttackTime < Attack->ActiveBeginSec ? AttackPhase::Startup
+                     : Attack->isActiveAt(AttackTime)     ? AttackPhase::Active
+                                                          : AttackPhase::Recovery;
+    }
+    switch (Body.getPosture()) {
+        case rig::Posture::KnockedDown: View.State = FighterState::KnockedDown; break;
+        case rig::Posture::GettingUp: View.State = FighterState::GettingUp; break;
+        case rig::Posture::Standing:
+            View.State = Attack ? FighterState::Attacking : Walking ? FighterState::Walking : FighterState::Idle;
+            break;
+    }
+    View.Reaction = ReactionLevel::None;
+    View.AgainstWall = false;
     Body.getPartTransforms(View.Parts);
 }
 
-void Fighter::startAttack(const anim::Clip& NewAttack) {
+void Fighter::startAttack(const anim::Clip& NewAttack, std::string_view NewMoveId) {
     Attack = &NewAttack;
+    MoveId = NewMoveId;
     AttackTime = 0.0f;
     AttackLanded = false;
 }

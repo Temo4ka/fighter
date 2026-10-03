@@ -31,9 +31,23 @@ TEST_CASE("computeProfile: stats move parameters in the right direction", "[stat
     CHECK(Nimble.MotorGain > Base.MotorGain);
     CHECK(Base.MoveSpeedScale == 1.0f);
     CHECK(Nimble.MoveSpeedScale > Base.MoveSpeedScale);
+    CHECK(Base.AttackSpeedScale == 1.0f);
+    CHECK(Nimble.AttackSpeedScale > Base.AttackSpeedScale);
     const auto Tough = computeProfile({.Constitution = 15}, {}, Balance);
     CHECK(getTotalMass(Tough) > getTotalMass(Base));
     CHECK(Tough.MaxHp > Base.MaxHp);
+    CHECK(Tough.Poise > Base.Poise);
+    CHECK(Base.MaxStamina > 0.0f);
+    CHECK(Tough.MaxStamina > Base.MaxStamina);
+    CHECK(Base.StaminaRegen > 0.0f);
+    CHECK(Tough.StaminaRegen > Base.StaminaRegen);
+}
+
+TEST_CASE("computeProfile: DEX moves strike speed by at most a quarter", "[stats]") {
+    // O.7: DEX shifts strike speed by +-25% over the whole stat range in use.
+    const auto Balance = BalanceTable::getDefaults();
+    CHECK(computeProfile({.Dexterity = 20}, {}, Balance).AttackSpeedScale <= 1.25f + 1e-5f);
+    CHECK(computeProfile({.Dexterity = 1}, {}, Balance).AttackSpeedScale >= 0.75f - 1e-5f);
 }
 
 TEST_CASE("computeProfile: equipment adds mass and armor to its body parts", "[stats]") {

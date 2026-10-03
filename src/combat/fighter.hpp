@@ -9,8 +9,8 @@
 /// physical body (rig::Rig), the clips it plays and its health. It is
 /// internal to the combat module; the public API is Battle.
 ///
-/// PLACEHOLDER until the state machine of agent D (phase 2): commands map
-/// straight to clips (move -> walk cycle, punch -> jab, kick -> kick) over
+/// PLACEHOLDER until the state machine of agent D (task 2.3): commands map
+/// straight to clips (move -> walk cycle, jab -> jab, body kick -> kick) over
 /// the stance. A knocked-down fighter ignores commands until it stands.
 ///
 //===----------------------------------------------------------------------===//
@@ -18,6 +18,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string_view>
 
 #include "anim/clip.hpp"
@@ -46,13 +47,15 @@ struct ClipSet {
 
 class Fighter {
 public:
-    /// \p NewClips must outlive the fighter.
+    /// \p NewClips must outlive the fighter. \p StartHp: see
+    /// FighterConfig::StartHp.
     Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const ClipSet& NewClips,
-            const stats::PhysicalProfile& NewProfile, const rig::RigSetup& Setup);
+            const stats::PhysicalProfile& NewProfile, const rig::RigSetup& Setup, std::optional<float> StartHp);
 
     /// Chooses the clips for \p Cmd, sets the rig targets and plans the
-    /// pelvis motion. Call once per step, before applyControl().
-    void control(const PlayerCommands& Cmd, float Dt);
+    /// pelvis motion. Call once per step, before applyControl(). Returns true
+    /// if an attack started (getMoveId() names it).
+    bool control(const PlayerCommands& Cmd, float Dt);
     /// Moves the body for the next physics step (after the battle corrected
     /// the planned pelvis motion).
     void applyControl(float Dt);
@@ -65,6 +68,8 @@ public:
     const rig::Rig& getRig() const { return Body; }
     const stats::PhysicalProfile& getProfile() const { return Profile; }
     float getHp() const { return Hp; }
+    /// The move being performed (data/moves/<id>.json), empty if none.
+    std::string_view getMoveId() const { return Attack ? MoveId : std::string_view(); }
     /// Name of the clip on top (attack, walk or stance) and its time, s.
     std::string_view getClipName() const;
     float getClipTime() const;
@@ -79,7 +84,7 @@ public:
     void fillView(FighterView& View) const;
 
 private:
-    void startAttack(const anim::Clip& NewAttack);
+    void startAttack(const anim::Clip& NewAttack, std::string_view NewMoveId);
 
     rig::Rig Body;
     const ClipSet* Clips = nullptr;
@@ -90,6 +95,7 @@ private:
     float WalkTime = 0.0f;                 ///< Phase of the walk cycle, s.
     float WalkDirection = 1.0f;            ///< +1 forwards, -1 backwards (the cycle runs in reverse).
     const anim::Clip* Attack = nullptr;    ///< The attack being played, if any.
+    std::string_view MoveId;               ///< Its move id; points to a literal.
     float AttackTime = 0.0f;
     bool AttackLanded = false;
 };

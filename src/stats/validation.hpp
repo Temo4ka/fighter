@@ -53,6 +53,13 @@ inline constexpr float MaxItemMassKg = 30.0f;
 /// The armor of one item lies in [0, MaxItemArmor].
 inline constexpr float MaxItemArmor = 1.0f;
 
+/// A weapon reaches at most MaxWeaponReachM beyond the fist.
+inline constexpr float MaxWeaponReachM = 1.5f;
+
+/// The speed and power scales of a weapon lie in [MinWeaponScale, MaxWeaponScale].
+inline constexpr float MinWeaponScale = 0.25f;
+inline constexpr float MaxWeaponScale = 4.0f;
+
 /// The total mass of a loadout must not exceed MaxLoadoutMassKg. Large mass
 /// ratios make the ragdoll jitter (docs/DEVELOPMENT_PLAN.md, section 9).
 inline constexpr float MaxLoadoutMassKg = 60.0f;
@@ -61,7 +68,9 @@ inline constexpr float MaxLoadoutMassKg = 60.0f;
 void validateStats(const Stats& BaseStats);
 
 /// Throws DataError if the item has an empty id, covers no body parts, covers
-/// an unknown body part or one part twice, or has mass or armor out of range.
+/// an unknown body part or one part twice, or has mass or armor out of range;
+/// also if it has weapon properties outside the Weapon slot, an empty weapon
+/// class, or a reach or scale out of range.
 void validateItem(const EquipmentItem& Item);
 
 /// Validates every item and throws DataError if two items take the same slot

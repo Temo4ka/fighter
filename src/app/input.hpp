@@ -29,7 +29,7 @@
 
 namespace fighter::app {
 
-enum class Action : uint8_t { Left, Right, Jump, Crouch, Punch, Kick, Block, Count };
+enum class Action : uint8_t { Left, Right, Up, Down, Block, Jab, HeavyPunch, BodyKick, LowKick, Count };
 
 struct Binding {
     sf::Keyboard::Scancode Key;
@@ -44,9 +44,11 @@ public:
     InputSystem() : InputSystem(getDefaultBindings()) {}
     explicit InputSystem(std::vector<Binding> NewBindings);
 
-    /// The default layout:
-    ///   P1: A/D walk, W jump, S crouch, F punch, G kick, H block.
-    ///   P2: Left/Right walk, Up jump, Down crouch, K punch, L kick, ; block.
+    /// The default layout (task 2.0.2):
+    ///   P1: A/D walk, W up, S down, F jab, G heavy punch, R body kick,
+    ///       T low kick, Left Shift block.
+    ///   P2: Left/Right walk, Up up, Down down, K jab, L heavy punch,
+    ///       I body kick, O low kick, Right Shift block.
     static std::vector<Binding> getDefaultBindings();
 
     /// Returns true if the key is bound to some action.

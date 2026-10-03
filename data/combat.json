@@ -2,5 +2,6 @@
   "spawnDistance": 2.4,
   "hitSpeedThreshold": 0.6,
   "bodyHalfWidth": 0.25,
-  "separationSpeed": 4.0
+  "separationSpeed": 4.0,
+  "exhaustedSpeedScale": 0.7
 }
