@@ -50,13 +50,16 @@ App::App(Options Settings)
     : Opts(std::move(Settings)),
       Window(sf::VideoMode({WindowWidth, WindowHeight}), "Fighter sandbox"),
       Assets(Opts.Root),
-      Renderer(Assets)
+      Renderer(Assets, FixedStepLoop::Config{}.StepSec)
 #if FIGHTER_DEBUG
       , Overlay(Assets)
 #endif
 {
     Window.setVerticalSyncEnabled(true);
     Cam.setWindowSize(Window.getSize());
+    RendererEvents = BattleEvents.connect([this](const combat::BattleEvent& Event, const combat::RenderSnapshot& After) {
+        Renderer.onBattleEvent(Event, After);
+    });
 
 #if FIGHTER_DEBUG
     ShowcaseVisible = Opts.Showcase;
@@ -134,6 +137,8 @@ void App::stepSimulation(double Dt) {
     } else {
         CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
     }
+    for (const combat::BattleEvent& Event : CurrentBattle->getEvents())
+        BattleEvents.emit(Event, CurrentBattle->getSnapshot());
 
 #if FIGHTER_DEBUG
     if (ShowcaseVisible) drawDebugShowcase();
@@ -151,18 +156,20 @@ void App::render(float Alpha) {
     const combat::RenderSnapshot Snapshot =
         combat::interpolate(Previous, CurrentBattle->getSnapshot(), Alpha);
 
+    Renderer.buildFrame(Cam, Snapshot, Alpha);
+
 #if FIGHTER_DEBUG
     if (Overlay.shouldShowTextures()) {
-        Renderer.drawWorld(Window, Cam, Snapshot);
+        Renderer.drawWorld(Window);
     } else {
         Overlay.drawBackdrop(Window, Cam);
     }
     if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
-    Renderer.drawHud(Window, Cam, Snapshot);
+    Renderer.drawHud(Window);
     Overlay.drawPanel(Window, Cam, debug::getDrawList());
 #else
-    Renderer.drawWorld(Window, Cam, Snapshot);
-    Renderer.drawHud(Window, Cam, Snapshot);
+    Renderer.drawWorld(Window);
+    Renderer.drawHud(Window);
 #endif
 }
 
@@ -179,6 +186,9 @@ bool App::restartBattle() {
         return false;
     }
     CurrentBattle = std::move(Fresh);
+    const combat::BattleConfig& Config = CurrentBattle->getConfig();
+    Renderer.startBattle({render::makeFighterLook(Config.Left, Skins[0], "P1"),
+                          render::makeFighterLook(Config.Right, Skins[1], "P2")});
     Previous = CurrentBattle->getSnapshot();
     ResultReported = false;
     Loop.reset();
@@ -234,6 +244,7 @@ void App::applyDebugAction(render::DebugAction Action) {
         case DebugAction::Reload:
             // A new battle re-reads data/rigs and data/poses.
             if (restartBattle()) debug::logEvent("reload: data files re-read, battle restarted");
+            if (Renderer.reloadVisuals()) debug::logEvent("reload: visuals re-read");
             break;
         case DebugAction::ToggleShowcase:
             ShowcaseVisible = !ShowcaseVisible;

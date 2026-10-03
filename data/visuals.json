@@ -1,36 +1,47 @@
 {
     "pixels_per_meter": 64,
+    "default_skin": "placeholder_smooth",
+    "background": "assets/backgrounds/bg.jpeg",
     "skins": {
         "placeholder_smooth": {
-            "dir": "assets/placeholders/smooth/humanoid"
+            "dir": "assets/placeholders/smooth/humanoid",
+            "items_dir": "assets/placeholders/smooth/items"
         },
         "placeholder_pixel": {
             "dir": "assets/placeholders/pixel/humanoid",
-            "pixels_per_meter": 32
+            "items_dir": "assets/placeholders/pixel/items",
+            "pixels_per_meter": 32,
+            "smooth": false
         }
     },
-    "items": {
-        "iron_helmet": {
-            "dir": "assets/items/iron_helmet"
-        },
-        "short_sword": {
-            "dir": "assets/items/short_sword"
-        }
-    },
+    "items": {},
     "effects": {
         "hit_flash": {
             "min_reaction": "Touch",
-            "duration_sec": 0.06
+            "duration_sec": 0.06,
+            "radius_m": 0.12
         },
         "camera_shake": {
             "min_reaction": "Knockback",
             "amplitude_m": 0.04,
-            "duration_sec": 0.15
+            "duration_sec": 0.15,
+            "frequency_hz": 25
         },
         "dust": {
             "on_knockdown": true,
             "particles": 8,
-            "duration_sec": 0.5
+            "duration_sec": 0.5,
+            "spread_m": 0.5,
+            "size_m": 0.06
         }
+    },
+    "hud": {
+        "bar_width_px": 360,
+        "hp_bar_height_px": 18,
+        "stamina_bar_height_px": 6,
+        "margin_px": 24,
+        "gap_px": 4,
+        "name_font_px": 16,
+        "timer_font_px": 28
     }
 }

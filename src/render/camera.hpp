@@ -48,6 +48,8 @@ public:
     float getPixelsPerMeter() const;
     Vec2 getViewSizeM() const { return {ViewHeightM * getAspect(), ViewHeightM}; }
     Vec2 getCenterM() const { return Center; }
+    /// Moves the view; the renderer shakes a copy of the camera this way.
+    void setCenterM(Vec2 NewCenter) { Center = NewCenter; }
     sf::Vector2u getWindowSize() const { return WindowPx; }
 
     /// SFML view in world units. SFML's Y axis points down, so points go
