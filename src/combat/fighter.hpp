@@ -119,9 +119,7 @@ public:
     /// The damage multiplier of \p Attack thrown by this fighter: the weapon's
     /// power for a weapon move, otherwise 1.
     float getPowerScale(const MoveDef& Attack) const;
-    /// Name of the clip on top (attack, block, reaction, walk or stance) and
-    /// its time, s.
-    std::string_view getClipName() const;
+    /// Time of the clip on top (attack, block, reaction, walk or stance), s.
     float getClipTime() const;
     /// Clip seconds per second of the current attack (O.7): the fighter's
     /// attack speed and weapon, slowed when exhausted and, if needed, so that

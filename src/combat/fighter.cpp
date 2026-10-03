@@ -144,11 +144,6 @@ std::string Fighter::describeClip() const {
     return anim::describePlayback(Playing, getClipTime(), Rate, Fade);
 }
 
-std::string_view Fighter::getClipName() const {
-    if (const anim::Clip* Top = getTopClip()) return Top->Name;
-    return Walking ? Rules->Clips.get(clips::Walk).Name : Rules->Clips.get(clips::Stance).Name;
-}
-
 float Fighter::getClipTime() const {
     if (getTopClip()) return getTopClipTime();
     return Walking ? WalkTime : 0.0f;
