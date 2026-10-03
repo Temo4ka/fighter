@@ -47,7 +47,8 @@ b2Polygon makeBox(const ShapeDef& Shape);
 float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other);
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage);
 b2ShapeProxy makeLocalProxy(b2ShapeId Shape);
-ShapeGap measureGap(b2ShapeId ShapeA, b2ShapeId ShapeB);
+ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, b2Transform TransformB);
+b2Transform getTransform(b2ShapeId Shape);
 
 } // namespace
 
@@ -319,6 +320,8 @@ int World::getJointCount() const { return b2World_GetCounters(loadWorld(Id)).joi
 void World::recordPartVelocities() {
     for (auto& Entry : PartBodies) {
         Entry.CenterBeforeStep = Entry.Handle.getWorldCenterOfMass();
+        Entry.PositionBeforeStep = Entry.Handle.getPosition();
+        Entry.AngleBeforeStep = Entry.Handle.getAngle();
         Entry.VelocityBeforeStep = Entry.Handle.getLinearVelocity();
         Entry.AngularVelocityBeforeStep = Entry.Handle.getAngularVelocity();
     }
@@ -368,10 +371,12 @@ void World::collectPosedHits() {
             if (PartB.Handle.getType() != BodyType::Kinematic || PartA.Part.Fighter == PartB.Part.Fighter) continue;
 
             // The deepest contact between the shapes of the two bodies.
+            const std::span<b2ShapeId> ShapesA = getShapes(loadBody(PartA.Handle.Id), StorageA);
+            const std::span<b2ShapeId> ShapesB = getShapes(loadBody(PartB.Handle.Id), StorageB);
             std::optional<ShapeGap> Deepest;
-            for (const auto& ShapeA : getShapes(loadBody(PartA.Handle.Id), StorageA)) {
-                for (const auto& ShapeB : getShapes(loadBody(PartB.Handle.Id), StorageB)) {
-                    const ShapeGap Gap = measureGap(ShapeA, ShapeB);
+            for (const auto& ShapeA : ShapesA) {
+                for (const auto& ShapeB : ShapesB) {
+                    const ShapeGap Gap = measureGap(ShapeA, getTransform(ShapeA), ShapeB, getTransform(ShapeB));
                     if (Gap.Distance <= TouchTolerance && (!Deepest || Gap.Distance < Deepest->Distance)) {
                         Deepest = Gap;
                     }
@@ -381,16 +386,31 @@ void World::collectPosedHits() {
             Touching.emplace_back(SlotA, SlotB);
             if (std::ranges::binary_search(TouchingPosed, SlotPair{SlotA, SlotB})) continue;   // not new
 
+            // The normal at the moment of impact: from the closest points
+            // before the step, if the parts were apart then. After the step
+            // a fast limb is deep inside the other part, and the direction
+            // between the cores says little about how it came in.
+            const b2Transform BeforeA{toBox2D(PartA.PositionBeforeStep), b2MakeRot(PartA.AngleBeforeStep)};
+            const b2Transform BeforeB{toBox2D(PartB.PositionBeforeStep), b2MakeRot(PartB.AngleBeforeStep)};
+            std::optional<ShapeGap> Closest;
+            for (const auto& ShapeA : ShapesA) {
+                for (const auto& ShapeB : ShapesB) {
+                    const ShapeGap Gap = measureGap(ShapeA, BeforeA, ShapeB, BeforeB);
+                    if (!Closest || Gap.Distance < Closest->Distance) Closest = Gap;
+                }
+            }
+            const Vec2 Normal = Closest && Closest->Distance > 0.0f ? Closest->Normal : Deepest->Normal;
+
             // Like a Box2D hit event: a new contact closing fast enough. Both
             // parts are posed, so the impulse is the one of free bodies.
             const Vec2 Relative =
                 getVelocityBeforeStep(PartA, Deepest->Point) - getVelocityBeforeStep(PartB, Deepest->Point);
-            const float Approach = dot(Relative, Deepest->Normal);
+            const float Approach = dot(Relative, Normal);
             if (Approach < HitSpeedThreshold) continue;
             const float MassA = getStrikeMass(PartA);
             const float MassB = getStrikeMass(PartB);
             const float MassSum = MassA + MassB;
-            addHit(PartA, PartB, Deepest->Point, Deepest->Normal, Approach,
+            addHit(PartA, PartB, Deepest->Point, Normal, Approach,
                    MassSum > 0.0f ? Approach * MassA * MassB / MassSum : 0.0f);
         }
     }
@@ -478,14 +498,17 @@ b2ShapeProxy makeLocalProxy(b2ShapeId Shape) {
     }
 }
 
-ShapeGap measureGap(b2ShapeId ShapeA, b2ShapeId ShapeB) {
-    const b2BodyId BodyA = b2Shape_GetBody(ShapeA);
-    const b2BodyId BodyB = b2Shape_GetBody(ShapeB);
+/// The world transform of the body a shape belongs to.
+b2Transform getTransform(b2ShapeId Shape) { return b2Body_GetTransform(b2Shape_GetBody(Shape)); }
+
+/// The closest approach of two shapes with their bodies placed at the given
+/// transforms.
+ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, b2Transform TransformB) {
     b2DistanceInput Input{};
     Input.proxyA = makeLocalProxy(ShapeA);
     Input.proxyB = makeLocalProxy(ShapeB);
-    Input.transformA = b2Body_GetTransform(BodyA);
-    Input.transformB = b2Body_GetTransform(BodyB);
+    Input.transformA = TransformA;
+    Input.transformB = TransformB;
     // The cores without their radii: their closest points give a normal even
     // when the rounded surfaces overlap.
     Input.useRadii = false;
@@ -497,8 +520,7 @@ ShapeGap measureGap(b2ShapeId ShapeA, b2ShapeId ShapeB) {
     Vec2 Normal = fromBox2D(Output.normal);
     if (Output.distance <= 0.0f || Normal.getLength() < 0.5f) {
         // The cores intersect: apart along the line between the bodies.
-        Normal = (fromBox2D(b2Body_GetWorldCenterOfMass(BodyB)) - fromBox2D(b2Body_GetWorldCenterOfMass(BodyA)))
-                     .getNormalized();
+        Normal = (fromBox2D(TransformB.p) - fromBox2D(TransformA.p)).getNormalized();
     }
     const Vec2 SurfaceA = fromBox2D(Output.pointA) + Normal * RadiusA;
     const Vec2 SurfaceB = fromBox2D(Output.pointB) - Normal * RadiusB;
