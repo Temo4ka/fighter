@@ -4,6 +4,7 @@ fighter_add_module(combat
         battle.cpp
         fighter.cpp
         moves.cpp
+        reactions.cpp
         snapshot.cpp
         tuning.cpp
     PUBLIC_DEPS
