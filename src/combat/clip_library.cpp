@@ -43,6 +43,12 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<c
         Library.add(PosesDir, Move.Clip);
         if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip);
     }
+    if (!Library.StandIns.empty()) {
+        std::string List;
+        for (const std::string& Entry : Library.StandIns) List += (List.empty() ? "" : ", ") + Entry;
+        log::warn("{}: {} clips are missing, stand-ins play until they exist: {}", PosesDir.string(),
+                  Library.StandIns.size(), List);
+    }
     return Library;
 }
 
@@ -77,11 +83,7 @@ void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Na
         const std::filesystem::path File = PosesDir / (Playing + ".json");
         std::error_code Error;
         if (std::filesystem::exists(File, Error)) {
-            if (Playing != Name) {
-                StandIns.push_back(std::format("{} -> {}", Name, Playing));
-                log::warn("clip '{}' is missing ({}): '{}' plays instead until it exists", Name,
-                          (PosesDir / (std::string(Name) + ".json")).string(), Playing);
-            }
+            if (Playing != Name) StandIns.push_back(std::format("{} -> {}", Name, Playing));
             Clips.emplace(std::string(Name), anim::loadClip(File));
             return;
         }

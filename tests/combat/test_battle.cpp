@@ -5,11 +5,9 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
 #include <iterator>
 #include <optional>
 #include <ranges>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -19,11 +17,11 @@
 #include "combat/battle.hpp"
 #include "combat/tuning.hpp"
 #include "rig/rig_def.hpp"
-#include "stats/fighter_sheet.hpp"
-#include "stats/loading.hpp"
+#include "scenario.hpp"
 
 using namespace fighter;
 using namespace fighter::combat;
+using namespace fighter::combat::test;
 using Catch::Approx;
 
 // Scenario tests of a fight without a window: scripted input -> expected
@@ -32,61 +30,15 @@ using Catch::Approx;
 // sway the opponent, knockback depends on the mass, a strong hit knocks the
 // fighter down and it gets up, and the simulation is deterministic.
 //
-// Crouching, blocking, the heavy punch and the low kick are not implemented
-// yet (phase 2: the battle ignores those commands), so there are no tests
-// for them.
+// Since task 2.3 data/reactions.json decides about knockdowns, not the rig:
+// the tests that need one (or none) bring their own reaction table. The
+// fight itself (damage, reactions, blocks, stamina, the end) is tested in
+// test_fight.cpp.
 
 namespace {
 
-constexpr double Dt = 1.0 / 60.0;
-constexpr int TicksPerSecond = 60;
-/// Distance between the fighters' floor points at which the attacker stops
-/// walking and strikes, m (as in the fight and kick demos).
-constexpr float JabRange = 0.72f;
-constexpr float KickRange = 0.95f;
-
-BattleConfig makeConfig() {
-    BattleConfig Config;
-    Config.DataDir = FIGHTER_DATA_DIR;
-    return Config;
-}
-
 rig::ControlParams loadControl() {
     return rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json").Control;
-}
-
-void run(Battle& Fight, const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, int Ticks) {
-    for (int Tick = 0; Tick < Ticks; ++Tick) Fight.update(LeftCmd, RightCmd, Dt);
-}
-
-const PartTransform& getPart(const FighterView& View, BodyPart Part) { return View.Parts[static_cast<size_t>(Part)]; }
-
-/// The strikes that landed during the last update().
-std::vector<physics::HitEvent> getHits(const Battle& Fight) {
-    std::vector<physics::HitEvent> Hits;
-    for (const BattleEvent& Event : Fight.getEvents()) {
-        if (const auto* Landed = std::get_if<StrikeLanded>(&Event)) Hits.push_back(Landed->Contact);
-    }
-    return Hits;
-}
-
-const FighterView& getLeft(const Battle& Fight) { return Fight.getSnapshot().Fighters[0]; }
-const FighterView& getRight(const Battle& Fight) { return Fight.getSnapshot().Fighters[1]; }
-
-float getPelvisX(const FighterView& View) { return getPart(View, BodyPart::Pelvis).Position.X; }
-float getHeadHeight(const FighterView& View) { return getPart(View, BodyPart::Head).Position.Y; }
-
-/// Upright: the head well above the floor and the torso close to vertical.
-bool isUpright(const FighterView& View) {
-    constexpr float MinHeadHeight = 1.4f;   // m; standing it is about 1.6 m
-    constexpr float MaxTorsoTilt = 0.6f;    // rad
-    return getHeadHeight(View) > MinHeadHeight && std::abs(getPart(View, BodyPart::Torso).Angle) < MaxTorsoTilt;
-}
-
-/// Down: the head close to the floor.
-bool isDown(const FighterView& View) {
-    constexpr float MaxHeadHeight = 0.7f;   // m
-    return getHeadHeight(View) < MaxHeadHeight;
 }
 
 /// The far end of the forearm (the fist) of a fighter facing right, in world
@@ -132,52 +84,6 @@ AttackLog attackDummy(Battle& Fight, bool Kick, int Period, int Ticks, float Ran
         Log.LargestSway = std::max(Log.LargestSway, std::abs(getTorsoLean(getRight(Fight)) - RestLean));
     }
     return Log;
-}
-
-/// A copy of the data directory that a test may edit; removed afterwards.
-class ScratchData {
-public:
-    explicit ScratchData(const std::string& Name)
-        : Dir(std::filesystem::temp_directory_path() / ("fighter_test_" + Name)) {
-        std::filesystem::remove_all(Dir);
-        std::filesystem::copy(FIGHTER_DATA_DIR, Dir, std::filesystem::copy_options::recursive);
-    }
-    ~ScratchData() {
-        std::error_code Ignored;
-        std::filesystem::remove_all(Dir, Ignored);
-    }
-    ScratchData(const ScratchData&) = delete;
-    ScratchData& operator=(const ScratchData&) = delete;
-
-    const std::filesystem::path& getDir() const { return Dir; }
-
-    void write(const std::filesystem::path& File, const std::string& Text) const {
-        std::ofstream(Dir / File, std::ios::binary | std::ios::trunc) << Text;
-    }
-
-    /// Replaces the first \p From in \p File with \p To.
-    void replace(const std::filesystem::path& File, const std::string& From, const std::string& To) const {
-        std::stringstream Buffer;
-        Buffer << std::ifstream(Dir / File, std::ios::binary).rdbuf();
-        std::string Text = Buffer.str();
-        const size_t At = Text.find(From);
-        REQUIRE(At != std::string::npos);
-        write(File, Text.replace(At, From.size(), To));
-    }
-
-private:
-    std::filesystem::path Dir;
-};
-
-FighterConfig loadFighter(const std::string& Name) {
-    const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
-    const stats::ItemCatalog Catalog = stats::loadItemCatalog(DataDir / "items");
-    const stats::ResolvedFighter Sheet =
-        stats::resolveFighterSheet(stats::loadFighterSheet(DataDir / "fighters" / (Name + ".json")), Catalog);
-    FighterConfig Config;
-    Config.Stats = Sheet.BaseStats;
-    Config.Loadout = Sheet.Gear;
-    return Config;
 }
 
 float getTotalMass(const FighterConfig& Config) {
@@ -364,10 +270,8 @@ TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") 
 TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[combat][dod]") {
     // Without knockdowns, to see the plain reaction.
     ScratchData Data("kick");
-    Data.replace("rigs/humanoid.json", "\"knockdownSpeed\": 0.7", "\"knockdownSpeed\": 100");
-    BattleConfig Config = makeConfig();
-    Config.DataDir = Data.getDir();
-    Battle Fight(Config);
+    Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
+    Battle Fight(Data.makeConfig());
     const float DummyStartX = getPelvisX(getRight(Fight));
 
     const AttackLog Log = attackDummy(Fight, true, 2 * TicksPerSecond, 4 * TicksPerSecond, KickRange);
@@ -388,10 +292,9 @@ TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[com
 TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[combat][dod]") {
     // Knockdowns off: both must stay standing for the knockback to compare.
     ScratchData Data("knockback");
-    Data.replace("rigs/humanoid.json", "\"knockdownSpeed\": 0.7", "\"knockdownSpeed\": 100");
+    Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     const auto measureKnockback = [&](const FighterConfig& Dummy) {
-        BattleConfig Config = makeConfig();
-        Config.DataDir = Data.getDir();
+        BattleConfig Config = Data.makeConfig();
         Config.Right = Dummy;
         Battle Fight(Config);
         // One kick; the dummy only moves when it is hit.
@@ -419,7 +322,10 @@ TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[com
 
 TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[combat][dod]") {
     const rig::ControlParams Control = loadControl();
-    Battle Fight(makeConfig());
+    // The reaction table makes a clean kick a knockdown.
+    ScratchData Data("knockdown");
+    Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
+    Battle Fight(Data.makeConfig());
     // One kick, then nothing: the dummy falls, lies and gets up.
     const int Ticks = 6 * TicksPerSecond;
     const AttackLog Log = attackDummy(Fight, true, Ticks, Ticks, KickRange);
@@ -432,7 +338,7 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
 
     // It is up again within the configured time on the floor and getting up
     // (plus a little for the upper body to straighten).
-    Battle Again(makeConfig());
+    Battle Again(Data.makeConfig());
     std::optional<int> UpTick;
     std::optional<int> HitTick;
     for (int Tick = 0; Tick < Ticks && !UpTick; ++Tick) {
@@ -449,8 +355,13 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
 }
 
 TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
-    Battle First(makeConfig());
-    Battle Second(makeConfig());
+    // Low thresholds, so that the scenario has every reaction level.
+    ScratchData Data("determinism");
+    Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.02f, 0.05f, 0.3f, 0.6f, 0.75f},
+                                                    .BuildupPerStrength = 1.0f,
+                                                    .ThresholdDrop = 0.1f}));
+    Battle First(Data.makeConfig());
+    Battle Second(Data.makeConfig());
     size_t HitCount = 0;
     bool KnockedDown = false;
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
@@ -472,6 +383,9 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
     }
     for (auto&& [Lhs, Rhs] : std::views::zip(First.getSnapshot().Fighters, Second.getSnapshot().Fighters)) {
         CHECK(Lhs.Position == Rhs.Position);
+        CHECK(Lhs.Hp == Rhs.Hp);
+        CHECK(Lhs.Stamina == Rhs.Stamina);
+        CHECK(Lhs.State == Rhs.State);
         for (auto&& [PartL, PartR] : std::views::zip(Lhs.Parts, Rhs.Parts)) {
             CHECK(PartL.Position == PartR.Position);
             CHECK(PartL.Angle == PartR.Angle);
@@ -502,6 +416,18 @@ TEST_CASE("Battle: tuning is read from the data directory", "[combat][dod]") {
         Data.write("combat.json", R"({ "spawnDistanse": 3.0 })");
         CHECK_THROWS_AS(Battle(Config), std::runtime_error);
     }
+    SECTION("a broken reaction table is reported") {
+        Data.replace("reactions.json", "\"damage_per_strength\"", "\"damage_per_strenght\"");
+        CHECK_THROWS_AS(Battle(Config), std::runtime_error);
+    }
+    SECTION("a broken move is reported") {
+        Data.replace("moves/jab.json", "\"Jab\"", "\"Uppercut\"");
+        CHECK_THROWS_AS(Battle(Config), std::runtime_error);
+    }
+    SECTION("a missing clip without a stand-in is reported") {
+        std::filesystem::remove(Data.getDir() / "poses" / "walk.json");
+        CHECK_THROWS_AS(Battle(Config), std::runtime_error);
+    }
 }
 
 TEST_CASE("Battle: result is available when round time runs out", "[combat]") {
@@ -514,11 +440,13 @@ TEST_CASE("Battle: result is available when round time runs out", "[combat]") {
     CHECK(Fight.getResult()->TimeSec == Approx(1.0).margin(Dt));
 }
 
-// Phase 2 contracts (tasks 2.0.1, 2.0.4): what the stub battle already
-// reports through events, the snapshot and the result.
+// Phase 2 contracts (tasks 2.0.1, 2.0.4): what the battle reports through
+// events, the snapshot and the result.
 
 TEST_CASE("Battle: a knockdown kick is told by events and the result", "[combat][events]") {
-    BattleConfig Config = makeConfig();
+    ScratchData Data("events");
+    Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
+    BattleConfig Config = Data.makeConfig();
     Config.RoundTimeSec = 6.0;
     Battle Fight(Config);
 
@@ -545,7 +473,13 @@ TEST_CASE("Battle: a knockdown kick is told by events and the result", "[combat]
     REQUIRE(Up < Log.size());
     CHECK(std::get<StrikeStarted>(Log[Started]).Fighter == 0);
     CHECK(std::get<StrikeStarted>(Log[Started]).MoveId == "body_kick");
-    CHECK(std::get<StrikeLanded>(Log[Landed]).Contact.Victim.Fighter == 1);
+    const StrikeLanded& Hit = std::get<StrikeLanded>(Log[Landed]);
+    CHECK(Hit.Contact.Victim.Fighter == 1);
+    CHECK(Hit.MoveId == "body_kick");
+    CHECK(Hit.Strength > 0.0f);
+    CHECK(Hit.Damage > 0.0f);
+    CHECK(Hit.Reaction == ReactionLevel::Knockdown);
+    CHECK_FALSE(Hit.Blocked);
     CHECK(std::get<KnockedDown>(Log[Down]).Fighter == 1);
     CHECK(std::get<GotUp>(Log[Up]).Fighter == 1);
     REQUIRE(std::holds_alternative<BattleOver>(Log.back()));
@@ -554,13 +488,22 @@ TEST_CASE("Battle: a knockdown kick is told by events and the result", "[combat]
     const BattleResult& Result = *Fight.getResult();
     CHECK(Result.End == BattleEnd::TimeUp);
     CHECK(Result.TimeSec == Approx(Config.RoundTimeSec).margin(Dt));
-    CHECK(Result.WinnerSide == Winner::Draw);   // no damage yet
+    CHECK(Result.WinnerSide == Winner::Left);   // the kick took HP
     const StrikeStats& Kick = Result.Fighters[0].Moves.at("body_kick");
     CHECK(Kick.Thrown == 1);
     CHECK(Kick.Landed == 1);
+    CHECK(Kick.Blocked == 0);
+    CHECK(Kick.Damage == Approx(Hit.Damage));
+    CHECK(Result.Fighters[0].DamageDealt == Approx(Hit.Damage));
+    CHECK(Result.Fighters[1].DamageTaken == Approx(Hit.Damage));
+    CHECK(Result.Fighters[0].DamageTaken == 0.0f);
     uint32_t HitsTaken = 0;
     for (const PartReport& Part : Result.Fighters[1].HitsTaken) HitsTaken += Part.Hits;
     CHECK(HitsTaken == 1);
+    const PartReport& HitPart = Result.Fighters[1].HitsTaken[static_cast<size_t>(Hit.Contact.Victim.Part)];
+    CHECK(HitPart.Hits == 1);
+    CHECK(HitPart.Damage == Approx(Hit.Damage));
+    CHECK(Result.Fighters[1].Hp == Approx(getRight(Fight).MaxHp - Hit.Damage));
     CHECK(Result.Fighters[1].Knockdowns == 1);
     CHECK(Result.Fighters[0].Knockdowns == 0);
     CHECK(Result.Fighters[0].Hp == getLeft(Fight).Hp);
