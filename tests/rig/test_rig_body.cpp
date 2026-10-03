@@ -440,7 +440,8 @@ TEST_CASE("keepApart: the walls stop the pelvis and a fighter at a wall does not
     Corner.run(180);
     const float MaxX = ArenaHalfWidth - Corner.Spacing.BodyHalfWidth;
     CHECK(getPelvisX(Corner.Right) == Approx(MaxX));
-    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(2.0f * Corner.Spacing.BodyHalfWidth).margin(1e-4f));
+    const float MinGap = 2.0f * Corner.Spacing.BodyHalfWidth;
+    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(MinGap).margin(1e-4f));
     CHECK(Corner.Right.getWallSide() == 1);
     CHECK(Corner.Right.isAgainstWall());
     CHECK(Corner.Left.getWallSide() == 0);
@@ -489,7 +490,8 @@ TEST_CASE("pushApartOnHit: against the wall the attacker takes all of the push",
     CHECK(Corner.Left.getController().getKnockback() < 0.0f);
     Corner.run(120);
     CHECK(getPelvisX(Corner.Right) == Approx(2.75f));
-    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(Corner.Right.getControl().CloseRange).margin(0.03f));
+    const float CloseRange = Corner.Right.getControl().CloseRange;
+    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(CloseRange).margin(0.03f));
 }
 
 TEST_CASE("Rig: a posed leg hits the opponent's posed legs and pelvis", "[rig]") {

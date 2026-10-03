@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
+#include <utility>
 #include <variant>
 
 #include "combat/battle.hpp"
@@ -137,4 +139,88 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     CHECK(Close.PeakSpeed > Fresh.PeakSpeed * 0.8f);
     CHECK(Close.PeakSpeed > Free.PeakSpeed * 0.5f);
     CHECK((Close.Landed || Close.Longest - Close.Guard > (Free.Longest - Free.Guard) * 0.8f));
+}
+
+namespace {
+
+constexpr float KickRange = 0.95f;
+
+bool isKnockedDown(const Battle& Fight, uint8_t Fighter) {
+    return std::ranges::any_of(Fight.getEvents(), [&](const BattleEvent& Event) {
+        const auto* Down = std::get_if<KnockedDown>(&Event);
+        return Down && Down->Fighter == Fighter;
+    });
+}
+
+/// The horizontal extent of a fighter's parts (their turned bounding
+/// boxes), m.
+std::pair<float, float> getExtentX(const FighterView& View) {
+    float Low = 1e9f;
+    float High = -1e9f;
+    for (const auto& Part : View.Parts) {
+        const float Half = std::abs(rotate({Part.Size.X * 0.5f, 0.0f}, Part.Angle).X) +
+                           std::abs(rotate({0.0f, Part.Size.Y * 0.5f}, Part.Angle).X);
+        Low = std::min(Low, Part.Position.X - Half);
+        High = std::max(High, Part.Position.X + Half);
+    }
+    return {Low, High};
+}
+
+/// P1 walks into kicking range of P2 and kicks once; returns the tick P2
+/// went down, if it did.
+std::optional<int> kickDown(Battle& Fight, int Ticks) {
+    bool Kicked = false;
+    for (int Tick = 0; Tick < Ticks; ++Tick) {
+        const bool InRange = getGap(Fight) <= KickRange;
+        Fight.update({.MoveX = InRange || Kicked ? 0.0f : 1.0f, .BodyKick = InRange && !Kicked}, {}, Dt);
+        Kicked = Kicked || InRange;
+        if (isKnockedDown(Fight, 1)) return Tick;
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+TEST_CASE("Scenario: the kicker does not walk through the fighter it knocked down", "[rig][scenario]") {
+    Battle Fight(makeConfig());
+    REQUIRE(kickDown(Fight, 4 * TicksPerSecond).has_value());
+    // The kick ends over the falling body; then P1 walks forward while P2
+    // lies: its legs stop short of the body.
+    const auto IsDown = [&] { return Fight.getSnapshot().Fighters[1].State == FighterState::KnockedDown; };
+    for (int Tick = 0; Tick < TicksPerSecond * 2 / 3; ++Tick) Fight.update({}, {}, Dt);
+    int Walked = 0;
+    for (; Walked < TicksPerSecond && IsDown(); ++Walked) {
+        Fight.update({.MoveX = 1.0f}, {}, Dt);
+        const auto& Fighters = Fight.getSnapshot().Fighters;
+        const float Toes = std::max(getPart(Fighters[0], BodyPart::FootL).Position.X,
+                                    getPart(Fighters[0], BodyPart::FootR).Position.X) + 0.12f;
+        CHECK(Toes < getExtentX(Fighters[1]).first + 0.05f);
+    }
+    CHECK(Walked > TicksPerSecond / 3);
+}
+
+TEST_CASE("Scenario: knocked down at the wall the fighter stays in the arena and gets up", "[rig][scenario]") {
+    Battle Fight(makeConfig());
+    const float HalfWidth = Fight.getConfig().Arena.HalfWidthM;
+    // P2 backs into the wall first.
+    for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) Fight.update({}, {.MoveX = 1.0f}, Dt);
+    REQUIRE(kickDown(Fight, 6 * TicksPerSecond).has_value());
+
+    float Farthest = 0.0f;
+    bool Stood = false;
+    for (int Tick = 0; Tick < 4 * TicksPerSecond && !Stood; ++Tick) {
+        Fight.update({}, {}, Dt);
+        for (const auto& Part : Fight.getSnapshot().Fighters[1].Parts) Farthest = std::max(Farthest, Part.Position.X);
+        Stood = std::ranges::any_of(Fight.getEvents(), [](const BattleEvent& Event) {
+            return std::holds_alternative<GotUp>(Event);
+        });
+    }
+    // The wall stops the body: every part's center stays at least the
+    // thinnest part's radius inside (the snapshot has no shapes).
+    CHECK(Farthest < HalfWidth - 0.03f);
+    CHECK(Stood);
+    for (int Tick = 0; Tick < TicksPerSecond; ++Tick) Fight.update({}, {}, Dt);
+    const FighterView& Fallen = Fight.getSnapshot().Fighters[1];
+    CHECK(getPart(Fallen, BodyPart::Head).Position.Y > 1.4f);
+    CHECK(Fallen.Position.X < HalfWidth);
 }
