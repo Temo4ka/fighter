@@ -12,6 +12,10 @@
 | `objects/wood_block.png` | неизвестно | неизвестно | неизвестно | ⚠️ не используется; удалить или выяснить происхождение |
 | `players/player1.jpg` | неизвестно | неизвестно | неизвестно | ⚠️ не используется; удалить или выяснить происхождение |
 | `players/player2.jpg` | неизвестно | неизвестно | неизвестно | ⚠️ не используется; удалить или выяснить происхождение |
+| `placeholders/pixel/humanoid/*.png` (13 файлов) | сгенерировано `tools/placeholder_gen` по `data/rigs/humanoid.json` | собственная работа проекта | как у проекта | ✅ можно; плейсхолдер, заменяется в T.5/T.6 |
+| `placeholders/smooth/humanoid/*.png` (13 файлов) | сгенерировано `tools/placeholder_gen` по `data/rigs/humanoid.json` | собственная работа проекта | как у проекта | ✅ можно; плейсхолдер, заменяется в T.5/T.6 |
+| `placeholders/pixel/items/<id>/*.png` (`iron_helmet/Head.png`, `short_sword/ForearmR.png`) | сгенерировано `tools/placeholder_gen` по `data/visuals.json` и `data/items/` | собственная работа проекта | как у проекта | ✅ можно; плейсхолдер |
+| `placeholders/smooth/items/<id>/*.png` (`iron_helmet/Head.png`, `short_sword/ForearmR.png`) | сгенерировано `tools/placeholder_gen` по `data/visuals.json` и `data/items/` | собственная работа проекта | как у проекта | ✅ можно; плейсхолдер |
 
 Файлы с ⚠️ пришли из старой версии проекта. Пока проект учебный и не распространяется,
 они не мешают; перед любой публикацией — заменить или удалить (трек «Готовность к продукту», П.1).

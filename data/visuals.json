@@ -11,10 +11,10 @@
     },
     "items": {
         "iron_helmet": {
-            "dir": "assets/items/iron_helmet"
+            "dir": "assets/placeholders/smooth/items/iron_helmet"
         },
         "short_sword": {
-            "dir": "assets/items/short_sword"
+            "dir": "assets/placeholders/smooth/items/short_sword"
         }
     },
     "effects": {
