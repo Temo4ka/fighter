@@ -544,14 +544,15 @@ void Rig::moveKinematicParts(float Dt) {
 
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) {
     // Standing still after a push, the feet are left away from the stance:
-    // the foot farthest off steps back under the body, one at a time.
+    // the foot farthest off steps back under the body, one at a time and
+    // only while all feet stand (not during a kick).
     const bool Idle = Controller.getWalkVelocity() == 0.0f && std::abs(Controller.getKnockback()) < MinRestepKnockback;
-    const bool AnyStepping = std::ranges::any_of(Legs, &Leg::Stepping);
+    const bool AllPlanted = std::ranges::all_of(Legs, &Leg::Locked);
     Leg* Farthest = nullptr;
     for (auto& Limb : Legs) {
         if (Limb.Locked && (!Farthest || std::abs(Limb.OffsetX) > std::abs(Farthest->OffsetX))) Farthest = &Limb;
     }
-    if (Idle && !AnyStepping && Farthest && Control.FootRestepDistance > 0.0f &&
+    if (Idle && AllPlanted && Farthest && Control.FootRestepDistance > 0.0f &&
         std::abs(Farthest->OffsetX) > Control.FootRestepDistance) {
         Farthest->Stepping = true;
         Farthest->Locked = false;
