@@ -2,11 +2,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iterator>
+#include <numbers>
 #include <ranges>
 #include <vector>
 
@@ -349,7 +351,7 @@ TEST_CASE("Rig: a limb stuck in the opponent lets go until it is free", "[rig]")
     CHECK_FALSE(Stuck.Left.isUnjamming(BodyPart::ForearmL));
 }
 
-TEST_CASE("Rig: a fighter at the wall touches it, its back against it when facing away", "[rig]") {
+TEST_CASE("Rig: a fighter at the wall touches it with its back when facing away", "[rig]") {
     Solo Stage(makeSetup(0.0f, false));
     Rig& Body = Stage.Body;
     const float MaxX = 2.75f;
@@ -402,7 +404,7 @@ TEST_CASE("Rig: knocked down against the wall it slumps along it", "[rig]") {
     CHECK(Body.getWallSide() == 1);
 }
 
-TEST_CASE("keepApart: standing pelvises stay apart, the heavier one gives way less", "[rig]") {
+TEST_CASE("keepApart: standing pelvises stay apart and the heavier one gives way less", "[rig]") {
     // The right fighter is twice as heavy; both walk into each other.
     Duel Clash(-0.5f, 0.5f, 2.0f);
     const float MinGap = 2.0f * Clash.Spacing.BodyHalfWidth;
@@ -548,4 +550,68 @@ TEST_CASE("Rig: the feet do not slide while walking", "[rig]") {
     }
     CHECK(Body.getPartPosition(BodyPart::Pelvis).X > -0.5f);   // walked
     CHECK(LongestSlide < 0.03f);
+}
+
+namespace {
+
+/// The fastest turn of a physical part of \p Body over \p Steps, rad/s:
+/// a body at rest that jitters keeps turning back and forth.
+float measureJitter(Duel& Stage, const Rig& Body, int Steps) {
+    constexpr std::array Physical = {BodyPart::Torso, BodyPart::Head, BodyPart::UpperArmL, BodyPart::ForearmL,
+                                     BodyPart::UpperArmR, BodyPart::ForearmR};
+    float Fastest = 0.0f;
+    for (int Step = 0; Step < Steps; ++Step) {
+        PerBodyPart<float> Before{};
+        for (const auto Part : Physical) Before[static_cast<size_t>(Part)] = Body.getPartAngle(Part);
+        Stage.run(1);
+        for (const auto Part : Physical) {
+            const float Turn = std::remainder(Body.getPartAngle(Part) - Before[static_cast<size_t>(Part)],
+                                              2.0f * std::numbers::pi_v<float>);
+            Fastest = std::max(Fastest, std::abs(Turn) / Dt);
+        }
+    }
+    return Fastest;
+}
+
+} // namespace
+
+TEST_CASE("Scenario: twice the mass stands and walks and falls and gets up without jitter", "[rig][scenario]") {
+    for (const float MassScale : {1.0f, 2.0f}) {
+        CAPTURE(MassScale);
+        Duel Stage(-1.2f, 1.2f, MassScale);
+        Rig& Heavy = Stage.Right;
+        const ControlParams& Control = Heavy.getControl();
+        Stage.run(60);
+
+        // Stands: upright and still.
+        CHECK(measureJitter(Stage, Heavy, 120) < 0.2f);
+        CHECK(Heavy.getPartPosition(BodyPart::Head).Y > 1.5f);
+
+        // Walks there and back, upright.
+        Heavy.setMoveVelocity(-Heavy.getWalkSpeed());
+        Stage.run(60);
+        CHECK(Heavy.getPartPosition(BodyPart::Head).Y > 1.5f);
+        Heavy.setMoveVelocity(0.0f);
+        Stage.run(60);
+        CHECK(measureJitter(Stage, Heavy, 60) < 0.2f);
+
+        // Is hit: sways and settles again.
+        Heavy.applyHit(30.0f, {1.0f, 0.0f}, Heavy.getPartPosition(BodyPart::Head), false);
+        Stage.run(120);
+        CHECK(measureJitter(Stage, Heavy, 60) < 0.2f);
+        CHECK(Heavy.getPartPosition(BodyPart::Head).Y > 1.5f);
+
+        // Falls, lies still and gets up.
+        Heavy.applyHit(60.0f * MassScale, {1.0f, 0.0f}, Heavy.getPartPosition(BodyPart::Head), true);
+        Stage.run(static_cast<int>(Control.KnockdownSec / Dt) - 30);
+        REQUIRE(Heavy.getPosture() == Posture::KnockedDown);
+        CHECK(Heavy.getPartPosition(BodyPart::Head).Y < 0.7f);
+        CHECK(measureJitter(Stage, Heavy, 20) < 3.0f);   // limp, no explosion
+        // The motors are as strong as for the light body: the heavy one
+        // takes a second longer to straighten up, then stands still.
+        Stage.run(static_cast<int>(Control.GetUpSec / Dt) + 120);
+        CHECK(Heavy.getPosture() == Posture::Standing);
+        CHECK(Heavy.getPartPosition(BodyPart::Head).Y > 1.5f);
+        CHECK(measureJitter(Stage, Heavy, 60) < 0.2f);
+    }
 }
