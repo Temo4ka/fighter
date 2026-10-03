@@ -4,11 +4,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <utility>
 #include <variant>
 
+#include "../combat/scenario.hpp"
 #include "combat/battle.hpp"
+#include "rig/rig_def.hpp"
 
 using namespace fighter;
 using namespace fighter::combat;
@@ -124,7 +127,11 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     Battle Fight(makeConfig());
     pressToWall(Fight, true);
     const auto& Fighters = Fight.getSnapshot().Fighters;
-    CHECK(getPelvisGap(Fight) < 0.6f);   // still close
+    // Still close: every landed jab pushes the fighters apart to the rig's
+    // closeRange, and P1 presses in again.
+    const float CloseRange =
+        rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json").Control.CloseRange;
+    CHECK(getPelvisGap(Fight) < CloseRange + 0.05f);
     // The arms are back in the guard, not stuck in the opponent: between
     // the guard resting on the opponent's chest (pressed back a few cm) and
     // the free one. Jammed, it was 10 cm short.
@@ -166,6 +173,13 @@ std::pair<float, float> getExtentX(const FighterView& View) {
     return {Low, High};
 }
 
+/// Since task 2.3 data/reactions.json decides about knockdowns, not the rig:
+/// a battle with a reaction table in which a clean kick knocks down.
+BattleConfig makeKnockdownConfig(const test::ScratchData& Data) {
+    Data.write("reactions.json", test::makeReactionsJson(test::makeKnockdownKicks()));
+    return Data.makeConfig();
+}
+
 /// P1 walks into kicking range of P2 and kicks once; returns the tick P2
 /// went down, if it did.
 std::optional<int> kickDown(Battle& Fight, int Ticks) {
@@ -182,7 +196,8 @@ std::optional<int> kickDown(Battle& Fight, int Ticks) {
 } // namespace
 
 TEST_CASE("Scenario: the kicker does not walk through the fighter it knocked down", "[rig][scenario]") {
-    Battle Fight(makeConfig());
+    const test::ScratchData Data("rig_walk_through");
+    Battle Fight(makeKnockdownConfig(Data));
     REQUIRE(kickDown(Fight, 4 * TicksPerSecond).has_value());
     // The kick ends over the falling body; then P1 walks forward while P2
     // lies: its legs stop short of the body.
@@ -200,7 +215,8 @@ TEST_CASE("Scenario: the kicker does not walk through the fighter it knocked dow
 }
 
 TEST_CASE("Scenario: knocked down at the wall the fighter stays in the arena and gets up", "[rig][scenario]") {
-    Battle Fight(makeConfig());
+    const test::ScratchData Data("rig_wall_knockdown");
+    Battle Fight(makeKnockdownConfig(Data));
     const float HalfWidth = Fight.getConfig().Arena.HalfWidthM;
     // P2 backs into the wall first.
     for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) Fight.update({}, {.MoveX = 1.0f}, Dt);
