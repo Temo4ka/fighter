@@ -26,7 +26,7 @@
 | `fighters/*.json` | листы бойцов | `stats::loadFighterSheet` | есть |
 | `moves/*.json` | удары | `combat::loadMoveSet` | загрузчик есть; бой начнёт им пользоваться в 2.3 |
 | `reactions.json` | сила удара → урон и ступень реакции, накопление, блок | бой | пример; загрузчик — задача 2.3 |
-| `balance.json` | статы → физический профиль | `stats` | пример; загрузчик — задача 2.4 |
+| `balance.json` | статы → физический профиль | `stats` | работает (2.4) |
 | `visuals.json` | картинки частей тела, предметов и эффекты | рендер | черновик; окончательно — задача 2.5 |
 
 ## `moves/*.json` — удары
@@ -145,19 +145,23 @@
 ## `balance.json` — статы в физику
 
 Поля один к одному повторяют `stats::BalanceTable` (src/stats/stats.hpp); формулы —
-`stats::computeProfile`. Задача 2.4 подключает файл и заменяет временные линейные
-формулы. Пока файл совпадает с `BalanceTable::getDefaults()`.
+`stats::computeProfile`. Все поля обязательны, неизвестный ключ — ошибка; значения проверяет
+`stats::validateBalanceTable` (массы и базовые значения > 0, «на очко» ≥ 0, `*_min` ≤ `*_max`,
+`max_part_armor` в (0, 1]). Загрузка — `stats::loadBalanceTable`; `BalanceTable::getDefaults()`
+совпадает с файлом (тест это проверяет). Бой читает файл при создании, `F5` перечитывает.
 
 | Поле | Что значит |
 |---|---|
-| `base_mass_kg` | масса частей тела при CON = 10 (все 13) |
+| `base_mass_kg` | масса частей тела при CON = 10 (все 13 имён частей; других имён нет) |
 | `mass_per_con` | +доля массы за очко CON выше 10 |
 | `base_motor_torque`, `torque_per_str` | сила моторов корпуса и её рост от STR |
 | `base_motor_gain`, `gain_per_dex` | как быстро моторы выходят на позу, рост от DEX |
-| `move_speed_per_dex` | +доля скорости ходьбы за очко DEX |
-| `attack_speed_per_dex` | +доля скорости ударов за очко DEX (±25 % на DEX 0/20, О.7) |
+| `move_speed_per_dex`, `move_speed_min`, `move_speed_max` | +доля скорости ходьбы за очко DEX и границы множителя |
+| `attack_speed_per_dex`, `attack_speed_min`, `attack_speed_max` | +доля скорости ударов за очко DEX (±25 % на DEX 0/20, О.7) и коридор множителя (0,75…1,25) |
 | `base_hp`, `hp_per_con` | HP и его рост от CON |
 | `base_poise`, `poise_per_con` | стойкость (множитель порогов реакции) и её рост от CON |
+| `poise_per_armor` | рост стойкости от средней (по массам частей) брони тела |
+| `max_part_armor` | потолок брони одной части тела |
 | `base_stamina`, `stamina_per_con` | запас выносливости (О.13) |
 | `base_stamina_regen`, `stamina_regen_per_con` | восстановление выносливости в секунду при CON = 10 и его рост |
 
