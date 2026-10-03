@@ -20,8 +20,12 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "combat/result.hpp"
@@ -39,7 +43,28 @@ enum class ReactionLevel : uint8_t {
     Stagger,     ///< A step back, cannot act for a moment.
     Knockback,   ///< Thrown back; stopped by a wall.
     Knockdown,   ///< Falls (ragdoll) and gets up.
+    Count
 };
+
+inline constexpr size_t ReactionLevelCount = static_cast<size_t>(ReactionLevel::Count);
+
+/// The name of a level as data files write it, for example "Stagger".
+constexpr std::string_view getReactionLevelName(ReactionLevel Level) {
+    constexpr std::array<std::string_view, ReactionLevelCount> Names = {
+        "None", "Touch", "Flinch", "Stagger", "Knockback", "Knockdown",
+    };
+    const auto Index = static_cast<size_t>(Level);
+    return Index < Names.size() ? Names[Index] : "?";
+}
+
+/// The level called \p Name (as returned by getReactionLevelName), if any.
+constexpr std::optional<ReactionLevel> findReactionLevel(std::string_view Name) {
+    for (size_t Index = 0; Index < ReactionLevelCount; ++Index) {
+        const auto Level = static_cast<ReactionLevel>(Index);
+        if (getReactionLevelName(Level) == Name) return Level;
+    }
+    return std::nullopt;
+}
 
 /// A fighter started a move: an attack button was accepted.
 struct StrikeStarted {

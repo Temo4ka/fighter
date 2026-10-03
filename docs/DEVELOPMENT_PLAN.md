@@ -414,6 +414,15 @@ Debug-инфраструктура входит в фундамент, а не �
 
 **Готово:** заголовки и форматы прошли ревью; всё компилируется с заглушками; тесты зелёные.
 
+Сделано (ветка `feature/phase2-contracts`): src/combat/commands.hpp (кнопки, `getBlockZone`),
+events.hpp (`BattleEvent`), snapshot.hpp (`FighterState`, `AttackPhase`), config.hpp,
+result.hpp, moves.hpp (`MoveDef`, `loadMoveSet`, `findMove`); `WeaponProps` и новые поля
+`PhysicalProfile` в stats; форматы — [DATA_FORMATS.md](DATA_FORMATS.md). Раскладка: P1 —
+`A`/`D`, `W`, `S`, `F` джеб, `G` сильный, `R` ногой в корпус, `T` низкий, левый `Shift`
+блок; P2 — стрелки, `K`, `L`, `I`, `O`, правый `Shift`. Заглушки, которые заменит волна 1:
+бой не считает урон, реакции, блок, выносливость и стены (2.3), не читает `moves/` и
+`reactions.json` (2.3) и `balance.json` (2.4); сильный удар и низкий удар ногой без клипов (2.2).
+
 **Волна 1 — параллельно.**
 
 | # | Задача | Агент | Модель | Зависит от | Размер |

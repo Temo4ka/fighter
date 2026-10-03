@@ -1,0 +1,8 @@
+{
+    "button": "LowKick",
+    "clip": "low_kick",
+    "damage": 0.8,
+    "min_reaction": "Touch",
+    "stamina": 8,
+    "min_startup_sec": 0.2
+}

@@ -17,6 +17,7 @@ TEST_CASE("parseCombatTuning: values, defaults and errors", "[combat]") {
     CHECK_THROWS_AS(parseCombatTuning(R"({ "spawnDistance": -1 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "bodyHalfWidth": 0 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "separationSpeed": 0 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "exhaustedSpeedScale": 1.5 })"), std::runtime_error);
 }
 
 TEST_CASE("loadCombatTuning: data/combat.json loads", "[combat]") {

@@ -9,7 +9,7 @@
 > бьют рукой и ногой; попадание раскачивает корпус и отбрасывает соперника тем меньше,
 > чем он тяжелее, сильный удар сбивает с ног, и боец встаёт.
 > Урона, блока, прыжка и раундов пока нет — это фаза 2. План — [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md),
-> устройство кода — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), настройка бойца — [docs/TUNING.md](docs/TUNING.md).
+> устройство кода — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), настройка бойца — [docs/TUNING.md](docs/TUNING.md), форматы данных — [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md).
 
 ## Сборка
 

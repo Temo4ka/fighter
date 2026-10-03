@@ -1,0 +1,8 @@
+{
+    "button": "HeavyPunch",
+    "clip": "heavy_punch",
+    "damage": 1.3,
+    "min_reaction": "Flinch",
+    "stamina": 12,
+    "min_startup_sec": 0.3
+}

@@ -41,6 +41,8 @@ constexpr float HitArrowScale = 0.04f;   // m per N*s
 constexpr float HitboxRadius = 0.16f;
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
+// Only the debug build draws the panel.
+[[maybe_unused]] std::string describeAction(const FighterView& View);
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index);
 void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt);
 
@@ -200,7 +202,8 @@ void Battle::drawDebug() const {
     if constexpr (FIGHTER_DEBUG) {
         Sim->PhysWorld.drawDebug();
 
-        for (auto&& [Player, Name] : std::views::zip(Sim->Fighters, PlayerNames)) {
+        for (auto&& [Player, Name, View] : std::views::zip(Sim->Fighters, PlayerNames, Snapshot.Fighters)) {
+            debug::setPanel(std::format("{} action", Name), describeAction(View));
             const rig::Rig& Body = Player.getRig();
             Body.drawDebug();
             for (size_t Index = 0; Index < BodyPartCount; ++Index) {
@@ -259,6 +262,24 @@ void Battle::drawDebug() const {
 }
 
 namespace {
+
+/// "Attacking body_kick (active)": the fighter state as the snapshot shows it.
+std::string describeAction(const FighterView& View) {
+    constexpr std::array StateNames = {"idle",     "walking",     "crouching",  "attacking",  "blocking",
+                                       "reacting", "knocked down", "getting up", "knocked out"};
+    constexpr std::array PhaseNames = {"", "startup", "active", "recovery"};
+    constexpr std::array ZoneNames = {"high", "mid", "low"};
+    std::string Text = StateNames[static_cast<size_t>(View.State)];
+    if (View.State == FighterState::Attacking) {
+        Text += std::format(" {} ({})", View.MoveId, PhaseNames[static_cast<size_t>(View.Phase)]);
+    } else if (View.State == FighterState::Blocking) {
+        Text += std::format(" {}", ZoneNames[static_cast<size_t>(View.Block)]);
+    } else if (View.State == FighterState::Reacting) {
+        Text += std::format(" {}", getReactionLevelName(View.Reaction));
+    }
+    if (View.AgainstWall) Text += ", against the wall";
+    return Text;
+}
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena) {
     const float HalfWidth = Arena.HalfWidthM;

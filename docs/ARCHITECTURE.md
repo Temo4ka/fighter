@@ -26,7 +26,7 @@ app ──► render ──► combat ──► stats ──► core
 | `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — гибридное тело: кинематические таз и ноги (`PelvisController`, позы из клипов), физический корпус на PD-моторах, жёсткость, отбрасывание, нокдаун | — | — |
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
-| `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`) | — | — |
+| `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`) | — | — |
 | `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
@@ -60,7 +60,8 @@ app ──► render ──► combat ──► stats ──► core
 при создании `Battle` из `BattleConfig::DataDir`. Новый `Battle` — значит, перечитанные файлы:
 в песочнице `F5` (и `Backspace`) создают бой заново; если файл испорчен, остаётся старый бой,
 а ошибка пишется в журнал. Неизвестный ключ в файле — ошибка. Список параметров —
-[TUNING.md](TUNING.md).
+[TUNING.md](TUNING.md), форматы файлов (удары, оружие, реакции, баланс, картинки) —
+[DATA_FORMATS.md](DATA_FORMATS.md).
 
 **Шаг боя.** `Battle::update()`: бойцы выбирают клипы и планируют движение таза
 (`PelvisController`) → бой разводит тазы бойцов и держит их внутри стен → тела двигаются

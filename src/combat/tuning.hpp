@@ -33,6 +33,8 @@ struct CombatTuning {
     float BodyHalfWidth = 0.25f;
     /// Overlapping pelvises are pushed apart at most this fast, m/s.
     float SeparationSpeed = 4.0f;
+    /// With no stamina left, walking and strikes are this much slower (O.13).
+    float ExhaustedSpeedScale = 0.7f;
 };
 
 /// Parses the tuning from JSON text. Every key is optional; an unknown key
