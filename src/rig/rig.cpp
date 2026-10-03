@@ -50,7 +50,11 @@ constexpr uint64_t CollideWithAll = ~uint64_t{0};
 
 /// A foot offset smaller than this needs no leg correction, m.
 constexpr float MinFootOffset = 1e-4f;
-/// Keeps the two-bone solution away from a straight or folded leg, m.
+/// Knockback slower than this lets a standing fighter step its feet back, m/s.
+constexpr float MinRestepKnockback = 0.05f;
+/// A foot stepping back is there when this close to the stance, m.
+constexpr float StepDoneDistance = 0.005f;
+/// A planted foot stays this much inside the reach of a straight leg, m.
 constexpr float LegReachMargin = 1e-4f;
 
 PartDef mirrorPart(const PartDef& Source, float Facing);
@@ -539,6 +543,20 @@ void Rig::moveKinematicParts(float Dt) {
 }
 
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) {
+    // Standing still after a push, the feet are left away from the stance:
+    // the foot farthest off steps back under the body, one at a time.
+    const bool Idle = Controller.getWalkVelocity() == 0.0f && std::abs(Controller.getKnockback()) < MinRestepKnockback;
+    const bool AnyStepping = std::ranges::any_of(Legs, &Leg::Stepping);
+    Leg* Farthest = nullptr;
+    for (auto& Limb : Legs) {
+        if (Limb.Locked && (!Farthest || std::abs(Limb.OffsetX) > std::abs(Farthest->OffsetX))) Farthest = &Limb;
+    }
+    if (Idle && !AnyStepping && Farthest && Control.FootRestepDistance > 0.0f &&
+        std::abs(Farthest->OffsetX) > Control.FootRestepDistance) {
+        Farthest->Stepping = true;
+        Farthest->Locked = false;
+    }
+
     PerBodyPart<float> Corrections{};
     for (auto& Limb : Legs) {
         const JointState& Ankle = Joints[Limb.Ankle];
@@ -546,15 +564,18 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
         const Vec2 ClipAnkle = Shin.Position + rotate(Ankle.AnchorInParent, Shin.Angle);
         const PartState& Foot = getPart(Limb.Foot);
         const Placement& FootPose = Pose[static_cast<size_t>(Limb.Foot)];
-        // The clip plants the foot when its sole is on the floor.
+        // The clip plants the foot when its sole is on the floor; a foot
+        // stepping back plants when it is there.
         const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
+        if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
 
-        if (Planted && !Limb.Locked) {
+        if (Planted && !Limb.Locked && !Limb.Stepping) {
             Limb.Locked = true;
             Limb.LockX = ClipAnkle.X + Limb.OffsetX;
         } else if (!Planted && Limb.Locked) {
             Limb.Locked = false;   // lifted: it returns to the clip from where it stood
         }
+        float Lift = 0.0f;
         if (Limb.Locked) {
             // A pull longer than the slip (a knockback, a push) drags the
             // foot, and so does one the leg cannot reach.
@@ -570,9 +591,11 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
             Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
+            // A step back to the stance lifts the foot off the floor.
+            if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
         if (std::abs(Limb.OffsetX) > MinFootOffset) {
-            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y}, Corrections);
+            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections);
         }
     }
     return Corrections;
@@ -584,7 +607,6 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     const JointState& Knee = Joints[Limb.Knee];
     const JointState& AnkleJoint = Joints[Limb.Ankle];
     const Placement& Pelvis = Pose[static_cast<size_t>(Hip.Parent)];
-    const Placement& Thigh = Pose[static_cast<size_t>(Hip.Child)];
     const Placement& Foot = Pose[static_cast<size_t>(AnkleJoint.Child)];
 
     // The bones from hinge to hinge in their bodies' frames (reference pose).
@@ -593,37 +615,40 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     const float ThighLength = ThighBone.getLength();
     const float ShinLength = ShinBone.getLength();
     const Vec2 HipPoint = Pelvis.Position + rotate(Hip.AnchorInParent, Pelvis.Angle);
-    const Vec2 ClipKnee = Thigh.Position + rotate(Knee.AnchorInParent, Thigh.Angle);
-
-    // Two-bone IK: the triangle hip - knee - ankle. Of the two knees, keep
-    // the one closer to where the clip has it (bent the same way).
     const Vec2 ToAnkle = Ankle - HipPoint;
-    const float Distance = std::clamp(ToAnkle.getLength(), std::abs(ThighLength - ShinLength) + LegReachMargin,
-                                      ThighLength + ShinLength - LegReachMargin);
-    const float Cosine = (ThighLength * ThighLength + Distance * Distance - ShinLength * ShinLength) /
-                         (2.0f * ThighLength * Distance);
-    const float Spread = std::acos(std::clamp(Cosine, -1.0f, 1.0f));
-    const float Toward = getHeading(ToAnkle);
-    const Vec2 KneeA = HipPoint + getDirection(Toward + Spread) * ThighLength;
-    const Vec2 KneeB = HipPoint + getDirection(Toward - Spread) * ThighLength;
-    const Vec2 KneePoint =
-        (KneeA - ClipKnee).getLengthSquared() <= (KneeB - ClipKnee).getLengthSquared() ? KneeA : KneeB;
 
-    // Body angles from the bone directions, then joint angles.
-    const float ThighAngle = getHeading(KneePoint - HipPoint) - getHeading(ThighBone);
-    const float ShinAngle = getHeading(Ankle - KneePoint) - getHeading(ShinBone);
+    // Two-bone IK. The knee angle sets the hip-to-ankle distance:
+    // |thigh + rotate(shin, knee)| = distance, two solutions. Keep the one
+    // closest to the clip's knee within the limits; a target out of reach
+    // gets the nearest possible knee, and the thigh still aims at it.
+    const float Distance = ToAnkle.getLength();
+    const float Cosine = (Distance * Distance - ThighLength * ThighLength - ShinLength * ShinLength) /
+                         (2.0f * ThighLength * ShinLength);
+    const float Opening = std::acos(std::clamp(Cosine, -1.0f, 1.0f));
+    const float RestBend = getHeading(ShinBone) - getHeading(ThighBone);
+    const auto clampKnee = [&](float Angle) {
+        return std::clamp(wrapAngle(Angle), Knee.LowerAngle, Knee.UpperAngle);
+    };
+    const float KneeA = clampKnee(Opening - RestBend);
+    const float KneeB = clampKnee(-Opening - RestBend);
+    const float KneeAngle = std::abs(KneeA - Knee.Target) <= std::abs(KneeB - Knee.Target) ? KneeA : KneeB;
+
+    // Body angles, then joint angles.
+    const float ThighAngle = getHeading(ToAnkle) - getHeading(ThighBone + rotate(ShinBone, KneeAngle));
+    const float ShinAngle = ThighAngle + KneeAngle;
     const auto setCorrection = [&](const JointState& Joint, float Angle) {
         Corrections[static_cast<size_t>(Joint.Child)] =
             std::clamp(wrapAngle(Angle), Joint.LowerAngle, Joint.UpperAngle) - Joint.Target;
     };
     setCorrection(Hip, ThighAngle - Pelvis.Angle);
-    setCorrection(Knee, ShinAngle - ThighAngle);
+    setCorrection(Knee, KneeAngle);
     setCorrection(AnkleJoint, Foot.Angle - ShinAngle);   // the foot keeps its angle to the floor
 }
 
 void Rig::releaseFeet() {
     for (auto& Limb : Legs) {
         Limb.Locked = false;
+        Limb.Stepping = false;
         Limb.OffsetX = 0.0f;
     }
 }
@@ -881,7 +906,8 @@ void Rig::fillPanel() const {
     std::string Feet;
     for (const auto& Limb : Legs) {
         if (!Feet.empty()) Feet += ", ";
-        Feet += std::format("{} {} {:+.2f}", getBodyPartName(Limb.Foot), Limb.Locked ? "planted" : "free",
+        Feet += std::format("{} {} {:+.2f}", getBodyPartName(Limb.Foot),
+                            Limb.Locked ? "planted" : Limb.Stepping ? "steps back" : "free",
                             Limb.OffsetX);
     }
     debug::setPanel(Name + " feet", Feet);

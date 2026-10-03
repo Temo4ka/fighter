@@ -145,20 +145,34 @@ TEST_CASE("Rig: a planted foot holds its place while the pelvis moves", "[rig]")
     REQUIRE(Body.isFootLocked(BodyPart::FootR));
     const float FootX = Body.getPartPosition(BodyPart::FootL).X;
 
-    // A push forwards shorter than the slip: the front knee bends more, the
-    // front foot stays. (The straight rear leg cannot reach that far: its
-    // foot is dragged.)
-    Body.addPush(Control.FootLockSlip * 0.5f);
+    // A small push forwards: the front knee bends more, the front foot
+    // stays. (The straight rear leg cannot reach that far: its foot is
+    // dragged.)
+    Body.addPush(Control.FootRestepDistance * 0.6f);
     Stage.run(60);
-    CHECK(getPelvisX(Body) > Control.FootLockSlip * 0.3f);
+    CHECK(getPelvisX(Body) > Control.FootRestepDistance * 0.4f);
     CHECK(Body.getPartPosition(BodyPart::FootL).X == Approx(FootX).margin(0.002f));
     CHECK(Body.getFloorPoint().Y == Approx(0.0f).margin(0.01f));
 
-    // A longer one drags it along.
-    Body.addPush(0.5f);
+    // A longer one: the foot holds while the push lasts, then, standing
+    // still, the fighter steps it back under the body.
+    const float PelvisX = getPelvisX(Body);
+    const float Push = (Control.FootRestepDistance + Control.FootLockSlip) * 0.5f;
+    Body.addPush(Push);
+    Stage.run(10);
+    CHECK(Body.getPartPosition(BodyPart::FootL).X == Approx(FootX).margin(0.002f));
     Stage.run(90);
-    CHECK(Body.getPartPosition(BodyPart::FootL).X > FootX + 0.2f);
+    const float Moved = getPelvisX(Body) - PelvisX;
+    CHECK(Moved > Push * 0.8f);
+    CHECK(Body.getPartPosition(BodyPart::FootL).X - FootX == Approx(getPelvisX(Body)).margin(0.01f));
     CHECK(Body.isFootLocked(BodyPart::FootL));
+    CHECK(Body.isFootLocked(BodyPart::FootR));
+
+    // A push longer than the slip drags the planted feet along.
+    const float DraggedFrom = Body.getPartPosition(BodyPart::FootL).X;
+    Body.addPush(0.6f);
+    Stage.run(20);
+    CHECK(Body.getPartPosition(BodyPart::FootL).X > DraggedFrom + 0.1f);
 }
 
 TEST_CASE("Rig: setFacing turns the fighter around without a jolt", "[rig]") {
@@ -386,4 +400,152 @@ TEST_CASE("Rig: knocked down against the wall it slumps along it", "[rig]") {
     CHECK(Body.getExtentX().Max < ArenaHalfWidth + 0.02f);
     CHECK(Body.getPartPosition(BodyPart::Head).Y < 1.2f);
     CHECK(Body.getWallSide() == 1);
+}
+
+TEST_CASE("keepApart: standing pelvises stay apart, the heavier one gives way less", "[rig]") {
+    // The right fighter is twice as heavy; both walk into each other.
+    Duel Clash(-0.5f, 0.5f, 2.0f);
+    const float MinGap = 2.0f * Clash.Spacing.BodyHalfWidth;
+    Clash.Left.setMoveVelocity(1.0f);
+    Clash.Right.setMoveVelocity(-1.0f);
+    float SmallestGap = 10.0f;
+    for (int Step = 0; Step < 120; ++Step) {
+        Clash.run(1);
+        SmallestGap = std::min(SmallestGap, getPelvisX(Clash.Right) - getPelvisX(Clash.Left));
+    }
+    CHECK(SmallestGap == Approx(MinGap).margin(1e-4f));
+    // Both push equally hard: the light one is pushed back.
+    CHECK(getPelvisX(Clash.Left) < -0.3f);
+
+    // The order of the arguments does not matter: a fighter may stand on
+    // the other side after getting up.
+    Duel Swapped(-0.2f, 0.2f);
+    Swapped.Right.setMoveVelocity(0.0f);
+    for (int Step = 0; Step < 30; ++Step) {
+        Swapped.Left.planMotion(Dt);
+        Swapped.Right.planMotion(Dt);
+        keepApart(Swapped.Right, Swapped.Left, Swapped.Spacing, Dt);
+        Swapped.Left.applyControl(Dt);
+        Swapped.Right.applyControl(Dt);
+        Swapped.PhysWorld.step(Dt);
+    }
+    CHECK(getPelvisX(Swapped.Right) - getPelvisX(Swapped.Left) == Approx(MinGap).margin(1e-4f));
+}
+
+TEST_CASE("keepApart: the walls stop the pelvis and a fighter at a wall does not give way", "[rig]") {
+    Duel Corner(1.5f, 2.6f);
+    Corner.Left.setMoveVelocity(1.0f);
+    Corner.run(180);
+    const float MaxX = ArenaHalfWidth - Corner.Spacing.BodyHalfWidth;
+    CHECK(getPelvisX(Corner.Right) == Approx(MaxX));
+    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(2.0f * Corner.Spacing.BodyHalfWidth).margin(1e-4f));
+    CHECK(Corner.Right.getWallSide() == 1);
+    CHECK(Corner.Right.isAgainstWall());
+    CHECK(Corner.Left.getWallSide() == 0);
+}
+
+TEST_CASE("keepApart: a standing fighter does not walk through a lying one", "[rig]") {
+    Duel Fallen(-1.0f, 0.2f);
+    Fallen.run(10);
+    Fallen.Right.applyHit(100.0f, {1.0f, 0.0f}, Fallen.Right.getPartPosition(BodyPart::Head), true);
+    Fallen.run(60);
+    REQUIRE(Fallen.Right.getPosture() == Posture::KnockedDown);
+
+    Fallen.Left.setMoveVelocity(1.0f);
+    for (int Step = 0; Step < 60; ++Step) {
+        Fallen.run(1);
+        const float Body = Fallen.Right.getExtentX().Min;
+        CHECK(getPelvisX(Fallen.Left) <=
+              Approx(Body - Fallen.Spacing.BodyHalfWidth - Fallen.Left.getControl().LyingClearance).margin(0.01f));
+    }
+}
+
+TEST_CASE("pushApartOnHit: a hit at close range pushes the fighters apart", "[rig]") {
+    Duel Close(-0.26f, 0.26f, 2.0f);
+    Close.run(5);
+    const float CloseRange = Close.Right.getControl().CloseRange;
+    const float Deficit = CloseRange - (getPelvisX(Close.Right) - getPelvisX(Close.Left));
+    REQUIRE(Deficit > 0.1f);
+    CHECK(pushApartOnHit(Close.Left, Close.Right) == Approx(Deficit));
+    // Split by mass: the heavy victim moves half as far as the attacker.
+    CHECK(Close.Right.getController().getKnockback() > 0.0f);
+    CHECK(Close.Left.getController().getKnockback() ==
+          Approx(-2.0f * Close.Right.getController().getKnockback()).epsilon(0.01));
+    Close.run(120);
+    CHECK(getPelvisX(Close.Right) - getPelvisX(Close.Left) == Approx(CloseRange).margin(0.03f));
+
+    // Far enough already: nothing.
+    CHECK(pushApartOnHit(Close.Left, Close.Right) == 0.0f);
+}
+
+TEST_CASE("pushApartOnHit: against the wall the attacker takes all of the push", "[rig]") {
+    Duel Corner(2.2f, 2.75f);
+    Corner.run(5);
+    REQUIRE(Corner.Right.isAgainstWall());
+    REQUIRE(pushApartOnHit(Corner.Left, Corner.Right) > 0.0f);
+    CHECK(Corner.Right.getController().getKnockback() == 0.0f);
+    CHECK(Corner.Left.getController().getKnockback() < 0.0f);
+    Corner.run(120);
+    CHECK(getPelvisX(Corner.Right) == Approx(2.75f));
+    CHECK(getPelvisX(Corner.Right) - getPelvisX(Corner.Left) == Approx(Corner.Right.getControl().CloseRange).margin(0.03f));
+}
+
+TEST_CASE("Rig: a posed leg hits the opponent's posed legs and pelvis", "[rig]") {
+    // A low kick: the left fighter swings its front leg into the right
+    // one's front shin. Both legs are kinematic; the world reports the hit.
+    Duel Low(-0.45f, 0.45f);
+    Low.run(10);
+    PerBodyPart<float> Kick = loadStance();
+    Kick[static_cast<size_t>(BodyPart::ThighL)] = 1.0f;
+    Kick[static_cast<size_t>(BodyPart::ShinL)] = 0.0f;
+    Low.Left.setTargetAngles(Kick);
+    std::vector<physics::HitEvent> Hits;
+    for (int Step = 0; Step < 30; ++Step) {
+        Low.run(1);
+        std::ranges::copy(Low.PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    const auto IsLegHit = [](const physics::HitEvent& Hit) {
+        const bool ByLeftLeg = Hit.Attacker.Fighter == 0 &&
+                               (Hit.Attacker.Part == BodyPart::FootL || Hit.Attacker.Part == BodyPart::ShinL);
+        const BodyPart Victim = Hit.Victim.Part;
+        const bool OnPosed = Victim == BodyPart::Pelvis || Victim == BodyPart::ThighL || Victim == BodyPart::ShinL ||
+                             Victim == BodyPart::FootL || Victim == BodyPart::ThighR || Victim == BodyPart::ShinR ||
+                             Victim == BodyPart::FootR;
+        return ByLeftLeg && OnPosed && Hit.Impulse > 0.0f;
+    };
+    CHECK(std::ranges::any_of(Hits, IsLegHit));
+}
+
+TEST_CASE("Rig: the feet do not slide while walking", "[rig]") {
+    const anim::Clip Walk = anim::loadClip(std::filesystem::path(FIGHTER_DATA_DIR) / "poses" / "walk.json");
+    Solo Stage(makeSetup(-2.0f, true));
+    Rig& Body = Stage.Body;
+    Stage.run(10);
+    // The cycle at the speed it is made for (combat plays it at the speed
+    // actually walked): its feet do not keep pace with the pelvis on the
+    // floor, and without planting they slid by 26 cm.
+    Body.setMoveVelocity(Body.getWalkSpeed());
+    const anim::Clip Stance = anim::loadClip(std::filesystem::path(FIGHTER_DATA_DIR) / "poses" / "stance.json");
+    float WalkTime = 0.0f;
+    float LongestSlide = 0.0f;
+    PerBodyPart<float> LockedAt{};
+    PerBodyPart<bool> WasLocked{};
+    for (int Step = 0; Step < 120; ++Step) {
+        WalkTime = std::fmod(WalkTime + Dt, Walk.DurationSec);
+        anim::Pose Pose = anim::sampleClip(Stance, 0.0f);
+        anim::layerPose(Pose, anim::sampleClip(Walk, WalkTime));
+        Body.setTargetAngles(Pose.Angles);
+        Stage.run(1);
+        for (const auto Foot : {BodyPart::FootL, BodyPart::FootR}) {
+            const auto Index = static_cast<size_t>(Foot);
+            // The ankle: the foot rolls about it (humanoid.json, facing right).
+            const float X = (Body.getPartPosition(Foot) + rotate({-0.05f, 0.06f}, Body.getPartAngle(Foot))).X;
+            const bool Locked = Body.isFootLocked(Foot) && Body.getPartPosition(Foot).Y < 0.06f;
+            if (Locked && WasLocked[Index]) LongestSlide = std::max(LongestSlide, std::abs(X - LockedAt[Index]));
+            if (Locked && !WasLocked[Index]) LockedAt[Index] = X;
+            WasLocked[Index] = Locked;
+        }
+    }
+    CHECK(Body.getPartPosition(BodyPart::Pelvis).X > -0.5f);   // walked
+    CHECK(LongestSlide < 0.03f);
 }

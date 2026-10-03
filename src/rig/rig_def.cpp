@@ -55,14 +55,17 @@ constexpr std::array ControlFields = {
     ControlField{"footPlantHeight", &ControlParams::FootPlantHeight},
     ControlField{"footLockSlip", &ControlParams::FootLockSlip},
     ControlField{"footLockRelease", &ControlParams::FootLockRelease},
+    ControlField{"footRestepDistance", &ControlParams::FootRestepDistance},
+    ControlField{"footStepLift", &ControlParams::FootStepLift},
     ControlField{"jamAngle", &ControlParams::JamAngle},
     ControlField{"jamSec", &ControlParams::JamSec},
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 8> NonNegativeFields = {
-    "closeRange", "lyingClearance", "wallTouchDistance", "footPlantHeight",
-    "footLockSlip", "footLockRelease", "jamAngle", "jamSec"};
+constexpr std::array<std::string_view, 15> NonNegativeFields = {
+    "closeRange",     "lyingClearance",     "wallTouchDistance", "footPlantHeight", "footLockSlip",
+    "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",        "jamSec",
+    "knockdownSpin",  "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness"};
 
 /// Parameters that must be positive: they divide or set a duration.
 constexpr std::array<std::string_view, 4> PositiveFields = {"walkSpeed", "walkAcceleration", "knockdownSpeed",
