@@ -14,7 +14,10 @@
             "smooth": false
         }
     },
-    "items": {},
+    "items": {
+        "iron_helmet": {},
+        "short_sword": {}
+    },
     "effects": {
         "hit_flash": {
             "min_reaction": "Touch",
