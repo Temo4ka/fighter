@@ -22,12 +22,19 @@
 /// of the same collision between free bodies with the parts' masses instead
 /// (for a kinematic part, the mass of the limb it strikes with).
 ///
+/// Box2D does not collide two kinematic bodies at all, so the world checks
+/// the kinematic parts of different fighters against each other itself
+/// after every step: a posed leg that starts touching the opponent's posed
+/// leg or pelvis fast enough is a hit like any other (a low kick). Nothing
+/// pushes back: both bodies are moved by code.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "core/vec2.hpp"
@@ -77,6 +84,28 @@ public:
     /// Advances the simulation by \p Dt and collects the hits of this step.
     void step(float Dt);
 
+    /// \name Contacts between fighters
+    /// @{
+    /// Does \p Target touch a body part of another fighter (a contact the
+    /// solver resolves)?
+    bool isTouchingOtherFighter(Body Target) const;
+    /// Does a shape of \p Target overlap a body part of another fighter,
+    /// whatever their collision filters say?
+    bool isOverlappingOtherFighter(Body Target) const;
+    /// @}
+
+    /// \name Mirroring (turning a fighter around)
+    /// @{
+    /// Mirrors every shape of \p Target about the body's local Y axis. The
+    /// mass, the material and the filters stay.
+    void mirrorShapes(Body Target);
+    /// Replaces \p Joint by its mirror image: the local anchors mirrored
+    /// about the bodies' local Y axes, the reference angle negated, the
+    /// limits swapped and negated; the motor keeps its settings. Returns the
+    /// new joint; \p Joint becomes invalid.
+    RevoluteJoint mirrorJoint(RevoluteJoint Joint);
+    /// @}
+
     /// Hits between body parts of different fighters during the last step,
     /// in a deterministic order.
     std::span<const HitEvent> getHitEvents() const { return Hits; }
@@ -106,9 +135,18 @@ private:
         float StrikeMass = 0.0f;
     };
 
+    /// A pair of kinematic part bodies (PartBodies slots, First < Second)
+    /// that touched after a step.
+    using SlotPair = std::pair<uint32_t, uint32_t>;
+
     void destroy();
     void recordPartVelocities();
     void collectHits();
+    /// Hits between the kinematic parts of different fighters, which Box2D
+    /// does not collide.
+    void collectPosedHits();
+    void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
+                float Impulse);
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is
     /// kinematic now, kg.
@@ -118,6 +156,8 @@ private:
     int SubSteps = 4;
     std::vector<PartBody> PartBodies;
     std::vector<HitEvent> Hits;
+    float HitSpeedThreshold = 1.0f;
+    std::vector<SlotPair> TouchingPosed;   ///< Sorted.
 };
 
 } // namespace fighter::physics

@@ -196,3 +196,88 @@ TEST_CASE("physics::World: a kinematic part strikes with its strike mass", "[phy
     REQUIRE(Hits.size() == 1);
     CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * 20.0f * 5.0f / 25.0f).epsilon(0.01));
 }
+
+TEST_CASE("physics::World: kinematic parts of different fighters hit each other", "[physics]") {
+    // Box2D does not collide two kinematic bodies; the world checks them.
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    Body Shin = addBall(PhysWorld, 0, {0.0f, 0.3f}, {});
+    Shin.setMass(4.0f);
+    PhysWorld.setBodyType(Shin, BodyType::Kinematic);
+    Body Leg = addBall(PhysWorld, 1, {0.5f, 0.3f}, {});
+    PhysWorld.setBodyType(Leg, BodyType::Kinematic);
+    // A posed part of the same fighter is never hit.
+    Body Own = addBall(PhysWorld, 0, {0.5f, 0.6f}, {});
+    PhysWorld.setBodyType(Own, BodyType::Kinematic);
+
+    std::vector<HitEvent> Hits;
+    constexpr float Dt = 1.0f / 60.0f;
+    for (int Step = 1; Step <= 20; ++Step) {
+        Shin.moveTo({3.0f * Dt * static_cast<float>(Step), 0.3f}, 0.0f, Dt);
+        Own.moveTo({0.5f, 0.6f}, 0.0f, Dt);
+        PhysWorld.step(Dt);
+        std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    // One hit when the contact begins, none while it lasts.
+    REQUIRE(Hits.size() == 1);
+    CHECK(Hits[0].Attacker.Fighter == 0);
+    CHECK(Hits[0].Victim.Fighter == 1);
+    CHECK(Hits[0].ApproachSpeed == Approx(3.0f).margin(0.1f));
+    CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * 4.0f * 5.0f / 9.0f).epsilon(0.01));
+    CHECK(Hits[0].Point.X == Approx(Leg.getPosition().X - 0.1f).margin(0.06f));
+    CHECK(Hits[0].Point.Y == Approx(0.3f).margin(0.01f));
+    // Nothing pushes posed parts: the leg stays where the code put it.
+    CHECK(Leg.getPosition().X == Approx(0.5f));
+}
+
+TEST_CASE("physics::World: touching and overlapping another fighter", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    const Body Fist = addBall(PhysWorld, 0, {0.0f, 1.0f}, {});
+    const Body Chest = addBall(PhysWorld, 1, {0.15f, 1.0f}, {});
+    const Body Far = addBall(PhysWorld, 1, {3.0f, 1.0f}, {});
+    PhysWorld.step(1.0f / 60.0f);
+    CHECK(PhysWorld.isTouchingOtherFighter(Fist));
+    CHECK(PhysWorld.isOverlappingOtherFighter(Fist));
+    CHECK_FALSE(PhysWorld.isTouchingOtherFighter(Far));
+    CHECK_FALSE(PhysWorld.isOverlappingOtherFighter(Far));
+
+    // A filtered pair does not touch, but still overlaps.
+    Body Ghost = addBall(PhysWorld, 0, {3.1f, 1.0f}, {});
+    Ghost.setCollisionMask(0);
+    PhysWorld.step(1.0f / 60.0f);
+    CHECK_FALSE(PhysWorld.isTouchingOtherFighter(Ghost));
+    CHECK(PhysWorld.isOverlappingOtherFighter(Ghost));
+    CHECK(PhysWorld.isOverlappingOtherFighter(Chest));
+}
+
+TEST_CASE("physics::World: mirroring shapes and joints", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    Body Upper = PhysWorld.createBody({.Position = {0.0f, 1.0f}});
+    PhysWorld.addShape(Upper, {.Kind = ShapeKind::Box, .Center = {0.1f, 0.0f}, .HalfExtents = {0.2f, 0.05f}});
+    Upper.setMass(3.0f);
+    Body Lower = PhysWorld.createBody({.Position = {0.0f, 0.6f}});
+    PhysWorld.addShape(Lower, {.Kind = ShapeKind::Capsule, .Begin = {0.05f, 0.1f}, .End = {0.1f, -0.2f},
+                               .Radius = 0.04f});
+    Lower.setMass(2.0f);
+    const RevoluteJoint Hinge = PhysWorld.createRevoluteJoint({
+        .BodyA = Upper, .BodyB = Lower, .Anchor = {0.05f, 0.75f}, .LowerAngle = -0.2f, .UpperAngle = 1.0f,
+        .MaxMotorTorque = 5.0f,
+    });
+    CHECK(Upper.getWorldCenterOfMass().X == Approx(0.1f).margin(1e-4f));
+
+    PhysWorld.mirrorShapes(Upper);
+    PhysWorld.mirrorShapes(Lower);
+    CHECK(Upper.getMass() == Approx(3.0f));
+    CHECK(Upper.getWorldCenterOfMass().X == Approx(-0.1f).margin(1e-4f));
+    const RevoluteJoint Mirrored = PhysWorld.mirrorJoint(Hinge);
+    CHECK_FALSE(Hinge.isValid());
+    REQUIRE(Mirrored.isValid());
+    CHECK(Mirrored.getLowerLimit() == Approx(-1.0f));
+    CHECK(Mirrored.getUpperLimit() == Approx(0.2f));
+    CHECK(Mirrored.getMaxMotorTorque() == Approx(5.0f));
+    CHECK(Mirrored.getAnchor().X == Approx(-0.05f).margin(1e-4f));
+    CHECK(Mirrored.getAngle() == Approx(0.0f).margin(1e-4f));
+    // The hinge holds the mirrored bodies where they are.
+    for (int Step = 0; Step < 30; ++Step) PhysWorld.step(1.0f / 60.0f);
+    CHECK(Mirrored.getAnchor().X == Approx(-0.05f).margin(1e-3f));
+    CHECK(Lower.getPosition().Y == Approx(0.6f).margin(1e-3f));
+}
