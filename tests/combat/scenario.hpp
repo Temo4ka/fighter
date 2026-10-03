@@ -38,10 +38,18 @@ inline constexpr double Dt = 1.0 / 60.0;
 inline constexpr int TicksPerSecond = 60;
 /// Distance between the fighters' floor points at which the attacker stops
 /// walking and strikes, m: where the clips of task 2.2 land reliably on a
-/// standing fighter (the jab reaches out furthest at 0.8-0.9 m).
-inline constexpr float JabRange = 0.85f;
+/// standing fighter with the body of task 2.1. The jab passes the guard
+/// (arms pass arms) and reaches the torso up to 0.84 m between the pelvises
+/// (about 0.78 m between the floor points); a fighter pushed back keeps its
+/// feet planted a while, so its floor point lags behind its pelvis and the
+/// attacker must stop well inside the reach not to stall out of it.
+inline constexpr float JabRange = 0.72f;
 inline constexpr float HeavyRange = 0.8f;
+/// The body kick lands with the foot, on the pelvis (legs hit legs, task
+/// 2.1).
 inline constexpr float KickRange = 0.95f;
+/// The body kick at close range: the shin lands on the torso.
+inline constexpr float CloseKickRange = 0.55f;
 
 inline BattleConfig makeConfig() {
     BattleConfig Config;
@@ -155,8 +163,9 @@ inline std::string makeReactionsJson(const ReactionSpec& Spec) {
                        Location, Levels, Spec.BuildupPerStrength, Spec.BuildupDecayPerSec, Spec.ThresholdDrop);
 }
 
-/// Thresholds so low that a clean kick knocks the fighter down.
-inline ReactionSpec makeKnockdownKicks() { return {.MinStrength = {0.05f, 0.1f, 0.15f, 0.2f, 0.3f}}; }
+/// Thresholds so low that a clean kick knocks the fighter down: a body kick
+/// (0.5-0.6 m/s on the pelvis) and a low kick (0.1-0.25 m/s on a shin).
+inline ReactionSpec makeKnockdownKicks() { return {.MinStrength = {0.01f, 0.02f, 0.04f, 0.06f, 0.08f}}; }
 
 /// Thresholds so high that nothing knocks the fighter down.
 inline ReactionSpec makeNoKnockdowns() { return {.MinStrength = {0.3f, 1.0f, 2.0f, 3.5f, 1000.0f}}; }

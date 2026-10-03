@@ -126,8 +126,9 @@ TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
 
 TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][fight]") {
     // A jab alone stays below Flinch; the buildup of a series lowers the
-    // thresholds until jabs flinch.
-    ReactionSpec Spec{.MinStrength = {0.01f, 0.3f, 0.6f, 1.0f, 1000.0f},
+    // thresholds until jabs flinch. A jab that slips past the guard lands on
+    // the torso with up to 0.6 m/s (arms pass arms, task 2.1).
+    ReactionSpec Spec{.MinStrength = {0.01f, 0.7f, 1.4f, 2.0f, 1000.0f},
                       .BuildupPerStrength = 5.0f,
                       .BuildupDecayPerSec = 0.1f,
                       .ThresholdDrop = 0.5f};
@@ -225,10 +226,13 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
 }
 
 TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][data]") {
+    // Kicks at the torso: from close range, where the shin lands on it (from
+    // kicking range the foot meets the pelvis, which a low block covers).
     const auto kickAt = [](const PlayerCommands& Guard) {
         Battle Fight(makeConfig());
         run(Fight, {}, Guard, 1);
-        const std::vector<StrikeLanded> Hits = strike(Fight, {.VictimCmd = Guard}, 4 * TicksPerSecond);
+        const std::vector<StrikeLanded> Hits =
+            strike(Fight, {.Range = CloseKickRange, .VictimCmd = Guard}, 4 * TicksPerSecond);
         REQUIRE_FALSE(Hits.empty());
         return std::pair(Hits, getRight(Fight));
     };
