@@ -79,7 +79,8 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
         const rig::RigDef Body = rig::loadRigDef(Cfg.DataDir / "rigs" / (FighterCfg->RigId + ".json"));
         const stats::PhysicalProfile Profile = stats::computeProfile(FighterCfg->Stats, FighterCfg->Loadout, Balance);
         const float StartX = Side * Tuning.SpawnDistance * 0.5f;
-        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Clips, Profile, makeRigSetup(Profile, StartX, Index));
+        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Clips, Profile, makeRigSetup(Profile, StartX, Index),
+                                   FighterCfg->StartHp);
     }
     publishSnapshot();
 }
@@ -89,14 +90,23 @@ Battle::Battle(Battle&& Other) noexcept = default;
 Battle& Battle::operator=(Battle&& Other) noexcept = default;
 
 void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, double Dt) {
+    Events.clear();
     if (Result) return;
     const float StepDt = static_cast<float>(Dt);
 
     // Explicit order: controllers plan -> spacing -> bodies move -> physics -> hits.
     Fighter& Left = Sim->Fighters[0];
     Fighter& Right = Sim->Fighters[1];
-    Left.control(LeftCmd, StepDt);
-    Right.control(RightCmd, StepDt);
+    std::array<rig::Posture, 2> PostureBefore{};
+    const std::array<const PlayerCommands*, 2> Commands = {&LeftCmd, &RightCmd};
+    for (auto&& [Index, Player, Cmd, Before] :
+         std::views::zip(std::views::iota(uint8_t{0}), Sim->Fighters, Commands, PostureBefore)) {
+        Before = Player.getRig().getPosture();
+        if (!Player.control(*Cmd, StepDt)) continue;
+        const std::string MoveId(Player.getMoveId());
+        ++Reports[Index].Moves[MoveId].Thrown;
+        Events.push_back(StrikeStarted{.Fighter = Index, .MoveId = MoveId});
+    }
     keepApart(Left, Right, Cfg.Arena.HalfWidthM, Sim->Tuning, StepDt);
     Left.applyControl(StepDt);
     Right.applyControl(StepDt);
@@ -119,7 +129,6 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         if (!Strongest || Hit.Impulse > Strongest->Impulse) Strongest = Hit;
     }
 
-    Hits.clear();
     for (const auto& Strike : Strikes) {
         if (!Strike) continue;
         const physics::HitEvent& Hit = *Strike;
@@ -130,7 +139,11 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         const float AttackerX = Attacker.getRig().getPartPosition(BodyPart::Pelvis).X;
         const float VictimX = Victim.getRig().getPartPosition(BodyPart::Pelvis).X;
         Victim.onHit(Hit, VictimX >= AttackerX ? 1.0f : -1.0f);
-        Hits.push_back(Hit);
+        // PLACEHOLDER until 2.3: no strength, damage, reaction or block yet.
+        const std::string MoveId(Attacker.getMoveId());
+        ++Reports[Hit.Attacker.Fighter].Moves[MoveId].Landed;
+        ++Reports[Hit.Victim.Fighter].HitsTaken[static_cast<size_t>(Hit.Victim.Part)].Hits;
+        Events.push_back(StrikeLanded{.Contact = Hit, .MoveId = MoveId});
 
         const Vec2 Direction = (Victim.getRig().getPartPosition(Hit.Victim.Part) -
                                 Attacker.getRig().getPartPosition(Hit.Attacker.Part)).getNormalized();
@@ -141,26 +154,39 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
                                     Hit.Impulse, Hit.ApproachSpeed));
     }
 
+    // The posture changes in the physics step (a strong hit) and in the rig's
+    // own timers (getting up).
+    for (auto&& [Index, Player, Before] : std::views::zip(std::views::iota(uint8_t{0}), Sim->Fighters, PostureBefore)) {
+        const rig::Posture After = Player.getRig().getPosture();
+        if (After == Before) continue;
+        if (After == rig::Posture::KnockedDown) {
+            ++Reports[Index].Knockdowns;
+            Events.push_back(KnockedDown{.Fighter = Index});
+        } else if (After == rig::Posture::Standing) {
+            Events.push_back(GotUp{.Fighter = Index});
+        }
+    }
+
     ElapsedSec += Dt;
     ++Tick;
 
-    if (ElapsedSec >= Cfg.RoundTimeSec) {
-        const float HpLeft = Sim->Fighters[0].getHp();
-        const float HpRight = Sim->Fighters[1].getHp();
-        finish(HpLeft > HpRight ? Winner::Left : HpRight > HpLeft ? Winner::Right : Winner::Draw);
+    const float HpLeft = Left.getHp();
+    const float HpRight = Right.getHp();
+    if (HpLeft <= 0.0f || HpRight <= 0.0f) {
+        finish(HpLeft > 0.0f ? Winner::Left : HpRight > 0.0f ? Winner::Right : Winner::Draw, BattleEnd::Knockout);
+    } else if (ElapsedSec >= Cfg.RoundTimeSec) {
+        finish(HpLeft > HpRight ? Winner::Left : HpRight > HpLeft ? Winner::Right : Winner::Draw, BattleEnd::TimeUp);
     }
 
     publishSnapshot();
     drawDebug();
 }
 
-void Battle::finish(Winner Outcome) {
-    BattleResult Round;
-    Round.WinnerSide = Outcome;
-    Round.TimeSec = ElapsedSec;
-    Round.Left.HpLeft = Sim->Fighters[0].getHp();
-    Round.Right.HpLeft = Sim->Fighters[1].getHp();
-    Result = Round;
+void Battle::finish(Winner Outcome, BattleEnd End) {
+    BattleResult Final{.WinnerSide = Outcome, .End = End, .TimeSec = ElapsedSec, .Fighters = Reports};
+    for (auto&& [Report, Player] : std::views::zip(Final.Fighters, Sim->Fighters)) Report.Hp = Player.getHp();
+    Result = std::move(Final);
+    Events.push_back(BattleOver{.WinnerSide = Outcome, .End = End});
 }
 
 void Battle::publishSnapshot() {

@@ -26,7 +26,7 @@ app ──► render ──► combat ──► stats ──► core
 | `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — гибридное тело: кинематические таз и ноги (`PelvisController`, позы из клипов), физический корпус на PD-моторах, жёсткость, отбрасывание, нокдаун | — | — |
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
-| `combat` | `Battle`, `BattleConfig`, `BattleResult`, `PlayerCommands`, `RenderSnapshot`; внутри — `Fighter`, `CombatTuning` (`data/combat.json`) | — | — |
+| `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`) | — | — |
 | `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
@@ -101,8 +101,11 @@ App после шага:                 ▼
   решает, повторять ли звуки и эффекты, а сам бой об этом не знает.
 - Внутри симуляции модули обмениваются данными напрямую: физика после шага отдаёт
   список `HitEvent`, бой обрабатывает его в фиксированном порядке.
-- Сейчас (фаза 1) попадания наружу отдаёт `Battle::getHits()` — предшественник
-  `getEvents()`; в фазе 2 его заменит общий список событий.
+- События — `std::variant` из src/combat/events.hpp: удар начат (`StrikeStarted`),
+  удар попал (`StrikeLanded`: контакт, сила, урон, ступень реакции, блок), нокдаун,
+  вставание, выносливость кончилась, бой окончен. Что боец делает сейчас (стойка,
+  атака и её фаза, блок и зона, реакция, прижат к стене) — не событие, а состояние
+  в `FighterView`.
 
 ## Отладочный слой
 
