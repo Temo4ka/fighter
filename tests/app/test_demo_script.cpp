@@ -28,7 +28,7 @@ TEST_CASE("findDemoScript: known names", "[app][demo]") {
 TEST_CASE("getDemoInput: fight walks into range, then attacks", "[app][demo]") {
     const DemoInput Far = getDemoInput(DemoScript::Fight, 0, makeState(2.0f));
     CHECK(Far.Left.MoveX == 1.0f);
-    CHECK_FALSE(Far.Left.Punch);
+    CHECK_FALSE(Far.Left.Jab);
     // P2 is a dummy.
     CHECK(Far.Right == fighter::combat::PlayerCommands{});
 
@@ -38,8 +38,8 @@ TEST_CASE("getDemoInput: fight walks into range, then attacks", "[app][demo]") {
     for (uint64_t Tick = 0; Tick < 600; ++Tick) {
         const DemoInput Near = getDemoInput(DemoScript::Fight, Tick, makeState(0.5f));
         CHECK(Near.Left.MoveX <= 0.0f);
-        CHECK_FALSE(Near.Left.Kick);
-        Punched = Punched || Near.Left.Punch;
+        CHECK_FALSE(Near.Left.BodyKick);
+        Punched = Punched || Near.Left.Jab;
         SteppedBack = SteppedBack || Near.Left.MoveX < 0.0f;
     }
     CHECK(Punched);
@@ -48,7 +48,7 @@ TEST_CASE("getDemoInput: fight walks into range, then attacks", "[app][demo]") {
     // In kicking range: kicks on its turn.
     bool Kicked = false;
     for (uint64_t Tick = 0; Tick < 600; ++Tick) {
-        Kicked = Kicked || getDemoInput(DemoScript::Fight, Tick, makeState(0.9f)).Left.Kick;
+        Kicked = Kicked || getDemoInput(DemoScript::Fight, Tick, makeState(0.9f)).Left.BodyKick;
     }
     CHECK(Kicked);
 }

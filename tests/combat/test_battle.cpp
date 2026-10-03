@@ -30,9 +30,9 @@ using Catch::Approx;
 // sway the opponent, knockback depends on the mass, a strong hit knocks the
 // fighter down and it gets up, and the simulation is deterministic.
 //
-// Jumping, crouching and blocking are not implemented yet
-// (PlayerCommands::Jump/Crouch/Block are ignored), so there are no tests for
-// them.
+// Crouching, blocking, the heavy punch and the low kick are not implemented
+// yet (phase 2: the battle ignores those commands), so there are no tests
+// for them.
 
 namespace {
 
@@ -110,8 +110,8 @@ AttackLog attackDummy(Battle& Fight, bool Kick, int Period, int Ticks, float Ran
             LeftCmd.MoveX = 1.0f;
         } else {
             const bool Press = AttackTick++ % Period < 3;
-            LeftCmd.Punch = Press && !Kick;
-            LeftCmd.Kick = Press && Kick;
+            LeftCmd.Jab = Press && !Kick;
+            LeftCmd.BodyKick = Press && Kick;
         }
         Fight.update(LeftCmd, {}, Dt);
 
@@ -299,7 +299,7 @@ TEST_CASE("Battle: a jab moves the fist forward", "[combat][dod]") {
     const float GuardReach = getReach();
 
     float LongestReach = GuardReach;
-    Fight.update({.Punch = true}, {}, Dt);
+    Fight.update({.Jab = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) {
         Fight.update({}, {}, Dt);
         LongestReach = std::max(LongestReach, getReach());
@@ -316,7 +316,7 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
     const Vec2 Start = getPart(getLeft(Fight), BodyPart::FootL).Position;
 
     Vec2 Highest = Start;
-    Fight.update({.Kick = true}, {}, Dt);
+    Fight.update({.BodyKick = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
         Fight.update({}, {}, Dt);
         const Vec2 Foot = getPart(getLeft(Fight), BodyPart::FootL).Position;
@@ -426,7 +426,7 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     std::optional<int> HitTick;
     for (int Tick = 0; Tick < Ticks && !UpTick; ++Tick) {
         const bool InRange = getRight(Again).Position.X - getLeft(Again).Position.X <= KickRange;
-        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .Kick = InRange && !HitTick}, {}, Dt);
+        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .BodyKick = InRange && !HitTick}, {}, Dt);
         if (!HitTick && !Again.getHits().empty()) HitTick = Tick;
         if (HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
     }
@@ -449,10 +449,10 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
         const int Phase = Tick % 150;
         const PlayerCommands LeftCmd{
             .MoveX = Distance > KickRange ? 1.0f : 0.0f,
-            .Punch = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .Kick = Distance <= KickRange && Phase < 3,
+            .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
+            .BodyKick = Distance <= KickRange && Phase < 3,
         };
-        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Punch = Tick % 53 == 0};
+        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
         First.update(LeftCmd, RightCmd, Dt);
         Second.update(LeftCmd, RightCmd, Dt);
         REQUIRE(First.getHits().size() == Second.getHits().size());

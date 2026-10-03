@@ -4,13 +4,6 @@
 #include <cmath>
 
 namespace fighter::combat {
-namespace {
-
-/// Stick input below this does not count as walking.
-constexpr float MoveDeadZone = 0.1f;
-
-} // namespace
-
 ClipSet ClipSet::load(const std::filesystem::path& PosesDir) {
     return {
         .Stance = anim::loadClip(PosesDir / "stance.json"),
@@ -34,9 +27,11 @@ void Fighter::control(const PlayerCommands& Cmd, float Dt) {
         AttackTime += Dt;
         if (!Standing || Attack->isFinishedAt(AttackTime)) Attack = nullptr;
     }
-    // Holding the button repeats the attack.
-    if (Standing && !Attack && Cmd.Punch) startAttack(Clips->Jab);
-    if (Standing && !Attack && Cmd.Kick) startAttack(Clips->Kick);
+    // Holding the button repeats the attack. PLACEHOLDER until 2.2/2.3: the
+    // heavy punch and the low kick have no clips yet, blocking and crouching
+    // are ignored.
+    if (Standing && !Attack && Cmd.Jab) startAttack(Clips->Jab);
+    if (Standing && !Attack && Cmd.BodyKick) startAttack(Clips->Kick);
 
     const rig::ControlParams& Control = Body.getControl();
     const bool CanMove = Standing && (!Attack || Attack->AllowMove);

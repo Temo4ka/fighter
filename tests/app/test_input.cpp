@@ -17,10 +17,10 @@ TEST_CASE("InputSystem: players have separate keys", "[app][input]") {
 TEST_CASE("InputSystem: key stays held until released", "[app][input]") {
     InputSystem Input;
     Input.onKey(Scan::W, true);
-    CHECK(Input.getCommands(0).Jump);
-    CHECK(Input.getCommands(0).Jump);   // asking again: still held
+    CHECK(Input.getCommands(0).Up);
+    CHECK(Input.getCommands(0).Up);   // asking again: still held
     Input.onKey(Scan::W, false);
-    CHECK_FALSE(Input.getCommands(0).Jump);
+    CHECK_FALSE(Input.getCommands(0).Up);
 }
 
 TEST_CASE("InputSystem: left and right together cancel out", "[app][input]") {
@@ -43,4 +43,18 @@ TEST_CASE("InputSystem: unbound key does not affect players", "[app][input]") {
     InputSystem Input;
     CHECK_FALSE(Input.onKey(Scan::Z, true));
     CHECK(Input.getCommands(0) == PlayerCommands{});
+}
+
+TEST_CASE("InputSystem: default layout gives each player all actions", "[app][input]") {
+    InputSystem Input;
+    for (const auto Key : {Scan::W, Scan::S, Scan::LShift, Scan::F, Scan::G, Scan::R, Scan::T}) {
+        Input.onKey(Key, true);
+    }
+    for (const auto Key : {Scan::Up, Scan::Down, Scan::RShift, Scan::K, Scan::L, Scan::I, Scan::O}) {
+        Input.onKey(Key, true);
+    }
+    const PlayerCommands All{.Up = true, .Down = true, .Block = true, .Jab = true, .HeavyPunch = true,
+                             .BodyKick = true, .LowKick = true};
+    CHECK(Input.getCommands(0) == All);
+    CHECK(Input.getCommands(1) == All);
 }
