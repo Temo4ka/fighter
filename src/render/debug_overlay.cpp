@@ -37,6 +37,8 @@ constexpr std::array<const char*, debug::CatCount> CategoryKeyNames = {
 constexpr unsigned FontSize = 13;
 constexpr float LineHeight = 16.0f;
 constexpr int CircleSegments = 32;
+/// The panel starts below the HUD (bars and names, data/visuals.json "hud").
+constexpr float PanelTop = 100.0f;
 constexpr float TwoPi = 2.0f * std::numbers::pi_v<float>;
 
 sf::Color toSfColor(debug::Rgba Source) { return sf::Color(Source.R, Source.G, Source.B, Source.A); }
@@ -264,11 +266,11 @@ void DebugOverlay::drawPanel(sf::RenderTarget& Target, const Camera& Cam, const 
     for (size_t Index = 0; Index < Lines.size(); ++Index) {
         sf::Text& Line = Texts.emplace_back(Font, Lines[Index].Text, FontSize);
         Line.setFillColor(Lines[Index].Color);
-        Line.setPosition({16.0f, 64.0f + LineHeight * static_cast<float>(Index)});
+        Line.setPosition({16.0f, PanelTop + 6.0f + LineHeight * static_cast<float>(Index)});
         Width = std::max(Width, Line.getLocalBounds().size.x);
     }
     sf::RectangleShape Back({Width + 16.0f, LineHeight * static_cast<float>(Lines.size()) + 12.0f});
-    Back.setPosition({8.0f, 58.0f});
+    Back.setPosition({8.0f, PanelTop});
     Back.setFillColor(sf::Color(0, 0, 0, 170));
     Target.draw(Back);
     for (const sf::Text& Line : Texts) Target.draw(Line);
