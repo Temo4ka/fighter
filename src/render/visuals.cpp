@@ -18,6 +18,7 @@ using Json = nlohmann::json;
 const Json& requireObject(const Json& Value, const std::string& Path);
 void checkFieldNames(const Json& Object, const std::string& Path, std::initializer_list<std::string_view> Allowed);
 std::string joinPath(const std::string& Path, std::string_view Key);
+const Json& getField(const Json& Object, const std::string& Path, std::string_view Key);
 float readFloat(const Json& Object, const std::string& Path, std::string_view Key, float Min, float Max);
 std::string readString(const Json& Object, const std::string& Path, std::string_view Key);
 combat::ReactionLevel readReaction(const Json& Object, const std::string& Path, std::string_view Key);
@@ -97,9 +98,15 @@ std::string joinPath(const std::string& Path, std::string_view Key) {
     return Path.empty() ? std::string(Key) : std::format("{}.{}", Path, Key);
 }
 
+const Json& getField(const Json& Object, const std::string& Path, std::string_view Key) {
+    const auto Found = Object.find(Key);
+    if (Found == Object.end()) throw std::runtime_error(std::format("missing field '{}'", joinPath(Path, Key)));
+    return *Found;
+}
+
 float readFloat(const Json& Object, const std::string& Path, std::string_view Key, float Min, float Max) {
     const std::string Field = joinPath(Path, Key);
-    const Json& Value = Object.at(Key);
+    const Json& Value = getField(Object, Path, Key);
     if (!Value.is_number()) throw std::runtime_error(std::format("field '{}': {} is not a number", Field, Value.dump()));
     const auto Number = Value.get<float>();
     if (Number < Min || Number > Max)
@@ -109,7 +116,7 @@ float readFloat(const Json& Object, const std::string& Path, std::string_view Ke
 
 std::string readString(const Json& Object, const std::string& Path, std::string_view Key) {
     const std::string Field = joinPath(Path, Key);
-    const Json& Value = Object.at(Key);
+    const Json& Value = getField(Object, Path, Key);
     if (!Value.is_string()) throw std::runtime_error(std::format("field '{}': {} is not a string", Field, Value.dump()));
     auto Text = Value.get<std::string>();
     if (Text.empty()) throw std::runtime_error(std::format("field '{}': must not be empty", Field));
