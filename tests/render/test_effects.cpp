@@ -1,7 +1,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <variant>
 
 #include "render/effects.hpp"
@@ -17,7 +19,7 @@ constexpr double StepSec = 1.0 / 60.0;
 
 combat::StrikeLanded makeHit(ReactionLevel Reaction, uint8_t Victim = 1) {
     combat::StrikeLanded Hit;
-    Hit.Contact.Attacker.Fighter = Victim == 0 ? 1 : 0;
+    Hit.Contact.Attacker.Fighter = static_cast<uint8_t>(1 - Victim);
     Hit.Contact.Victim.Fighter = Victim;
     Hit.Contact.Point = {0.3f, 1.5f};
     Hit.Reaction = Reaction;
