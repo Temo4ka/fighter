@@ -61,9 +61,8 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
     if (isFree()) {
         Started = chooseFreeState(Cmd, Around);
-        // INTEGRATION(2.1): agent A adds a rig API to turn the body. Call it
-        // here, while the fighter is free, for example:
-        //   if (DesiredFacingRight != Body.isFacingRight()) Body.turn(DesiredFacingRight);
+        // The rig mirrors the body in the next applyControl().
+        if (DesiredFacingRight != Body.isFacingRight()) Body.setFacing(DesiredFacingRight);
     }
 
     const float Velocity = planWalking(Cmd, Dt);
@@ -117,7 +116,7 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
     Buildup += Outcome.BuildupAdded;
     if (Outcome.Blocked) spendStamina(Outcome.BlockStamina);
     LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome};
-    react(Outcome.Reaction, Hit.Impulse, Direction);
+    react(Outcome.Reaction, Hit.Impulse, Direction, Hit.Point);
     return Outcome;
 }
 
@@ -216,12 +215,7 @@ void Fighter::drawDebug(std::string_view Name) const {
         } else {
             debug::setPanel(std::format("{} last hit", Name), "-");
         }
-        const bool FacesRight = Body.isFacingRight();
-        debug::setPanel(std::format("{} facing", Name),
-                        DesiredFacingRight == FacesRight
-                            ? std::string(FacesRight ? "right" : "left")
-                            : std::format("{}, wants {} (turning: rig API pending, 2.1)", FacesRight ? "right" : "left",
-                                          DesiredFacingRight ? "right" : "left"));
+        // "P1 facing" (and a pending turn) is the rig's panel line.
     }
 }
 
@@ -397,17 +391,20 @@ void Fighter::spendStamina(float Amount) {
     ExhaustedNotice = true;
 }
 
-void Fighter::react(ReactionLevel Level, float Impulse, float Direction) {
+void Fighter::react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point) {
+    const Vec2 Push{Direction, 0.0f};
     if (Hp <= 0.0f) {
         // Knocked out: it falls and stays down.
-        Body.applyHit(Impulse, Direction, true);
+        Body.applyHit(Impulse, Push, Point, true);
+        Body.setStayDown(true);
         setState(FighterState::KnockedOut);
         return;
     }
     const bool KnockDown = Level == ReactionLevel::Knockdown;
     // The rig sways the body (physics), pushes the pelvis back by
-    // impulse / mass and, for a knockdown, lets it fall.
-    Body.applyHit(Impulse, Direction, KnockDown);
+    // impulse / mass and, for a knockdown, lets it fall the way it was
+    // pushed, spun by where the hit landed.
+    Body.applyHit(Impulse, Push, Point, KnockDown);
     if (KnockDown) {
         setState(FighterState::KnockedDown);
         return;

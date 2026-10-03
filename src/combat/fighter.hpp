@@ -158,7 +158,7 @@ private:
     const anim::Clip* getTopClip() const;
     float getTopClipTime() const;
     void spendStamina(float Amount);
-    void react(ReactionLevel Level, float Impulse, float Direction);
+    void react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point);
 
     rig::Rig Body;
     const BattleRules* Rules = nullptr;
