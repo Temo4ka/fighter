@@ -1,38 +1,36 @@
 {
     "pixels_per_meter": 64,
     "skins": {
-        "placeholder": {
-            "texture": "assets/placeholder/humanoid.png",
-            "parts": {
-                "Head":      { "rect": [0, 0, 24, 28],   "origin": [12, 14] },
-                "Torso":     { "rect": [24, 0, 32, 40],  "origin": [16, 20] },
-                "Pelvis":    { "rect": [56, 0, 28, 16],  "origin": [14, 8] },
-                "UpperArmL": { "rect": [0, 40, 10, 22],  "origin": [5, 11] },
-                "ForearmL":  { "rect": [10, 40, 10, 22], "origin": [5, 11] },
-                "UpperArmR": { "rect": [0, 40, 10, 22],  "origin": [5, 11] },
-                "ForearmR":  { "rect": [10, 40, 10, 22], "origin": [5, 11] },
-                "ThighL":    { "rect": [20, 40, 12, 28], "origin": [6, 14] },
-                "ShinL":     { "rect": [32, 40, 10, 28], "origin": [5, 14] },
-                "FootL":     { "rect": [42, 40, 16, 8],  "origin": [8, 4] },
-                "ThighR":    { "rect": [20, 40, 12, 28], "origin": [6, 14] },
-                "ShinR":     { "rect": [32, 40, 10, 28], "origin": [5, 14] },
-                "FootR":     { "rect": [42, 40, 16, 8],  "origin": [8, 4] }
-            }
+        "placeholder_smooth": {
+            "dir": "assets/placeholders/smooth/humanoid"
+        },
+        "placeholder_pixel": {
+            "dir": "assets/placeholders/pixel/humanoid",
+            "pixels_per_meter": 32
         }
     },
     "items": {
         "iron_helmet": {
-            "texture": "assets/placeholder/items.png",
-            "parts": { "Head": { "rect": [0, 0, 26, 18], "origin": [13, 14] } }
+            "dir": "assets/items/iron_helmet"
         },
         "short_sword": {
-            "texture": "assets/placeholder/items.png",
-            "parts": { "ForearmR": { "rect": [26, 0, 6, 40], "origin": [3, 4] } }
+            "dir": "assets/items/short_sword"
         }
     },
     "effects": {
-        "hit_flash": { "min_reaction": "Touch", "duration_sec": 0.06 },
-        "camera_shake": { "min_reaction": "Knockback", "amplitude_m": 0.04, "duration_sec": 0.15 },
-        "dust": { "on_knockdown": true, "particles": 8, "duration_sec": 0.5 }
+        "hit_flash": {
+            "min_reaction": "Touch",
+            "duration_sec": 0.06
+        },
+        "camera_shake": {
+            "min_reaction": "Knockback",
+            "amplitude_m": 0.04,
+            "duration_sec": 0.15
+        },
+        "dust": {
+            "on_knockdown": true,
+            "particles": 8,
+            "duration_sec": 0.5
+        }
     }
 }
