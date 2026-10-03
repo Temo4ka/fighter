@@ -1,0 +1,30 @@
+{
+  "loop": false,
+  "duration": 0.55,
+  "stiffness": 1.0,
+  "allowMove": false,
+  "blendIn": 0.03,
+  "blendOut": 0.12,
+  "keys": [
+    { "t": 0.00, "pose": {
+        "Torso": -8, "Head": 8,
+        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135,
+        "ThighL": 25, "ShinL": -20, "FootL": -5,
+        "ThighR": -15, "ShinR": -5, "FootR": 20 } },
+    { "t": 0.10, "pose": {
+        "Torso": 12, "Head": 25,
+        "UpperArmL": 20, "ForearmL": 70, "UpperArmR": 10, "ForearmR": 90,
+        "ThighL": 5, "ShinL": -55, "FootL": 10,
+        "ThighR": -22, "ShinR": -10, "FootR": 32 } },
+    { "t": 0.24, "pose": {
+        "Torso": 8, "Head": 15,
+        "UpperArmL": 30, "ForearmL": 90, "UpperArmR": 15, "ForearmR": 110,
+        "ThighL": -14, "ShinL": -8, "FootL": 22,
+        "ThighR": -16, "ShinR": -12, "FootR": 28 } },
+    { "t": 0.55, "pose": {
+        "Torso": -8, "Head": 8,
+        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135,
+        "ThighL": 25, "ShinL": -20, "FootL": -5,
+        "ThighR": -15, "ShinR": -5, "FootR": 20 } }
+  ]
+}
