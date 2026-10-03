@@ -14,12 +14,16 @@
 /// what the clip does not know: damage, the weakest reaction it causes,
 /// stamina and the speed floor. A move with "weapon" belongs to that weapon
 /// class (WeaponProps::Class) and replaces the unarmed move on its button
-/// while such a weapon is held (decision O.12).
+/// while such a weapon is held (decision O.12). Optional fields: a shorter
+/// clip for close range ("close_clip" with "close_range_m") and the buttons
+/// a hit can be chained into ("chain_to").
 ///
 /// \code
 ///   // data/moves/jab.json; the id is the file stem
 ///   {"button": "Jab", "clip": "jab", "damage": 0.6, "min_reaction": "Touch",
-///    "stamina": 5, "min_startup_sec": 0.15}
+///    "stamina": 5, "min_startup_sec": 0.15,
+///    "close_clip": "jab_close", "close_range_m": 0.6,
+///    "chain_to": ["Jab", "HeavyPunch"]}
 ///
 ///   // data/moves/sword_slash.json
 ///   {"button": "HeavyPunch", "clip": "sword_slash", "weapon": "sword",
@@ -68,6 +72,19 @@ struct MoveDef {
     /// However fast the fighter, the striking phase starts no sooner than
     /// this after the button, s (O.7).
     float MinStartupSec = 0.0f;
+    /// Played instead of Clip when the fighters' pelvises are closer than
+    /// CloseRangeM when the move starts; empty: Clip at any range.
+    std::string CloseClip;
+    float CloseRangeM = 0.0f;
+    /// The buttons whose moves may cancel the recovery of this move after it
+    /// hit (a short chain, O.7): see CombatTuning::ChainWindowSec.
+    std::vector<MoveButton> ChainTo;
+
+    /// The clip to play when the opponent's pelvis is \p DistanceM away.
+    const std::string& getClip(float DistanceM) const {
+        return !CloseClip.empty() && DistanceM < CloseRangeM ? CloseClip : Clip;
+    }
+    bool canChainTo(MoveButton Next) const;
 };
 
 /// Is the button of \p Button held in \p Cmd?
