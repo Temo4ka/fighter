@@ -18,6 +18,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,21 +33,24 @@
 
 namespace fighter::combat {
 
+struct Surroundings;
+
 /// Runs one fight.
 ///
-/// Phase 1.5 (hybrid body): each fighter is a rig::Rig in a Box2D world whose
-/// pelvis and legs are moved by code and whose upper body is physical; it
-/// walks, jabs and kicks. A hit sways the victim's upper body, knocks it back
-/// (impulse / mass) and weakens its motors for a moment; a strong one knocks
-/// it down. There is no damage, blocking or knockout yet: that is the state
-/// machine of phase 2 (task 2.3). The interface stays.
+/// Each fighter is a rig::Rig in a Box2D world whose pelvis and legs are
+/// moved by code and whose upper body is physical, driven by a state machine
+/// (combat/fighter.hpp): it walks, crouches, blocks by zone and strikes with
+/// the moves of data/moves/. A strike that lands sways the victim's upper
+/// body and knocks it back (impulse / mass); data/reactions.json turns it
+/// into damage and a reaction level (stun, knockdown), lowered by a block in
+/// the right zone (task 2.3). One round: a knockout or the time decides.
 ///
 /// The physics, rig and clip types stay inside the implementation, so this
 /// header does not pull them in.
 class Battle {
 public:
-    /// Reads the rigs and clips from Config.DataDir. Throws std::runtime_error
-    /// if a file is missing or broken.
+    /// Reads the rigs, clips, moves, reactions and tuning from Config.DataDir.
+    /// Throws std::runtime_error if a file is missing or broken.
     explicit Battle(const BattleConfig& Config);
     ~Battle();
 
@@ -56,7 +60,10 @@ public:
     void update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCmd, double Dt);
 
     const RenderSnapshot& getSnapshot() const { return Snapshot; }
-    /// Set once the fight is over; update() does nothing after that.
+    /// Set once the fight is over and fixed from then on. After the end,
+    /// update() lets the bodies move on without input for a moment
+    /// (CombatTuning::EndSettleSec), so that a knockout fall plays out; it
+    /// reports no events and changes nothing in the result.
     const std::optional<BattleResult>& getResult() const { return Result; }
     /// What happened during the last update(), in order. A landed strike is
     /// a contact of a striking limb in the active phase of an attack, at most
@@ -68,6 +75,10 @@ private:
     struct Simulation;
 
     void finish(Winner Outcome, BattleEnd End);
+    /// One step after the end: the bodies move, nothing else happens.
+    void settle(float Dt);
+    /// Where the opponent of fighter \p Index is.
+    Surroundings getSurroundings(size_t Index) const;
     void publishSnapshot();
     void drawDebug() const;
 
@@ -79,6 +90,7 @@ private:
     std::vector<BattleEvent> Events;
     std::array<FighterReport, 2> Reports;   ///< Collected during the fight.
     std::optional<BattleResult> Result;
+    float SettleLeftSec = 0.0f;   ///< How long the bodies still move after the end, s.
 };
 
 } // namespace fighter::combat

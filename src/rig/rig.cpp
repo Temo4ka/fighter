@@ -188,13 +188,18 @@ void Rig::applyControl(float Dt) {
 }
 
 void Rig::applyHit(float Impulse, float Direction) {
+    const float Speed = Impulse * Control.KnockbackScale / TotalMass;
+    applyHit(Impulse, Direction, CurrentPosture == Posture::Standing && Speed >= Control.KnockdownSpeed);
+}
+
+void Rig::applyHit(float Impulse, float Direction, bool KnockDown) {
     HitFactor = std::max(Control.MinStiffness, HitFactor - Impulse * Control.StiffnessPerImpulse);
     if (CurrentPosture == Posture::KnockedDown) return;
 
     // The whole fighter takes the impulse: heavier fighters (CON, armor)
     // are pushed back less.
     const float Speed = Impulse * Control.KnockbackScale / TotalMass;
-    if (CurrentPosture == Posture::Standing && Speed >= Control.KnockdownSpeed) {
+    if (KnockDown) {
         knockDown(Speed * Direction);
         return;
     }
