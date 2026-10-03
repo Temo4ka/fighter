@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <iterator>
 #include <optional>
@@ -111,11 +112,31 @@ template <class Event> size_t countEvents(const std::vector<BattleEvent>& Log) {
 } // namespace
 
 TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
-    // The shipped data/reactions.json: a jab touches or flinches, never more.
-    Battle Fight(makeConfig());
-    const std::vector<StrikeLanded> Hits =
-        strike(Fight, {.Button = MoveButton::Jab, .Range = JabRange}, 6 * TicksPerSecond);
-    REQUIRE(Hits.size() >= 3);
+    // The shipped data/reactions.json: a jab at the end of its reach touches
+    // or flinches, never more. Each jab is thrown from a standstill at its
+    // own distance between the pelvises (the start distance), so that it
+    // lands with the arm fully out.
+    // A tuning item since the body of task 2.1: a jab that lands while the
+    // arm still extends (0.70-0.78 m between the pelvises) slips past the
+    // guard (arms pass arms) and staggers: 0.40-0.46 m/s on the torso.
+    ScratchData Data("light_hit");
+    std::string Spawn = "\"spawnDistance\": 2.4";
+    std::vector<StrikeLanded> Hits;
+    for (const float Distance : {0.8f, 0.82f, 0.84f}) {
+        const std::string Next = std::format("\"spawnDistance\": {}", Distance);
+        Data.replace("combat.json", Spawn, Next);
+        Spawn = Next;
+        Battle Fight(Data.makeConfig());
+        run(Fight, {}, {}, TicksPerSecond / 2);
+        Fight.update(press(MoveButton::Jab), {}, Dt);
+        for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
+            Fight.update({}, {}, Dt);
+            for (const BattleEvent& Event : Fight.getEvents()) {
+                if (const auto* Hit = std::get_if<StrikeLanded>(&Event)) Hits.push_back(*Hit);
+            }
+        }
+    }
+    REQUIRE(Hits.size() == 3);
     for (const StrikeLanded& Hit : Hits) {
         CHECK(Hit.MoveId == "jab");
         CHECK(Hit.Reaction >= ReactionLevel::Touch);   // the jab's min_reaction
@@ -182,8 +203,10 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
 }
 
 TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat][fight]") {
-    // A kick staggers for 2 s; the jabs that follow are weaker (flinch) but
-    // neither lower the level nor keep the stagger going.
+    // A body kick staggers for 2 s; the low kicks that follow are weaker
+    // (flinch) but neither lower the level nor keep the stagger going. (Not
+    // jabs: a jab that slips past the guard is as strong as the body kick on
+    // the pelvis, 0.5-0.6 m/s.)
     constexpr float StaggerSec = 2.0f;
     ScratchData Data("no_drop");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.01f, 0.03f, 0.4f, 5.0f, 1000.0f},
@@ -197,7 +220,7 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
     REQUIRE(Kick.front().Reaction == ReactionLevel::Stagger);
     REQUIRE(getRight(Fight).State == FighterState::Reacting);
 
-    // Then jabs while the victim staggers.
+    // Then low kicks while the victim staggers.
     ReactionLevel Previous = ReactionLevel::Stagger;
     bool Dropped = false;
     std::optional<int> FreeTick;
@@ -213,14 +236,14 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
         Dropped = Dropped || Victim.Reaction < Previous;
         Previous = Victim.Reaction;
     };
-    const std::vector<StrikeLanded> Jabs = strike(
-        Fight, {.Button = MoveButton::Jab, .Range = JabRange, .WaitForVictim = false, .OnTick = Watch},
+    const std::vector<StrikeLanded> LowKicks = strike(
+        Fight, {.Button = MoveButton::LowKick, .Range = KickRange, .WaitForVictim = false, .OnTick = Watch},
         3 * TicksPerSecond);
 
     const auto IsWeaker = [](const StrikeLanded& Hit) { return Hit.Reaction < ReactionLevel::Stagger; };
-    REQUIRE(std::ranges::any_of(Jabs, IsWeaker));
+    REQUIRE(std::ranges::any_of(LowKicks, IsWeaker));
     CHECK_FALSE(Dropped);
-    // The stagger ends on time: the jabs' own stun is short.
+    // The stagger ends on time: the low kicks' own stun is short.
     REQUIRE(FreeTick.has_value());
     CHECK(static_cast<float>(*FreeTick) / TicksPerSecond < StaggerSec + 0.3f);
 }
