@@ -37,7 +37,8 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
     if (NewWeapon) Weapon = *NewWeapon;
-    Body.setTargetAngles(anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f).Angles);
+    Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
+    Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
 }
 
@@ -73,8 +74,19 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     if (Walking) anim::layerPose(Target, anim::sampleClip(Rules->Clips.get(clips::Walk), WalkTime));
     const anim::Clip* Top = getTopClip();
     if (Top) anim::layerPose(Target, anim::sampleClip(*Top, getTopClipTime()));
+    // A clip that starts fades in, one that ends fades out (its own times).
+    if (Top != ShownTop || TopRestarted) {
+        if (Top) {
+            Fade.begin(Shown, Top->BlendInSec);
+        } else {
+            Fade.begin(Shown, ShownTop->BlendOutSec);
+        }
+    }
+    ShownTop = Top;
+    TopRestarted = false;
+    Shown = Fade.step(Target, Dt);
 
-    Body.setTargetAngles(Target.Angles);
+    Body.setTargetAngles(Shown.Angles);
     Body.setMoveVelocity(Velocity);
     Body.setBaseStiffness(Top ? Top->Stiffness : 1.0f);
     Body.planMotion(Dt);
@@ -123,6 +135,13 @@ std::string_view Fighter::getMoveId() const {
 
 float Fighter::getPowerScale(const MoveDef& Attack) const {
     return !Attack.Weapon.empty() && Weapon ? Weapon->PowerScale : 1.0f;
+}
+
+std::string Fighter::describeClip() const {
+    const anim::Clip* Top = getTopClip();
+    const anim::Clip& Playing = Top ? *Top : Rules->Clips.get(Walking ? clips::Walk : clips::Stance);
+    const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
+    return anim::describePlayback(Playing, getClipTime(), Rate, Fade);
 }
 
 std::string_view Fighter::getClipName() const {
@@ -247,16 +266,7 @@ void Fighter::syncPosture() {
 }
 
 const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundings& Around, float Dt) {
-    // The startup may run slower than the rest (min_startup_sec).
-    float Left = Dt;
-    const float Begin = AttackClip->ActiveBeginSec;
-    if (AttackTime < Begin) {
-        const float ToActive = (Begin - AttackTime) / StartupRate;
-        const float Spent = std::min(Left, ToActive);
-        AttackTime = Spent < ToActive ? AttackTime + Spent * StartupRate : Begin;
-        Left -= Spent;
-    }
-    AttackTime += Left * AttackRate;
+    AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
     // A press (not a held button) of a chain button asks for the next strike;
     // it is kept until the cancel window.
     for (const MoveButton Button : AttackButtons) {
@@ -315,20 +325,16 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     if (!Next.Weapon.empty() && Weapon) Rate *= Weapon->SpeedScale;
     if (Exhausted) Rate *= Rules->Tuning.ExhaustedSpeedScale;
     // However fast the fighter, the active phase starts no sooner than the
-    // move allows (O.7). Only the startup is slowed down for that: the floor
-    // is about reading the strike coming, the rest keeps the fighter's speed.
-    float Startup = Rate;
-    if (Next.MinStartupSec > 0.0f && Clip.ActiveBeginSec > 0.0f) {
-        Startup = std::min(Rate, Clip.ActiveBeginSec / Next.MinStartupSec);
-    }
+    // move allows (O.7): the whole clip plays slower for that.
+    Rate = anim::limitRateByStartup(Clip, Rate, Next.MinStartupSec);
 
     setState(FighterState::Attacking);
     StateSec = 0.0f;
     Move = &Next;
     AttackClip = &Clip;
     AttackTime = 0.0f;
-    StartupRate = Startup;
     AttackRate = Rate;
+    TopRestarted = true;
     AttackLanded = false;
     AttackHitClean = false;
     RecoverySec = 0.0f;
@@ -416,13 +422,18 @@ void Fighter::react(ReactionLevel Level, float Impulse, float Direction) {
     if (State == FighterState::GettingUp || Level < ReactionLevel::Flinch) return;
 
     // During a reaction a new hit only raises the level, never lowers it.
+    // The stun lasts the longer of what is left and the new hit's own stun:
+    // weak hits do not keep a stronger reaction going (no stun lock, O.7).
     const bool Raised = State != FighterState::Reacting || Level > Reaction;
     const ReactionLevel Effective = State == FighterState::Reacting ? std::max(Reaction, Level) : Level;
-    const float StunSec = Rules->Reactions.getLevel(Effective).StunSec;
+    const float StunSec = Rules->Reactions.getLevel(Level).StunSec;
     StunLeftSec = State == FighterState::Reacting ? std::max(StunLeftSec, StunSec) : StunSec;
     setState(FighterState::Reacting);
     Reaction = Effective;
-    if (Raised) StateSec = 0.0f;   // the clip of the new level starts
+    if (Raised) {
+        StateSec = 0.0f;   // the clip of the new level starts
+        TopRestarted = true;
+    }
 }
 
 namespace {

@@ -73,7 +73,6 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
 
     std::vector<MoveDef> Moves = loadMoveSet(Cfg.DataDir / "moves");
     ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves);
-    for (const std::string& StandIn : Clips.getStandIns()) debug::logEvent(std::format("stand-in clip: {}", StandIn));
 
     Sim = std::make_unique<Simulation>(Simulation{
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity, .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
@@ -314,9 +313,7 @@ void Battle::drawDebug() const {
             }
             const bool Ragdoll = Body.getPosture() == rig::Posture::KnockedDown;
             debug::setPanel(std::format("{} physical", Name), Ragdoll ? "all (ragdoll)" : Physical);
-            debug::setPanel(std::format("{} clip", Name),
-                            std::format("{} {:.2f} s{}", Player.getClipName(), Player.getClipTime(),
-                                        Player.isAttackActive() ? "  ACTIVE" : ""));
+            debug::setPanel(std::format("{} clip", Name), Player.describeClip());
             debug::setPanel(std::format("{} stiffness", Name), std::format("{:.2f}", Body.getStiffness()));
             debug::setPanel(std::format("{} body", Name),
                             std::format("{:.1f} kg, motors {:.0f} Nm max, gain {:.1f}/s, walk {:.2f} m/s",
@@ -339,7 +336,7 @@ void Battle::drawDebug() const {
 
 namespace {
 
-/// "attacking jab (startup) x0.40": the fighter state as the snapshot shows
+/// "attacking jab (startup) speed x0.80": the fighter state as the snapshot shows
 /// it, with the speed of an attack and what makes the fighter slow.
 std::string describeAction(const FighterView& View, const Fighter& Player) {
     constexpr std::array StateNames = {"idle",     "walking",     "crouching",  "attacking",  "blocking",
@@ -348,9 +345,8 @@ std::string describeAction(const FighterView& View, const Fighter& Player) {
     constexpr std::array ZoneNames = {"high", "mid", "low"};
     std::string Text = StateNames[static_cast<size_t>(View.State)];
     if (View.State == FighterState::Attacking) {
-        Text += std::format(" {} ({}) speed x{:.2f}, startup x{:.2f}", View.MoveId,
-                            PhaseNames[static_cast<size_t>(View.Phase)], Player.getAttackRate(),
-                            Player.getStartupRate());
+        Text += std::format(" {} ({}) speed x{:.2f}", View.MoveId, PhaseNames[static_cast<size_t>(View.Phase)],
+                            Player.getAttackRate());
     } else if (View.State == FighterState::Blocking) {
         Text += std::format(" {}", ZoneNames[static_cast<size_t>(View.Block)]);
     } else if (View.State == FighterState::Reacting) {

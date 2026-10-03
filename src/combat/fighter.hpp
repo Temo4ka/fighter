@@ -37,6 +37,8 @@
 #include <vector>
 
 #include "anim/clip.hpp"
+#include "anim/playback.hpp"
+#include "anim/pose.hpp"
 #include "combat/clip_library.hpp"
 #include "combat/commands.hpp"
 #include "combat/moves.hpp"
@@ -121,10 +123,13 @@ public:
     /// its time, s.
     std::string_view getClipName() const;
     float getClipTime() const;
-    /// Clip seconds per second of the current attack (O.7): in its startup
-    /// (perhaps slower, for the move's min_startup_sec) and after it.
-    float getStartupRate() const { return StartupRate; }
+    /// Clip seconds per second of the current attack (O.7): the fighter's
+    /// attack speed and weapon, slowed when exhausted and, if needed, so that
+    /// the active phase starts no sooner than the move's min_startup_sec.
     float getAttackRate() const { return AttackRate; }
+    /// "jab 0.12/0.44 s x1.25 startup 0.13 s, active, blend 0.40": the clip
+    /// on top for the debug panel.
+    std::string describeClip() const;
     /// Is an attack in its striking phase?
     bool isAttackActive() const;
     /// Is \p Part a striking part of an attack in its striking phase that
@@ -181,8 +186,7 @@ private:
     const MoveDef* Move = nullptr;         ///< The move being performed while Attacking.
     const anim::Clip* AttackClip = nullptr;
     float AttackTime = 0.0f;               ///< Clip time, s.
-    float StartupRate = 1.0f;              ///< Clip seconds per second until the active phase.
-    float AttackRate = 1.0f;               ///< Clip seconds per second from the active phase on.
+    float AttackRate = 1.0f;               ///< Clip seconds per second.
     bool AttackLanded = false;
     bool AttackHitClean = false;
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.
@@ -192,6 +196,12 @@ private:
     ReactionLevel Reaction = ReactionLevel::None;   ///< While Reacting.
     float StunLeftSec = 0.0f;
     std::optional<HitRecord> LastHit;
+
+    /// The pose fades over when the clip on top changes (anim::PoseTransition).
+    anim::PoseTransition Fade;
+    anim::Pose Shown;                      ///< The pose the motors got last step.
+    const anim::Clip* ShownTop = nullptr;  ///< The clip on top in the last step.
+    bool TopRestarted = false;             ///< The clip on top started again (a chain, a stronger reaction).
 };
 
 } // namespace fighter::combat
