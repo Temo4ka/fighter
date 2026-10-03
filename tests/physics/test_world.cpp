@@ -281,3 +281,22 @@ TEST_CASE("physics::World: mirroring shapes and joints", "[physics]") {
     CHECK(Mirrored.getAnchor().X == Approx(-0.05f).margin(1e-3f));
     CHECK(Lower.getPosition().Y == Approx(0.6f).margin(1e-3f));
 }
+
+TEST_CASE("physics::World: a fast posed hit takes its normal from before the step", "[physics]") {
+    // A posed ball 0.2 m per step towards another one a little higher: after
+    // the step the line between the centers is steep, before it was not.
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    constexpr float Dt = 1.0f / 60.0f;
+    constexpr float Speed = 12.0f;
+    Body Shin = addBall(PhysWorld, 0, {0.0f, 0.0f}, {});
+    PhysWorld.setBodyType(Shin, BodyType::Kinematic);
+    Body Leg = addBall(PhysWorld, 1, {0.35f, 0.12f}, {});
+    PhysWorld.setBodyType(Leg, BodyType::Kinematic);
+
+    Shin.moveTo({Speed * Dt, 0.0f}, 0.0f, Dt);
+    PhysWorld.step(Dt);
+    const auto Hits = PhysWorld.getHitEvents();
+    REQUIRE(Hits.size() == 1);
+    const Vec2 Before = Vec2{0.35f, 0.12f}.getNormalized();
+    CHECK(Hits[0].ApproachSpeed == Approx(Speed * Before.X).epsilon(0.02));
+}
