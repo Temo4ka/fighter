@@ -18,6 +18,7 @@
 #include "rig/pelvis_controller.hpp"
 #include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
+#include "stats/loading.hpp"
 
 namespace fighter::combat {
 namespace {
@@ -65,7 +66,7 @@ struct Battle::Simulation {
 };
 
 Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
-    const stats::BalanceTable Balance = stats::BalanceTable::getDefaults();
+    const stats::BalanceTable Balance = stats::loadBalanceTable(Cfg.DataDir / "balance.json");
     const CombatTuning Tuning = loadCombatTuning(Cfg.DataDir / "combat.json");
 
     Sim = std::make_unique<Simulation>(Simulation{

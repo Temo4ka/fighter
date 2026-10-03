@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -72,6 +73,23 @@ void validateStats(const Stats& BaseStats);
 /// also if it has weapon properties outside the Weapon slot, an empty weapon
 /// class, or a reach or scale out of range.
 void validateItem(const EquipmentItem& Item);
+
+/// One scalar coefficient of BalanceTable under its key in data/balance.json.
+/// (base_mass_kg is a table of its own and not listed here.)
+struct BalanceField {
+    std::string_view Key;
+    float BalanceTable::* Member;
+    bool MustBePositive;   ///< Otherwise the value may also be zero.
+};
+
+/// Every scalar coefficient of BalanceTable. The loader reads exactly these
+/// keys (and base_mass_kg); validateBalanceTable() checks them.
+std::span<const BalanceField> getBalanceFields();
+
+/// Throws DataError, naming the key and the value, if a coefficient is not
+/// finite, a part mass or a base value is not positive, a "per" coefficient
+/// is negative, a corridor has min above max or max_part_armor is out of (0, 1].
+void validateBalanceTable(const BalanceTable& Balance);
 
 /// Validates every item and throws DataError if two items take the same slot
 /// or their total mass exceeds MaxLoadoutMassKg.

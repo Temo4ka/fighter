@@ -42,6 +42,10 @@ struct Options {
     std::optional<std::string> Mode;                  ///< debug | both | textures (debug build only).
     bool Showcase = false;                            ///< Samples of every debug category.
     std::optional<DemoScript> Demo;                   ///< Scripted input instead of the keyboard.
+    /// Fighter sheets, data/fighters/<name>.json, for each side; nullopt: the
+    /// built-in sandbox fighter.
+    std::optional<std::string> LeftFighter;
+    std::optional<std::string> RightFighter;
 };
 
 class App {

@@ -11,6 +11,8 @@
 //   --mode debug|both|textures  initial mode of the debug layer (debug build)
 //   --showcase                  samples of every debug category (debug build)
 //   --demo walk|fight|kick      scripted input instead of the keyboard
+//   --left <fighter>            fighter sheet of P1 (data/fighters/<fighter>.json), default: built-in
+//   --right <fighter>           the same for P2
 //   --log <file>                duplicate the log to a file
 //
 // Project root (assets/, data/): the FIGHTER_ROOT environment variable,
@@ -34,6 +36,10 @@ int main(int Argc, char** Argv) {
         } else if (Arg == "--demo" && HasValue) {
             Opts.Demo = app::findDemoScript(Argv[++ArgIndex]);
             if (!Opts.Demo) log::warn("unknown demo script: {}", Argv[ArgIndex]);
+        } else if (Arg == "--left" && HasValue) {
+            Opts.LeftFighter = Argv[++ArgIndex];
+        } else if (Arg == "--right" && HasValue) {
+            Opts.RightFighter = Argv[++ArgIndex];
         } else if (Arg == "--showcase") {
             Opts.Showcase = true;
         } else if (Arg == "--log" && HasValue) {
