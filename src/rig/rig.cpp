@@ -160,6 +160,15 @@ void Rig::applyControl(float Dt) {
 void Rig::applyHit(float Impulse, float Direction) { applyHit(Impulse, {Direction, 0.0f}, getCenterOfMass()); }
 
 void Rig::applyHit(float Impulse, Vec2 Direction, Vec2 Point) {
+    const float Speed = Impulse * Control.KnockbackScale / TotalMass;
+    applyHit(Impulse, Direction, Point, CurrentPosture == Posture::Standing && Speed >= Control.KnockdownSpeed);
+}
+
+void Rig::applyHit(float Impulse, float Direction, bool KnockDown) {
+    applyHit(Impulse, {Direction, 0.0f}, getCenterOfMass(), KnockDown);
+}
+
+void Rig::applyHit(float Impulse, Vec2 Direction, Vec2 Point, bool KnockDown) {
     HitFactor = std::max(Control.MinStiffness, HitFactor - Impulse * Control.StiffnessPerImpulse);
     if (CurrentPosture == Posture::KnockedDown) return;
 
@@ -167,7 +176,7 @@ void Rig::applyHit(float Impulse, Vec2 Direction, Vec2 Point) {
     // are pushed back less.
     const float Speed = Impulse * Control.KnockbackScale / TotalMass;
     const Vec2 Push = Direction.getNormalized() * Speed;
-    if (CurrentPosture == Posture::Standing && Speed >= Control.KnockdownSpeed) {
+    if (KnockDown) {
         // The push of a rigid body hit off its center of mass also turns it:
         // angular velocity = (r x J) / I about the center of mass.
         const Vec2 Center = getCenterOfMass();

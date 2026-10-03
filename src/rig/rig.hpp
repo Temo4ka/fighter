@@ -150,6 +150,16 @@ public:
     /// it backwards, a low kick sweeps the legs). Combat calls it for every
     /// landed strike with HitEvent::Point.
     void applyHit(float Impulse, Vec2 Direction, Vec2 Point);
+    /// The same as above, but the caller decides whether the hit knocks the
+    /// fighter down (combat's reaction levels, task 2.3; the rig's
+    /// knockdownSpeed is then not used): with \p KnockDown a fighter that is
+    /// not lying already falls the way it was pushed, spun by where the hit
+    /// landed; otherwise it is only pushed back. Prefer this one with
+    /// HitEvent::Point over the overload without a point.
+    void applyHit(float Impulse, Vec2 Direction, Vec2 Point, bool KnockDown);
+    /// The caller decides about the knockdown, the push is horizontal at the
+    /// center of mass (no spin). Kept for combat (task 2.3).
+    void applyHit(float Impulse, float Direction, bool KnockDown);
     /// Adds knockback that moves the pelvis by about \p Distance (m, signed
     /// along X) in total: the push-out of rig::pushApartOnHit().
     void addPush(float Distance);
