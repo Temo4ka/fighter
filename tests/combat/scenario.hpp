@@ -37,8 +37,10 @@ namespace fighter::combat::test {
 inline constexpr double Dt = 1.0 / 60.0;
 inline constexpr int TicksPerSecond = 60;
 /// Distance between the fighters' floor points at which the attacker stops
-/// walking and strikes, m (as in the fight and kick demos).
-inline constexpr float JabRange = 0.72f;
+/// walking and strikes, m: where the clips of task 2.2 land reliably on a
+/// standing fighter (the jab reaches out furthest at 0.8-0.9 m).
+inline constexpr float JabRange = 0.85f;
+inline constexpr float HeavyRange = 0.8f;
 inline constexpr float KickRange = 0.95f;
 
 inline BattleConfig makeConfig() {

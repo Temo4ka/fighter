@@ -249,7 +249,10 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
 
 TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") {
     Battle Fight(makeConfig());
-    const AttackLog Log = attackDummy(Fight, false, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, JabRange);
+    // Closer than JabRange: the fist lands while the arm still extends, so
+    // the hit is strong enough to see the sway (at full reach it is a tap).
+    constexpr float CloseJabRange = 0.72f;
+    const AttackLog Log = attackDummy(Fight, false, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, CloseJabRange);
 
     REQUIRE_FALSE(Log.Hits.empty());
     for (const auto& Hit : Log.Hits) {
