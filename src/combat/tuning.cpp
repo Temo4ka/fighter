@@ -26,7 +26,14 @@ constexpr std::array TuningFields = {
     TuningField{"bodyHalfWidth", &CombatTuning::BodyHalfWidth},
     TuningField{"separationSpeed", &CombatTuning::SeparationSpeed},
     TuningField{"exhaustedSpeedScale", &CombatTuning::ExhaustedSpeedScale},
+    TuningField{"exhaustedRecoverFraction", &CombatTuning::ExhaustedRecoverFraction},
+    TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
+    TuningField{"blockWalkSpeedScale", &CombatTuning::BlockWalkSpeedScale},
+    TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
 };
+
+/// The only whole-number parameter.
+constexpr std::string_view MaxChainLengthKey = "maxChainLength";
 
 } // namespace
 
@@ -36,6 +43,13 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
         for (const auto& [Key, Value] : Root.items()) {
+            if (Key == MaxChainLengthKey) {
+                if (!Value.is_number_integer()) {
+                    throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
+                }
+                Tuning.MaxChainLength = Value.get<int>();
+                continue;
+            }
             const auto Found = std::ranges::find(TuningFields, Key, &TuningField::Key);
             if (Found == TuningFields.end()) throw std::runtime_error(std::format("unknown parameter '{}'", Key));
             Tuning.*(Found->Member) = Value.get<float>();
@@ -49,6 +63,15 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.ExhaustedSpeedScale <= 0.0f || Tuning.ExhaustedSpeedScale > 1.0f) {
         throw std::runtime_error("exhaustedSpeedScale must be in (0, 1]");
     }
+    if (Tuning.ExhaustedRecoverFraction < 0.0f || Tuning.ExhaustedRecoverFraction > 1.0f) {
+        throw std::runtime_error("exhaustedRecoverFraction must be in [0, 1]");
+    }
+    if (Tuning.ChainWindowSec < 0.0f) throw std::runtime_error("chainWindowSec must not be negative");
+    if (Tuning.MaxChainLength < 1) throw std::runtime_error("maxChainLength must be at least 1");
+    if (Tuning.BlockWalkSpeedScale < 0.0f || Tuning.BlockWalkSpeedScale > 1.0f) {
+        throw std::runtime_error("blockWalkSpeedScale must be in [0, 1]");
+    }
+    if (Tuning.EndSettleSec < 0.0f) throw std::runtime_error("endSettleSec must not be negative");
     return Tuning;
 }
 

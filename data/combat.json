@@ -3,5 +3,10 @@
   "hitSpeedThreshold": 0.6,
   "bodyHalfWidth": 0.25,
   "separationSpeed": 4.0,
-  "exhaustedSpeedScale": 0.7
+  "exhaustedSpeedScale": 0.7,
+  "exhaustedRecoverFraction": 0.3,
+  "chainWindowSec": 0.3,
+  "maxChainLength": 3,
+  "blockWalkSpeedScale": 0.5,
+  "endSettleSec": 1.2
 }
