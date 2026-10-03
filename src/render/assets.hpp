@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file lists the paths of assets used by the renderer, relative to the
-/// project root.
+/// project root. Pictures are not here: data/visuals.json names them.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -14,7 +14,7 @@
 
 namespace fighter::render::assets {
 
-inline constexpr const char* BackgroundPath = "assets/backgrounds/bg.jpeg";
+inline constexpr const char* VisualsPath = "data/visuals.json";
 inline constexpr const char* MonoFontPath = "assets/fonts/JetBrainsMono-Regular.ttf";
 
 } // namespace fighter::render::assets

@@ -20,8 +20,15 @@ add_executable(fighter_tests
     combat/test_snapshot.cpp
     combat/test_tuning.cpp
     render/test_camera.cpp
+    render/test_visuals.cpp
+    render/test_render_list.cpp
+    render/test_sprites.cpp
+    render/test_scene.cpp
+    render/test_effects.cpp
+    render/test_battle_renderer.cpp
     app/test_input.cpp
     app/test_demo_script.cpp
+    tools/test_placeholder_gen.cpp
 )
 
 target_link_libraries(fighter_tests PRIVATE
@@ -35,6 +42,7 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::combat
     fighter::render
     fighter::app_lib
+    fighter::placeholder_lib
 )
 fighter_target_options(fighter_tests)
 # Rigs and clips for the tests that build real fighters.
