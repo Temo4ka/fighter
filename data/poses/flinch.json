@@ -1,0 +1,14 @@
+{
+  "loop": false,
+  "duration": 0.28,
+  "stiffness": 1.0,
+  "allowMove": false,
+  "blendIn": 0.02,
+  "blendOut": 0.1,
+  "keys": [
+    { "t": 0.00, "pose": { "Torso": -8, "Head": 8 } },
+    { "t": 0.05, "pose": { "Torso": 6,  "Head": 28 } },
+    { "t": 0.12, "pose": { "Torso": 4,  "Head": 24 } },
+    { "t": 0.28, "pose": { "Torso": -8, "Head": 8 } }
+  ]
+}
