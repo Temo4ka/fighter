@@ -91,7 +91,59 @@ struct ControlParams {
     float GetUpSec = 0.8f;             ///< Time to get back into the stance, s.
     /// Motor stiffness while down; it ramps back to 1 while getting up.
     float KnockdownStiffness = 0.15f;
+    /// Multiplies the spin a knockdown gets from where the hit landed: a
+    /// hit high above the center of mass topples the body backwards, a hit
+    /// on the legs sweeps them. 0 is a plain push.
+    float KnockdownSpin = 1.0f;
+    /// Motor stiffness of a fighter that stays down (knocked out).
+    float KnockoutStiffness = 0.05f;
     /// @}
+
+    /// \name Two fighters and the walls (rig/spacing.hpp)
+    /// @{
+    /// A hit landed while the pelvises are closer than this pushes the
+    /// fighters apart until they are this far, m.
+    float CloseRange = 0.7f;
+    /// A standing fighter keeps its pelvis this far from a fighter lying on
+    /// the floor, m: its legs do not walk through the body.
+    float LyingClearance = 0.2f;
+    /// Closer to the wall than this, the fighter touches it, m.
+    float WallTouchDistance = 0.03f;
+    /// @}
+
+    /// \name Feet
+    /// @{
+    /// A foot whose sole is this close to the floor is planted: it holds its
+    /// place while the pelvis moves, the leg bends to reach it, m.
+    float FootPlantHeight = 0.01f;
+    /// How far a planted foot may stay away from where the clip puts it; a
+    /// longer pull (a knockback) drags it along the floor, m.
+    float FootLockSlip = 0.12f;
+    /// How fast a lifted foot returns to the clip, 1/s.
+    float FootLockRelease = 12.0f;
+    /// @}
+
+    /// \name Limbs stuck in the opponent
+    /// @{
+    /// A limb of the "unjam" list that touches the opponent and is this far
+    /// from its target angle for JamSec lets go: it passes through the
+    /// opponent until it is free, rad.
+    float JamAngle = 0.35f;
+    float JamSec = 0.3f;               ///< s.
+    /// @}
+};
+
+/// How the weapon of the loadout is attached to the body (the "weapon"
+/// object of a rig file). Its reach comes from the loadout
+/// (stats::WeaponProps::ReachM, RigSetup::WeaponReachM).
+struct WeaponMount {
+    /// The capsule part that holds it; the weapon starts at the part's far
+    /// end ("to", the fist) and is a part of it for physics and hits.
+    BodyPart Part = BodyPart::ForearmR;
+    /// Direction relative to the part's axis (from "from" to "to"), rad;
+    /// 0 continues the forearm.
+    float Angle = 0.0f;
+    float Radius = 0.025f;             ///< Thickness, m.
 };
 
 struct RigDef {
@@ -102,6 +154,16 @@ struct RigDef {
     /// list of the file): the root and a chain from it, posed from the clips.
     /// The other parts are physical, driven by joint motors.
     std::bitset<BodyPartCount> Kinematic;
+    /// Parts that pass through the same parts of the opponent (the
+    /// "passThrough" list of the file): in a side view both fighters' arms
+    /// are in one plane, and an arm caught behind the opponent's arm would
+    /// jam both. They still collide with every other part. Only physical
+    /// parts may pass through.
+    std::bitset<BodyPartCount> PassThrough;
+    /// Physical parts that let go of the opponent when they are stuck in it
+    /// (the "unjam" list of the file; ControlParams::JamAngle).
+    std::bitset<BodyPartCount> Unjam;
+    WeaponMount Weapon;
     ControlParams Control;
 
     const PartDef& getPart(BodyPart Part) const;

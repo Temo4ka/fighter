@@ -18,6 +18,7 @@
 #include "rig/pelvis_controller.hpp"
 #include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
+#include "rig/spacing.hpp"
 
 namespace fighter::combat {
 namespace {
@@ -43,8 +44,8 @@ constexpr float HitboxRadius = 0.16f;
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 // Only the debug build draws the panel.
 [[maybe_unused]] std::string describeAction(const FighterView& View);
-rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index);
-void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt);
+rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,
+                           uint8_t Index);
 
 } // namespace
 
@@ -81,8 +82,8 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
         const rig::RigDef Body = rig::loadRigDef(Cfg.DataDir / "rigs" / (FighterCfg->RigId + ".json"));
         const stats::PhysicalProfile Profile = stats::computeProfile(FighterCfg->Stats, FighterCfg->Loadout, Balance);
         const float StartX = Side * Tuning.SpawnDistance * 0.5f;
-        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Clips, Profile, makeRigSetup(Profile, StartX, Index),
-                                   FighterCfg->StartHp);
+        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Clips, Profile,
+                                   makeRigSetup(Profile, FighterCfg->Loadout, StartX, Index), FighterCfg->StartHp);
     }
     publishSnapshot();
 }
@@ -109,7 +110,10 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         ++Reports[Index].Moves[MoveId].Thrown;
         Events.push_back(StrikeStarted{.Fighter = Index, .MoveId = MoveId});
     }
-    keepApart(Left, Right, Cfg.Arena.HalfWidthM, Sim->Tuning, StepDt);
+    const rig::SpacingParams Spacing{.ArenaHalfWidth = Cfg.Arena.HalfWidthM,
+                                     .BodyHalfWidth = Sim->Tuning.BodyHalfWidth,
+                                     .SeparationSpeed = Sim->Tuning.SeparationSpeed};
+    rig::keepApart(Left.getRig(), Right.getRig(), Spacing, StepDt);
     Left.applyControl(StepDt);
     Right.applyControl(StepDt);
     Sim->PhysWorld.step(StepDt);
@@ -141,6 +145,7 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         const float AttackerX = Attacker.getRig().getPartPosition(BodyPart::Pelvis).X;
         const float VictimX = Victim.getRig().getPartPosition(BodyPart::Pelvis).X;
         Victim.onHit(Hit, VictimX >= AttackerX ? 1.0f : -1.0f);
+        rig::pushApartOnHit(Attacker.getRig(), Victim.getRig());
         // PLACEHOLDER until 2.3: no strength, damage, reaction or block yet.
         const std::string MoveId(Attacker.getMoveId());
         ++Reports[Hit.Attacker.Fighter].Moves[MoveId].Landed;
@@ -302,7 +307,8 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena) {
     }
 }
 
-rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, uint8_t Index) {
+rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,
+                           uint8_t Index) {
     rig::RigSetup Setup;
     Setup.Origin = {StartX, SpawnLift};
     Setup.FacingRight = StartX < 0.0f;   // fighters face each other
@@ -311,48 +317,8 @@ rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, float StartX, 
     Setup.MotorMaxTorque = Profile.MotorMaxTorque;
     Setup.MotorGain = Profile.MotorGain;
     Setup.MoveSpeedScale = Profile.MoveSpeedScale;
+    if (const stats::WeaponProps* Weapon = Gear.findWeapon()) Setup.WeaponReachM = Weapon->ReachM;
     return Setup;
-}
-
-/// Keeps the planned pelvis positions inside the arena and the fighters at
-/// least a body width apart. Kinematic pelvises do not collide, so this is
-/// their "collision": the overlap is split so that the heavier fighter gives
-/// way less; a fighter against a wall cannot give way at all.
-void keepApart(Fighter& Left, Fighter& Right, float ArenaHalfWidth, const CombatTuning& Tuning, float Dt) {
-    const float MaxX = ArenaHalfWidth - Tuning.BodyHalfWidth;
-    rig::Rig& LeftBody = Left.getRig();
-    rig::Rig& RightBody = Right.getRig();
-    const bool LeftUp = LeftBody.getPosture() != rig::Posture::KnockedDown;
-    const bool RightUp = RightBody.getPosture() != rig::Posture::KnockedDown;
-    rig::PelvisController& LeftMotion = LeftBody.getController();
-    rig::PelvisController& RightMotion = RightBody.getController();
-    if (LeftUp) LeftMotion.limit(-MaxX, MaxX);
-    if (RightUp) RightMotion.limit(-MaxX, MaxX);
-    // A ragdoll on the floor is not in the way: the other fighter's legs pass
-    // through it, its upper body still collides.
-    if (!LeftUp || !RightUp) return;
-
-    // The overlap goes away at a limited speed. Walking into each other is
-    // slower than that; a fighter getting up next to the other one is
-    // pushed out smoothly instead of jumping.
-    const float MinGap = 2.0f * Tuning.BodyHalfWidth;
-    const float Gap = RightMotion.getPlannedX() - LeftMotion.getPlannedX();
-    const float Overlap = std::min(MinGap - Gap, Tuning.SeparationSpeed * Dt);
-    if (Overlap <= 0.0f) return;
-    const float LeftMass = LeftBody.getTotalMass();
-    const float RightMass = RightBody.getTotalMass();
-    LeftMotion.shift(-Overlap * RightMass / (LeftMass + RightMass));
-    RightMotion.shift(Overlap * LeftMass / (LeftMass + RightMass));
-    LeftMotion.limit(-MaxX, MaxX);
-    RightMotion.limit(-MaxX, MaxX);
-
-    const float Rest = Gap + Overlap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
-    if (Rest <= 0.0f) return;
-    if (LeftMotion.getPlannedX() <= -MaxX) {
-        RightMotion.shift(Rest);
-    } else {
-        LeftMotion.shift(-Rest);
-    }
 }
 
 } // namespace

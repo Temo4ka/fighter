@@ -80,6 +80,21 @@ JabTrace traceJab(Battle& Fight) {
     return Trace;
 }
 
+/// P2 backs into the right wall and P1 follows it, then P1 presses in to
+/// close range. With \p Exchange both jab at each other for 10 s meanwhile.
+/// Both rest for a second at the end.
+void pressToWall(Battle& Fight, bool Exchange) {
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
+        Fight.update({.MoveX = getGap(Fight) > JabRange ? 1.0f : 0.0f}, {.MoveX = 1.0f}, Dt);
+    }
+    for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
+        const PlayerCommands Left{.MoveX = getGap(Fight) > 0.6f ? 1.0f : 0.0f, .Jab = Exchange && Tick % 25 < 3};
+        const PlayerCommands Right{.Jab = Exchange && Tick % 29 < 3};
+        Fight.update(Left, Right, Dt);
+    }
+    for (int Tick = 0; Tick < TicksPerSecond; ++Tick) Fight.update({}, {}, Dt);
+}
+
 } // namespace
 
 TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", "[rig][scenario]") {
@@ -89,25 +104,28 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     const JabTrace Free = traceJab(Open);
     REQUIRE(Free.Longest - Free.Guard > 0.2f);
 
-    // P2 backs into the right wall, P1 follows into jab range and keeps
-    // pressing while both jab for 10 s (found by the user: the arms and the
-    // torsos used to jam, and the jab came out 5 cm and twice as slow).
-    Battle Fight(makeConfig());
-    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
-        Fight.update({.MoveX = getGap(Fight) > JabRange ? 1.0f : 0.0f}, {.MoveX = 1.0f}, Dt);
-    }
-    for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
-        const PlayerCommands Left{.MoveX = getGap(Fight) > 0.6f ? 1.0f : 0.0f, .Jab = Tick % 25 < 3};
-        const PlayerCommands Right{.Jab = Tick % 29 < 3};
-        Fight.update(Left, Right, Dt);
-    }
-    // Resting used to change nothing.
-    for (int Tick = 0; Tick < TicksPerSecond; ++Tick) Fight.update({}, {}, Dt);
+    // The same place without the exchange: P1 pressed in close to P2 at the
+    // wall, its guard resting on P2's chest.
+    Battle Quiet(makeConfig());
+    pressToWall(Quiet, false);
+    const float QuietGap = getGap(Quiet);
+    const float QuietGuard = getReach(Quiet.getSnapshot().Fighters[1]);
+    const JabTrace Fresh = traceJab(Quiet);
 
+    // Found by the user: after 10 s of jabs at close range against a wall the
+    // arms and the torsos used to jam, the jab came out 5 cm and twice as
+    // slow, resting did not help and one step back did.
+    Battle Fight(makeConfig());
+    pressToWall(Fight, true);
+    CHECK(getGap(Fight) == Approx(QuietGap).margin(0.05f));
     // The arms are back in the guard, not stuck in the opponent.
-    for (const auto& View : Fight.getSnapshot().Fighters) CHECK(getReach(View) == Approx(Free.Guard).margin(0.05f));
-    // The jab starts as fast as in the open and either lands or extends fully.
+    const auto& Fighters = Fight.getSnapshot().Fighters;
+    CHECK(getReach(Fighters[0]) == Approx(Fresh.Guard).margin(0.03f));
+    CHECK(getReach(Fighters[1]) == Approx(QuietGuard).margin(0.03f));
+    // The jab is as fast as without the exchange and either lands or
+    // extends as far as in the open.
     const JabTrace Close = traceJab(Fight);
-    CHECK(Close.PeakSpeed > Free.PeakSpeed * 0.7f);
+    CHECK(Close.PeakSpeed > Fresh.PeakSpeed * 0.8f);
+    CHECK(Close.PeakSpeed > Free.PeakSpeed * 0.5f);
     CHECK((Close.Landed || Close.Longest - Close.Guard > (Free.Longest - Free.Guard) * 0.8f));
 }

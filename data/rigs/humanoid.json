@@ -36,6 +36,12 @@
 
   "kinematic": ["Pelvis", "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR"],
 
+  "passThrough": ["UpperArmL", "ForearmL", "UpperArmR", "ForearmR"],
+
+  "unjam": ["UpperArmL", "ForearmL", "UpperArmR", "ForearmR"],
+
+  "weapon": { "part": "ForearmR", "angle": 0, "radius": 0.025 },
+
   "control": {
     "torqueScale": 1.0,
     "gainScale": 1.0,
@@ -55,6 +61,19 @@
     "knockdownSpeed": 0.7,
     "knockdownSec": 1.5,
     "getUpSec": 0.8,
-    "knockdownStiffness": 0.15
+    "knockdownStiffness": 0.15,
+    "knockdownSpin": 1.0,
+    "knockoutStiffness": 0.05,
+
+    "closeRange": 0.7,
+    "lyingClearance": 0.2,
+    "wallTouchDistance": 0.03,
+
+    "footPlantHeight": 0.01,
+    "footLockSlip": 0.12,
+    "footLockRelease": 12.0,
+
+    "jamAngle": 0.35,
+    "jamSec": 0.3
   }
 }

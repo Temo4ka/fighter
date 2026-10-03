@@ -22,18 +22,34 @@
 /// support is not physical. Stiffness scales the motors: it is raised during
 /// own attacks, drops when the fighter is hit and recovers over time.
 ///
+/// The pelvis height follows the leg pose: the body is lifted so that the
+/// lowest posed part touches the floor, so a clip that bends the knees
+/// (a crouch) lowers the pelvis with the feet staying on the floor. A planted
+/// foot holds its place on the floor while the pelvis moves: the leg bends
+/// to reach it (two-bone IK), so the feet do not slide when the walk cycle
+/// and the walking speed disagree.
+///
 /// A strong hit knocks the fighter down: every part becomes dynamic and the
-/// body falls as a ragdoll; after a while the kinematic parts take over again
-/// and bring the pelvis back into the stance while the motors ramp up.
+/// body falls as a ragdoll, pushed and spun by the hit; after a while the
+/// kinematic parts take over again and bring the pelvis back into the
+/// stance while the motors ramp up. A fighter told to stay down
+/// (setStayDown, a knockout) does not get up.
+///
+/// Between two fighters (task 2.1): their arms pass each other (the
+/// "passThrough" list), a limb stuck in the opponent lets go until it is
+/// free ("unjam"), posed legs hit posed legs (physics::World), the pelvises
+/// keep apart and away from the walls (rig/spacing.hpp).
 ///
 /// The order of work per simulation step is explicit: set the targets, call
-/// planMotion(), let the battle correct the plan (getController()), call
-/// applyControl(), step the physics world, then report hits with applyHit().
+/// planMotion(), let the battle correct the plan (rig::keepApart or
+/// getController()), call applyControl(), step the physics world, then
+/// report hits with applyHit() (and rig::pushApartOnHit()).
 ///
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -59,6 +75,10 @@ struct RigSetup {
     float MotorMaxTorque = 150.0f; ///< N*m for a joint of strength 1 at stiffness 1.
     float MotorGain = 12.0f;       ///< 1/s: motor speed per radian of angle error.
     float MoveSpeedScale = 1.0f;   ///< Multiplies ControlParams::WalkSpeed (DEX).
+    /// How far the weapon of the loadout sticks out beyond the fist
+    /// (stats::WeaponProps::ReachM), m; 0 is unarmed. The rig file says
+    /// which part holds it (RigDef::Weapon).
+    float WeaponReachM = 0.0f;
 };
 
 /// What the body is doing as a whole.
@@ -69,6 +89,12 @@ enum class Posture : uint8_t {
 };
 
 std::string_view getPostureName(Posture State);
+
+/// The horizontal extent of a body, m.
+struct ExtentX {
+    float Min = 0.0f;
+    float Max = 0.0f;
+};
 
 /// The physics world owns the bodies and joints: a rig must not outlive it.
 class Rig {
@@ -88,6 +114,17 @@ public:
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
+    /// Turns the fighter to face right or left. Combat calls it when the
+    /// opponent has got behind the fighter (2.3 decides when; turning while
+    /// attacking looks odd). The body is mirrored about the pelvis in the
+    /// next applyControl(), velocities included, so nothing jumps apart;
+    /// while the fighter is down or getting up the turn waits until it
+    /// stands. Target angles stay "as for facing right".
+    void setFacing(bool FacingRight);
+    /// Keeps a knocked-down fighter on the floor as a limp ragdoll: it does
+    /// not get up until this is cleared. Combat sets it on a knockout; a
+    /// fighter that is still standing (or getting up) collapses where it is.
+    void setStayDown(bool Stay);
     /// @}
 
     /// Plans the pelvis motion of this step. The battle may correct the plan
@@ -102,19 +139,40 @@ public:
     void applyControl(float Dt);
 
     /// The fighter was hit with \p Impulse (N*s); \p Direction is +1 if the
-    /// hit pushes to the right, -1 to the left. Stiffness drops; a standing
-    /// fighter gets knockback or, if the hit is strong enough, is knocked down.
+    /// hit pushes to the right, -1 to the left. Same as the overload below
+    /// with a horizontal push at the center of mass.
     void applyHit(float Impulse, float Direction);
+    /// The fighter was hit with \p Impulse (N*s) at \p Point, pushed along
+    /// the unit vector \p Direction. Stiffness drops; a standing fighter gets
+    /// knockback (the horizontal part of the push) or, if the hit is strong
+    /// enough, is knocked down: it falls the way it was pushed and spins
+    /// about its center of mass by where the hit landed (a head hit topples
+    /// it backwards, a low kick sweeps the legs). Combat calls it for every
+    /// landed strike with HitEvent::Point.
+    void applyHit(float Impulse, Vec2 Direction, Vec2 Point);
+    /// Adds knockback that moves the pelvis by about \p Distance (m, signed
+    /// along X) in total: the push-out of rig::pushApartOnHit().
+    void addPush(float Distance);
+    /// Records which arena wall the fighter touches; rig::keepApart() calls
+    /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
+    /// the wall faces at +-WallX.
+    void updateWallContact(float MinX, float MaxX, float WallX);
 
     /// \name State
     /// @{
     const ControlParams& getControl() const { return Control; }
     bool isFacingRight() const { return Facing > 0.0f; }
+    /// Has setFacing() asked for a turn that has not happened yet?
+    bool isTurnPending() const { return RequestedFacing != Facing; }
     Posture getPosture() const { return CurrentPosture; }
     /// Time spent in the current posture, s.
     float getPostureSec() const { return PostureSec; }
+    bool isStayingDown() const { return StayDown; }
     /// Is \p Part moved by code right now (not physical)?
     bool isKinematic(BodyPart Part) const;
+    /// Has \p Part let go of the opponent: it passes through the opponent
+    /// until it is free (ControlParams::JamAngle)?
+    bool isUnjamming(BodyPart Part) const;
     float getStiffness() const;
     /// Mass of the whole fighter (the profile's), kg.
     float getTotalMass() const { return TotalMass; }
@@ -134,12 +192,25 @@ public:
     /// Angle of the joint whose child is \p Part, unmirrored (as in a pose), rad.
     float getJointAngle(BodyPart Part) const;
     void getPartTransforms(std::vector<PartTransform>& Out) const;
+    /// Where the body is along the arena, from the shapes of all parts, m.
+    ExtentX getExtentX() const;
+    /// The arena wall the fighter touches: -1 left, +1 right, 0 none
+    /// (updateWallContact()).
+    int getWallSide() const { return WallSide; }
+    /// Is the fighter's back against a wall: it touches the wall behind it
+    /// and cannot retreat? Combat fills FighterView::AgainstWall from it.
+    bool isAgainstWall() const { return WallSide != 0 && static_cast<float>(WallSide) == -Facing; }
+    /// Is this foot planted and held in place on the floor?
+    bool isFootLocked(BodyPart Foot) const;
+    /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
+    float getWeaponReach() const { return WeaponReach; }
     /// @}
 
     /// Hurtboxes come from the physics world's debug draw; the rig draws
     /// joint limits, the target pose ghost, motors, velocities (with the
-    /// pelvis controller) and the center of mass. Does nothing in the
-    /// release build.
+    /// pelvis controller), the center of mass, planted feet, wall contact,
+    /// freed limbs and the weapon, and fills the panel lines "P1 facing",
+    /// "P1 wall", "P1 feet", "P1 limbs". Does nothing in the release build.
     void drawDebug() const;
 
 private:
@@ -149,6 +220,11 @@ private:
         Vec2 Size;                ///< Bounds of the shape in the body frame.
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
+        uint64_t CollisionMask = 0; ///< While standing; a knockdown also drops the posed parts.
+        bool Unjam = false;       ///< May let go of the opponent (RigDef::Unjam).
+        BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
+        float StuckSec = 0.0f;    ///< Limb only: how long it has been stuck in the opponent.
+        bool Freed = false;       ///< Passes through the opponent until it is free.
     };
 
     struct JointState {
@@ -164,31 +240,79 @@ private:
         float RestDirection = 0.0f; ///< Direction of the child from the hinge in the reference pose, rad.
     };
 
+    /// A posed leg: hip, knee and ankle joints down to a foot (indices into
+    /// Joints), and how its foot is held on the floor.
+    struct Leg {
+        size_t Hip = 0;
+        size_t Knee = 0;
+        size_t Ankle = 0;
+        BodyPart Foot = BodyPart::FootL;
+        bool Locked = false;      ///< Planted: the ankle holds LockX.
+        float LockX = 0.0f;       ///< World X of the planted ankle, m.
+        float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
+    };
+
     /// Where a body origin is and how the body is turned.
     struct Placement {
         Vec2 Position;
         float Angle = 0.0f;
     };
 
+    /// The weapon shape on its part, in the part's body frame.
+    struct WeaponShape {
+        BodyPart Part = BodyPart::ForearmR;
+        Vec2 Grip;
+        Vec2 Tip;
+        float Radius = 0.0f;
+    };
+
     const PartState& getPart(BodyPart Part) const { return Parts[static_cast<size_t>(Part)]; }
-    /// The target pose by forward kinematics from a root placement.
-    PerBodyPart<Placement> computeTargetPose(Placement Root) const;
+    PartState& getPart(BodyPart Part) { return Parts[static_cast<size_t>(Part)]; }
+    void createParts(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup,
+                     PerBodyPart<Vec2>& Centers);
+    void createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup,
+                      const PerBodyPart<Vec2>& Centers);
+    void setStrikeMasses(physics::World& PhysWorld);
+    const JointState* findJoint(BodyPart Child) const;
+    void findLimbs(const RigDef& Def);
+    void findLegs();
+    /// The target pose by forward kinematics from a root placement, with
+    /// \p Corrections added to the joint targets (indexed by child part).
+    PerBodyPart<Placement> computeTargetPose(Placement RootPlacement,
+                                             const PerBodyPart<float>& Corrections = {}) const;
     /// Root placement at the controller position, at the height where the
     /// lowest kinematic part touches the floor.
     Placement getStandingRoot() const;
     float getPostureStiffness() const;
+    void advancePosture();
     void moveKinematicParts(float Dt);
+    /// Holds planted feet in place: returns the joint corrections of the
+    /// legs for the uncorrected pose \p Pose and updates the locks.
+    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, float Dt);
+    /// Joint corrections that bend \p Limb so that its ankle reaches
+    /// \p Ankle with the foot turned as in \p Pose.
+    void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
+                    PerBodyPart<float>& Corrections) const;
+    void releaseFeet();
     void driveMotors();
-    void knockDown(float Velocity);
+    void updateJams(float Dt);
+    void setLimbFreed(BodyPart Limb, bool Freed);
+    void refreshCollisionMask(PartState& Part) const;
+    void knockDown(Vec2 Velocity, float Spin);
     void startGettingUp();
+    void turnAround();
     void drawTargetPose() const;
     void drawJointsAndMotors() const;
     void drawController() const;
+    void drawFeetAndLimbs() const;
+    void drawWeapon() const;
+    void fillPanel() const;
 
     physics::World* Physics = nullptr;   ///< Switches parts between kinematic and dynamic.
     ControlParams Control;
     BodyPart Root = BodyPart::Pelvis;
     float Facing = 1.0f;          ///< +1 facing right, -1 facing left.
+    float RequestedFacing = 1.0f; ///< setFacing(); applied in applyControl().
     uint8_t FighterIndex = 0;
     float MotorMaxTorque = 0.0f;
     float MotorGain = 0.0f;
@@ -197,16 +321,25 @@ private:
 
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.
+    std::vector<Leg> Legs;
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
 
     PelvisController Controller;
     Posture CurrentPosture = Posture::Standing;
     float PostureSec = 0.0f;
+    bool StayDown = false;
     /// Kinematic parts as they lay when getting up started.
     PerBodyPart<Placement> GetUpFrom{};
 
     float BaseStiffness = 1.0f;
     float HitFactor = 1.0f;           ///< 1 without hits, drops to MinStiffness.
+    int WallSide = 0;
+    float WeaponReach = 0.0f;
+    WeaponShape Weapon;
+    /// The last knockdown push, for the debug draw: where and how hard.
+    Vec2 KnockdownPoint;
+    Vec2 KnockdownVelocity;
+    float KnockdownSpinRate = 0.0f;
 };
 
 } // namespace fighter::rig

@@ -78,7 +78,9 @@ bool Fighter::control(const PlayerCommands& Cmd, float Dt) {
 
 void Fighter::applyControl(float Dt) { Body.applyControl(Dt); }
 
-void Fighter::onHit(const physics::HitEvent& Hit, float Direction) { Body.applyHit(Hit.Impulse, Direction); }
+void Fighter::onHit(const physics::HitEvent& Hit, float Direction) {
+    Body.applyHit(Hit.Impulse, {Direction, 0.0f}, Hit.Point);
+}
 
 std::string_view Fighter::getClipName() const {
     if (Attack) return Attack->Name;
