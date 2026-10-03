@@ -9,6 +9,7 @@ add_executable(fighter_tests
     physics/test_world.cpp
     rig/test_rig_def.cpp
     rig/test_rig.cpp
+    rig/test_rig_scenarios.cpp
     anim/test_clip.cpp
     stats/test_stats.cpp
     stats/test_equipment.cpp
