@@ -41,6 +41,21 @@ void validateItem(const EquipmentItem& Item) {
 
     checkItemRange(Item, "mass", Item.MassKg, MaxItemMassKg, " kg");
     checkItemRange(Item, "armor", Item.Armor, MaxItemArmor, "");
+
+    if (!Item.Weapon) return;
+    const WeaponProps& Weapon = *Item.Weapon;
+    if (Item.Slot != EquipmentSlot::Weapon) {
+        throw DataError(std::format("item '{}' has weapon properties but is not in the Weapon slot", Item.Id));
+    }
+    if (Weapon.Class.empty()) throw DataError(std::format("weapon '{}' has an empty class", Item.Id));
+    checkItemRange(Item, "reach", Weapon.ReachM, MaxWeaponReachM, " m");
+    const auto CheckScale = [&](std::string_view Name, float Scale) {
+        if (Scale >= MinWeaponScale && Scale <= MaxWeaponScale) return;
+        throw DataError(std::format("weapon '{}': {} {} is out of [{}, {}]", Item.Id, Name, Scale, MinWeaponScale,
+                                    MaxWeaponScale));
+    };
+    CheckScale("speed scale", Weapon.SpeedScale);
+    CheckScale("power scale", Weapon.PowerScale);
 }
 
 void validateLoadout(const Loadout& Gear) {

@@ -27,6 +27,7 @@ std::string readFile(const std::filesystem::path& Path);
 void addItemsFromFile(ItemCatalog& Catalog, const std::filesystem::path& Path);
 void addItems(ItemCatalog& Catalog, const JsonValue& Root);
 EquipmentItem readItem(const JsonValue& Value);
+WeaponProps readWeapon(const JsonValue& Value);
 Stats readStats(const JsonValue& Value);
 FighterSheet readFighterSheet(const JsonValue& Root);
 
@@ -115,7 +116,7 @@ void addItems(ItemCatalog& Catalog, const JsonValue& Root) {
 
 EquipmentItem readItem(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"id", "name", "slot", "covers", "mass_kg", "armor"});
+    checkFieldNames(Value, {"id", "name", "slot", "covers", "mass_kg", "armor", "weapon"});
 
     EquipmentItem Item;
     Item.Id = readStringField(Value, "id");
@@ -143,8 +144,22 @@ EquipmentItem readItem(const JsonValue& Value) {
 
     Item.MassKg = readFloatField(Value, "mass_kg");
     Item.Armor = readFloatField(Value, "armor");
+    if (Value.contains("weapon")) {
+        Item.Weapon = withErrorContext("weapon", [&] { return readWeapon(getField(Value, "weapon")); });
+    }
     // Range checks are left to ItemCatalog::addItem(), which validates.
     return Item;
+}
+
+WeaponProps readWeapon(const JsonValue& Value) {
+    requireObject(Value);
+    checkFieldNames(Value, {"class", "reach_m", "speed_scale", "power_scale"});
+    return {
+        .Class = readStringField(Value, "class"),
+        .ReachM = readFloatField(Value, "reach_m"),
+        .SpeedScale = readFloatField(Value, "speed_scale"),
+        .PowerScale = readFloatField(Value, "power_scale"),
+    };
 }
 
 Stats readStats(const JsonValue& Value) {
