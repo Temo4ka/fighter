@@ -445,7 +445,13 @@ void Rig::findLegs() {
         if (!Knee) continue;
         const auto Ankle = findChildJoint(Joints[*Knee].Child);
         if (!Ankle) continue;
-        Legs.push_back({.Hip = Hip, .Knee = *Knee, .Ankle = *Ankle, .Foot = Joints[*Ankle].Child});
+        const Vec2 ThighBone = Joints[*Knee].AnchorInParent + Joints[Hip].ChildFromAnchor;
+        const Vec2 ShinBone = Joints[*Ankle].AnchorInParent + Joints[*Knee].ChildFromAnchor;
+        Legs.push_back({.Hip = Hip,
+                        .Knee = *Knee,
+                        .Ankle = *Ankle,
+                        .Foot = Joints[*Ankle].Child,
+                        .Length = ThighBone.getLength() + ShinBone.getLength()});
     }
 }
 
@@ -541,9 +547,17 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
             Limb.Locked = false;   // lifted: it returns to the clip from where it stood
         }
         if (Limb.Locked) {
-            // A pull longer than the slip (a knockback, a push) drags the foot.
-            Limb.LockX =
-                std::clamp(Limb.LockX, ClipAnkle.X - Control.FootLockSlip, ClipAnkle.X + Control.FootLockSlip);
+            // A pull longer than the slip (a knockback, a push) drags the
+            // foot, and so does one the leg cannot reach.
+            const JointState& Hip = Joints[Limb.Hip];
+            const Placement& Pelvis = Pose[static_cast<size_t>(Hip.Parent)];
+            const Vec2 HipPoint = Pelvis.Position + rotate(Hip.AnchorInParent, Pelvis.Angle);
+            const float Reach = Limb.Length - LegReachMargin;
+            const float Drop = HipPoint.Y - ClipAnkle.Y;
+            const float Span = std::sqrt(std::max(Reach * Reach - Drop * Drop, 0.0f));
+            const float Slip = Control.FootLockSlip;
+            Limb.LockX = std::clamp(Limb.LockX, std::max(ClipAnkle.X - Slip, std::min(HipPoint.X - Span, ClipAnkle.X)),
+                                    std::min(ClipAnkle.X + Slip, std::max(HipPoint.X + Span, ClipAnkle.X)));
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
             Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);

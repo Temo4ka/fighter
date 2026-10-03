@@ -463,7 +463,9 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
             .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
             .BodyKick = Distance <= KickRange && Phase < 3,
         };
-        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
+        // P2 backs away now and then, but stands still while P1 kicks: a
+        // kick that meets the legs at close range is weak (legs collide).
+        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 1 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
         First.update(LeftCmd, RightCmd, Dt);
         Second.update(LeftCmd, RightCmd, Dt);
         REQUIRE(getHits(First).size() == getHits(Second).size());

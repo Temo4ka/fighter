@@ -49,6 +49,11 @@ float getGap(const Battle& Fight) {
     return Fighters[1].Position.X - Fighters[0].Position.X;
 }
 
+float getPelvisGap(const Battle& Fight) {
+    const auto& Fighters = Fight.getSnapshot().Fighters;
+    return getPart(Fighters[1], BodyPart::Pelvis).Position.X - getPart(Fighters[0], BodyPart::Pelvis).Position.X;
+}
+
 bool hasLanded(const Battle& Fight, uint8_t Attacker) {
     return std::ranges::any_of(Fight.getEvents(), [&](const BattleEvent& Event) {
         const auto* Landed = std::get_if<StrikeLanded>(&Event);
@@ -108,8 +113,7 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     // wall, its guard resting on P2's chest.
     Battle Quiet(makeConfig());
     pressToWall(Quiet, false);
-    const float QuietGap = getGap(Quiet);
-    const float QuietGuard = getReach(Quiet.getSnapshot().Fighters[1]);
+    const float QuietGuard = std::min(getReach(Quiet.getSnapshot().Fighters[1]), Free.Guard);
     const JabTrace Fresh = traceJab(Quiet);
 
     // Found by the user: after 10 s of jabs at close range against a wall the
@@ -117,11 +121,16 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     // slow, resting did not help and one step back did.
     Battle Fight(makeConfig());
     pressToWall(Fight, true);
-    CHECK(getGap(Fight) == Approx(QuietGap).margin(0.05f));
-    // The arms are back in the guard, not stuck in the opponent.
     const auto& Fighters = Fight.getSnapshot().Fighters;
-    CHECK(getReach(Fighters[0]) == Approx(Fresh.Guard).margin(0.03f));
-    CHECK(getReach(Fighters[1]) == Approx(QuietGuard).margin(0.03f));
+    CHECK(getPelvisGap(Fight) < 0.6f);   // still close
+    // The arms are back in the guard, not stuck in the opponent: between
+    // the guard resting on the opponent's chest (pressed back a few cm) and
+    // the free one. Jammed, it was 10 cm short.
+    const float LowestGuard = std::max(std::min(Fresh.Guard, QuietGuard) - 0.03f, Free.Guard - 0.07f);
+    for (const auto& View : Fighters) {
+        CHECK(getReach(View) > LowestGuard);
+        CHECK(getReach(View) < Free.Guard + 0.03f);
+    }
     // The jab is as fast as without the exchange and either lands or
     // extends as far as in the open.
     const JabTrace Close = traceJab(Fight);

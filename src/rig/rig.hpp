@@ -247,6 +247,7 @@ private:
         size_t Knee = 0;
         size_t Ankle = 0;
         BodyPart Foot = BodyPart::FootL;
+        float Length = 0.0f;      ///< Hip to ankle with a straight knee, m.
         bool Locked = false;      ///< Planted: the ankle holds LockX.
         float LockX = 0.0f;       ///< World X of the planted ankle, m.
         float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
