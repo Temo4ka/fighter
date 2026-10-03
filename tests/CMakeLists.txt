@@ -10,6 +10,7 @@ add_executable(fighter_tests
     rig/test_rig_def.cpp
     rig/test_rig.cpp
     anim/test_clip.cpp
+    anim/test_playback.cpp
     stats/test_stats.cpp
     stats/test_equipment.cpp
     stats/test_loading.cpp
