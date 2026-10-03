@@ -2,8 +2,10 @@
 fighter_add_module(combat
     SOURCES
         battle.cpp
+        clip_library.cpp
         fighter.cpp
         moves.cpp
+        reactions.cpp
         snapshot.cpp
         tuning.cpp
     PUBLIC_DEPS

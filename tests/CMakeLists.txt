@@ -10,13 +10,18 @@ add_executable(fighter_tests
     rig/test_rig_def.cpp
     rig/test_rig.cpp
     anim/test_clip.cpp
+    anim/test_playback.cpp
+    anim/test_clips_data.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp
     stats/test_equipment.cpp
     stats/test_loading.cpp
     combat/test_battle.cpp
+    combat/test_clip_library.cpp
+    combat/test_fight.cpp
     combat/test_commands.cpp
     combat/test_moves.cpp
+    combat/test_reactions.cpp
     combat/test_snapshot.cpp
     combat/test_tuning.cpp
     render/test_camera.cpp
