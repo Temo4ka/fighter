@@ -30,6 +30,8 @@ EquipmentItem readItem(const JsonValue& Value);
 WeaponProps readWeapon(const JsonValue& Value);
 Stats readStats(const JsonValue& Value);
 FighterSheet readFighterSheet(const JsonValue& Root);
+BalanceTable readBalanceTable(const JsonValue& Root);
+void readBaseMasses(const JsonValue& Value, PerBodyPart<float>& Masses);
 
 void requireObject(const JsonValue& Value);
 void checkFieldNames(const JsonValue& Object, std::initializer_list<std::string_view> Allowed);
@@ -81,6 +83,14 @@ FighterSheet parseFighterSheet(std::string_view Text, std::string_view SourceNam
 
 FighterSheet loadFighterSheet(const std::filesystem::path& Path) {
     return withErrorContext(Path.string(), [&] { return readFighterSheet(parseJson(readFile(Path))); });
+}
+
+BalanceTable parseBalanceTable(std::string_view Text, std::string_view SourceName) {
+    return withErrorContext(SourceName, [&] { return readBalanceTable(parseJson(Text)); });
+}
+
+BalanceTable loadBalanceTable(const std::filesystem::path& Path) {
+    return withErrorContext(Path.string(), [&] { return readBalanceTable(parseJson(readFile(Path))); });
 }
 
 namespace {
@@ -188,6 +198,40 @@ FighterSheet readFighterSheet(const JsonValue& Root) {
         Sheet.ItemIds.push_back(readString(Items[Index], std::format("items[{}]", Index)));
     }
     return Sheet;
+}
+
+BalanceTable readBalanceTable(const JsonValue& Root) {
+    requireObject(Root);
+    // The keys are the BalanceField table plus base_mass_kg.
+    for (const auto& Field : Root.items()) {
+        const std::string& Key = Field.key();
+        const auto Fields = getBalanceFields();
+        const auto IsKnown = [&](const BalanceField& Known) { return Known.Key == Key; };
+        if (Key == "base_mass_kg" || std::ranges::any_of(Fields, IsKnown)) continue;
+        std::string Expected = "base_mass_kg";
+        for (const BalanceField& Known : Fields) Expected += ", " + std::string(Known.Key);
+        throw DataError(std::format("unknown field '{}' (expected one of: {})", Key, Expected));
+    }
+
+    BalanceTable Balance;
+    withErrorContext("base_mass_kg", [&] { readBaseMasses(getField(Root, "base_mass_kg"), Balance.BaseMassKg); });
+    for (const BalanceField& Field : getBalanceFields()) Balance.*Field.Member = readFloatField(Root, Field.Key);
+    validateBalanceTable(Balance);
+    return Balance;
+}
+
+void readBaseMasses(const JsonValue& Value, PerBodyPart<float>& Masses) {
+    requireObject(Value);
+    for (const auto& Field : Value.items()) {
+        if (!findBodyPart(Field.key())) {
+            throw DataError(std::format("unknown body part '{}' (expected one of: {})", Field.key(),
+                                        listBodyPartNames()));
+        }
+    }
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const std::string_view Name = getBodyPartName(static_cast<BodyPart>(Index));
+        Masses[Index] = readFloatField(Value, Name);
+    }
 }
 
 void requireObject(const JsonValue& Value) {

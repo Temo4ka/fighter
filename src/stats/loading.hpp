@@ -40,6 +40,14 @@
 ///    "items": ["iron_helmet", "chainmail"]}
 /// \endcode
 ///
+/// The balance table, data/balance.json (docs/DATA_FORMATS.md):
+/// \code
+///   {"base_mass_kg": {"Head": 5.0, "Torso": 26.0, ...all 13 parts...},
+///    "mass_per_con": 0.03, "base_motor_torque": 150.0, ...}
+/// \endcode
+/// Every field is required and an unknown one is an error; the values are
+/// checked by validateBalanceTable().
+///
 /// "name" of an item is optional and defaults to its id; "weapon" is optional
 /// (an item in the Weapon slot without it is not a weapon yet); every other
 /// field is required, including all four fields of "weapon".
@@ -78,5 +86,11 @@ FighterSheet parseFighterSheet(std::string_view Text, std::string_view SourceNam
 
 /// Loads a fighter sheet from a file.
 FighterSheet loadFighterSheet(const std::filesystem::path& Path);
+
+/// Parses data/balance.json into a BalanceTable.
+BalanceTable parseBalanceTable(std::string_view Text, std::string_view SourceName = InlineSourceName);
+
+/// Loads data/balance.json from a file.
+BalanceTable loadBalanceTable(const std::filesystem::path& Path);
 
 } // namespace fighter::stats
