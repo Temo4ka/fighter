@@ -8,6 +8,11 @@ constexpr uint64_t TicksPerSecond = 60;
 constexpr uint64_t PressTicks = 3;
 /// P1 attacks once in this many ticks while in range.
 constexpr uint64_t AttackPeriod = TicksPerSecond * 2 / 3;
+/// In the fight demo the jab is held this long at the start of its period,
+/// so that it starts once P1 is free and in range (after a kick P1 often
+/// walks in or recovers at the start of the period). Shorter than a jab, so
+/// that holding it does not repeat it.
+constexpr uint64_t JabHoldTicks = 15;
 /// Distance between the fighters (floor points) at which P1 stops walking
 /// and attacks, m. The kick lands with the foot from a little further away.
 constexpr float JabRange = 0.72f;
@@ -48,8 +53,9 @@ DemoInput getDemoInput(DemoScript Script, uint64_t Tick, const combat::RenderSna
         }
         case DemoScript::Fight: {
             // A combo: three jabs from close range, then a kick from kicking
-            // range. The kick is held through its turn, so it starts as soon
-            // as P1 is in range.
+            // range. The kick is held through its turn and each jab through
+            // the start of its period, so they start as soon as P1 is in
+            // range and free.
             const bool KickTurn = Tick / AttackPeriod % 4 == 3;
             const float Distance = getDistance(State);
             if (Distance > (KickTurn ? KickRange : JabRange)) {
@@ -64,7 +70,7 @@ DemoInput getDemoInput(DemoScript Script, uint64_t Tick, const combat::RenderSna
                 }
                 break;
             }
-            Left.Jab = isPressedEvery(Tick, AttackPeriod);
+            Left.Jab = Tick % AttackPeriod < JabHoldTicks;
             break;
         }
         case DemoScript::Kick:
