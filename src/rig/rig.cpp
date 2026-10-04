@@ -105,6 +105,7 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
     findLegs();
     Controller = PelvisController(getPart(Root).Handle.getPosition().X,
                                   {.WalkAcceleration = Control.WalkAcceleration,
+                                   .WalkDeceleration = Control.WalkDeceleration,
                                    .KnockbackDecay = Control.KnockbackDecay});
 }
 
@@ -294,6 +295,30 @@ ExtentX Rig::getExtentX() const {
 
 bool Rig::isFootLocked(BodyPart Foot) const {
     return std::ranges::any_of(Legs, [&](const Leg& Limb) { return Limb.Foot == Foot && Limb.Locked; });
+}
+
+float Rig::getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const {
+    // The joint targets of Angles as corrections to the current ones.
+    PerBodyPart<float> Corrections{};
+    for (const auto& Joint : Joints) {
+        const float Angle = std::clamp(Angles[static_cast<size_t>(Joint.Child)] * Facing, Joint.LowerAngle,
+                                       Joint.UpperAngle);
+        Corrections[static_cast<size_t>(Joint.Child)] = Angle - Joint.Target;
+    }
+    const Placement OnFloor{.Position = {}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
+    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
+    float Lowest = std::numeric_limits<float>::max();
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Lowest = std::min(Lowest, getLowestPoint(Part.Shape, Target.Position, Target.Angle));
+    }
+    const Placement& Sole = Pose[static_cast<size_t>(Foot)];
+    return getLowestPoint(getPart(Foot).Shape, Sole.Position, Sole.Angle) - Lowest;
+}
+
+void Rig::keepFeetPlanted() {
+    for (auto& Limb : Legs) {
+        if (Limb.Locked && !Limb.Stepping) Limb.KeptOffsetX = Limb.OffsetX;
+    }
 }
 
 void Rig::drawDebug() const {
@@ -550,12 +575,13 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
     const bool AllPlanted = std::ranges::all_of(Legs, &Leg::Locked);
     Leg* Farthest = nullptr;
     for (auto& Limb : Legs) {
-        if (Limb.Locked && (!Farthest || std::abs(Limb.OffsetX) > std::abs(Farthest->OffsetX))) Farthest = &Limb;
+        if (Limb.Locked && (!Farthest || getRestepDistance(Limb) > getRestepDistance(*Farthest))) Farthest = &Limb;
     }
     if (Idle && AllPlanted && Farthest && Control.FootRestepDistance > 0.0f &&
-        std::abs(Farthest->OffsetX) > Control.FootRestepDistance) {
+        getRestepDistance(*Farthest) > Control.FootRestepDistance) {
         Farthest->Stepping = true;
         Farthest->Locked = false;
+        Farthest->KeptOffsetX = 0.0f;
     }
 
     PerBodyPart<float> Corrections{};
@@ -575,6 +601,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
             Limb.LockX = ClipAnkle.X + Limb.OffsetX;
         } else if (!Planted && Limb.Locked) {
             Limb.Locked = false;   // lifted: it returns to the clip from where it stood
+            Limb.KeptOffsetX = 0.0f;
         }
         float Lift = 0.0f;
         if (Limb.Locked) {
@@ -646,11 +673,14 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     setCorrection(AnkleJoint, Foot.Angle - ShinAngle);   // the foot keeps its angle to the floor
 }
 
+float Rig::getRestepDistance(const Leg& Limb) { return std::abs(Limb.OffsetX - Limb.KeptOffsetX); }
+
 void Rig::releaseFeet() {
     for (auto& Limb : Legs) {
         Limb.Locked = false;
         Limb.Stepping = false;
         Limb.OffsetX = 0.0f;
+        Limb.KeptOffsetX = 0.0f;
     }
 }
 
@@ -910,6 +940,7 @@ void Rig::fillPanel() const {
         Feet += std::format("{} {} {:+.2f}", getBodyPartName(Limb.Foot),
                             Limb.Locked ? "planted" : Limb.Stepping ? "steps back" : "free",
                             Limb.OffsetX);
+        if (Limb.KeptOffsetX != 0.0f) Feet += std::format(" (kept {:+.2f})", Limb.KeptOffsetX);
     }
     debug::setPanel(Name + " feet", Feet);
 

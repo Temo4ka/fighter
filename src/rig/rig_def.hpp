@@ -69,7 +69,10 @@ struct ControlParams {
     /// @{
     float WalkSpeed = 1.2f;            ///< m/s; the profile's MoveSpeedScale (DEX) multiplies it.
     float BackwardSpeedScale = 0.7f;   ///< Walking backwards is slower.
-    float WalkAcceleration = 8.0f;     ///< How fast the walking speed is gained and lost, m/s^2.
+    float WalkAcceleration = 8.0f;     ///< How fast the walking speed is gained, m/s^2.
+    /// How fast it is lost when the fighter slows down or stops, m/s^2: the
+    /// pelvis should stop about as fast as the walk cycle stops on both feet.
+    float WalkDeceleration = 20.0f;
     /// @}
 
     /// \name Hit reaction

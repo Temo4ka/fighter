@@ -111,6 +111,17 @@ public:
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
     void setBaseStiffness(float Stiffness);
+    /// Takes the planted feet where they stand now as the stance: standing
+    /// still, a foot steps back under the body only when it is pushed
+    /// FootRestepDistance further from there (not from the clip). Combat
+    /// calls it when a walk has stopped on both feet, so that the feet left
+    /// off the clip by the walk do not take an extra step. Lifting a foot
+    /// forgets it.
+    void keepFeetPlanted();
+    /// For this step the feet follow the clip: a planted foot slides along
+    /// the floor instead of holding its place. Combat calls it while a walk
+    /// plays on quickly to a stop, so that the stop ends in the clip's pose.
+    void slideFeet() { releaseFeet(); }
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -212,6 +223,12 @@ public:
     bool isAgainstWall() const { return WallSide != 0 && static_cast<float>(WallSide) == -Facing; }
     /// Is this foot planted and held in place on the floor?
     bool isFootLocked(BodyPart Foot) const;
+    /// How high the sole of \p Foot would be above the floor if the body
+    /// stood in the pose \p Angles (as for setTargetAngles(), clamped to the
+    /// joint limits) with its lowest posed part on the floor, m. 0 for a foot
+    /// that carries the body. Combat finds the phases of a walk cycle where
+    /// both feet stand with it; it is the same lift as standing.
+    float getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
     /// @}
@@ -262,6 +279,7 @@ private:
         bool Stepping = false;    ///< Steps back under the body; plants when there.
         float LockX = 0.0f;       ///< World X of the planted ankle, m.
         float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
+        float KeptOffsetX = 0.0f; ///< The offset keepFeetPlanted() took as the stance, m.
     };
 
     /// Where a body origin is and how the body is turned.
@@ -306,6 +324,8 @@ private:
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
                     PerBodyPart<float>& Corrections) const;
     void releaseFeet();
+    /// How far a planted foot is from where it should stand still.
+    static float getRestepDistance(const Leg& Limb);
     void driveMotors();
     void updateJams(float Dt);
     void setLimbFreed(BodyPart Limb, bool Freed);
