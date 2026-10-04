@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares ClipLibrary, the clips of data/poses/ that the
-/// fighters' state machine plays: the stance, walking, crouching, the three
+/// fighters' state machine plays: the stance, walking, crouching (also walking crouched), the three
 /// block zones, the reactions and every clip the moves name.
 ///
 /// The file is internal to the combat module.
@@ -34,6 +34,10 @@ namespace clips {
 inline constexpr std::string_view Stance = "stance";
 inline constexpr std::string_view Walk = "walk";
 inline constexpr std::string_view Crouch = "crouch";
+inline constexpr std::string_view CrouchWalk = "crouch_walk";
+/// Optional: the legs of the switched stance (right foot forward). Without
+/// the file they are the stance's legs mirrored, left for right.
+inline constexpr std::string_view StanceSwitched = "stance_switched";
 inline constexpr std::string_view BlockHigh = "block_high";
 inline constexpr std::string_view BlockMid = "block_mid";
 inline constexpr std::string_view BlockLow = "block_low";
@@ -52,6 +56,9 @@ public:
     /// The clip loaded for \p Name. Throws std::out_of_range if it was not
     /// loaded.
     const anim::Clip& get(std::string_view Name) const;
+    /// The clip loaded for \p Name, or nullptr (an optional clip without its
+    /// file).
+    const anim::Clip* find(std::string_view Name) const;
     const anim::Clip& getBlock(BlockZone Zone) const;
     /// The clip of a reaction level, or nullptr if the level has none (None,
     /// Touch, and Knockdown, which the rig plays as a ragdoll).
@@ -59,6 +66,8 @@ public:
 
 private:
     void add(const std::filesystem::path& PosesDir, std::string_view Name);
+    /// Loads the clip if its file exists.
+    void addOptional(const std::filesystem::path& PosesDir, std::string_view Name);
 
     std::map<std::string, anim::Clip, std::less<>> Clips;
 };

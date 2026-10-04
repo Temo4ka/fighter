@@ -4,6 +4,7 @@ fighter_add_module(combat
         battle.cpp
         clip_library.cpp
         fighter.cpp
+        leg_cycle.cpp
         moves.cpp
         reactions.cpp
         snapshot.cpp

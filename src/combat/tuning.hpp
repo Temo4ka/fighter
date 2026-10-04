@@ -44,8 +44,25 @@ struct CombatTuning {
     float ChainWindowSec = 0.3f;
     /// The longest chain, strikes: jab -> jab -> heavy is 3 (O.7).
     int MaxChainLength = 3;
-    /// Walking while blocking is this much slower.
-    float BlockWalkSpeedScale = 0.5f;
+    /// While blocking the fighter cannot step forward; it steps back at this
+    /// share of the walking speed (the walk cycle plays backwards, slowly).
+    float BlockBackSpeedScale = 0.3f;
+    /// The move key released, a foot in the air: the walk cycle plays on to
+    /// the nearest phase with both feet down this many times faster than
+    /// walking (clip seconds per second).
+    float WalkStopRate = 3.0f;
+    /// Stopped in the normal stance, the legs cross over from the walk cycle
+    /// to the stance clip in this time; walking crosses back the same way, s.
+    float StanceSettleSec = 0.15f;
+    /// From the switched stance a jab or a kick (lead side left) steps the
+    /// legs back into the normal stance during its startup: in this share of
+    /// it (0..1]. The startup itself does not change.
+    float SwitchStepShare = 0.8f;
+    /// Walking while crouched is this much slower than walking.
+    float CrouchWalkSpeedScale = 0.5f;
+    /// A strike other than the low kick pressed while crouched: the fighter
+    /// stands up for this long before the strike starts, s.
+    float CrouchStandUpSec = 0.12f;
     /// After the end of the fight the bodies keep moving this long without
     /// input, so that a knockout fall plays out, s.
     float EndSettleSec = 1.2f;
