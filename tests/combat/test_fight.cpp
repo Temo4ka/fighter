@@ -178,12 +178,20 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
     // both stay on their feet for the whole series.
     ScratchData Data("heavy");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.03f, 0.12f, 0.35f, 0.6f, 1000.0f}}));
+    // Only the kicks that land with the foot on the pelvis are compared: the
+    // fighters are pushed back by different amounts, so the later kicks of
+    // the series meet them at different distances, and a shin brushing a
+    // thigh is far weaker than a foot on the pelvis whoever is kicked.
     const auto kickAt = [&](const FighterConfig& Victim) {
         BattleConfig Config = Data.makeConfig();
         Config.Right = Victim;
         Battle Fight(Config);
-        const std::vector<StrikeLanded> Hits = strike(Fight, {}, 6 * TicksPerSecond);
+        std::vector<StrikeLanded> Hits = strike(Fight, {}, 6 * TicksPerSecond);
         REQUIRE(Hits.size() >= 3);
+        std::erase_if(Hits, [](const StrikeLanded& Hit) {
+            return Hit.Contact.Attacker.Part != BodyPart::FootL || Hit.Contact.Victim.Part != BodyPart::Pelvis;
+        });
+        REQUIRE(Hits.size() >= 2);
         return Hits;
     };
 

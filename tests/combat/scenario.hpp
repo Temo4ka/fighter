@@ -57,8 +57,12 @@ inline constexpr float HeavyRange = 0.8f;
 /// lets go (unjam) and passes through the opponent while they overlap.
 inline constexpr float GuardJabRange = 0.88f;
 /// The body kick lands with the foot, on the pelvis (legs hit legs, task
-/// 2.1).
-inline constexpr float KickRange = 0.95f;
+/// 2.1). The walk stops at the steps' floor points (0.89, 0.90, 0.92, 0.94,
+/// 0.99 m from the default spawn): from 0.94 m the foot of the kick at full
+/// speed (no startup floor) grazes the top of the front thigh on its way up,
+/// the contact stop holds it there and it never reaches the pelvis; from
+/// the others it lands. This range stops the walk at 0.90 m.
+inline constexpr float KickRange = 0.92f;
 /// The body kick at close range: the shin lands on the torso.
 inline constexpr float CloseKickRange = 0.55f;
 

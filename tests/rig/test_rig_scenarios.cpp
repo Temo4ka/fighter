@@ -150,7 +150,8 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
 
 namespace {
 
-constexpr float KickRange = 0.95f;
+/// As test::KickRange (see there why not closer to 0.95 m).
+constexpr float KickRange = test::KickRange;
 
 bool isKnockedDown(const Battle& Fight, uint8_t Fighter) {
     return std::ranges::any_of(Fight.getEvents(), [&](const BattleEvent& Event) {
