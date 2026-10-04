@@ -242,8 +242,9 @@ public:
     /// Hurtboxes come from the physics world's debug draw; the rig draws
     /// joint limits, the target pose ghost, motors, velocities (with the
     /// pelvis controller), the center of mass, planted feet, wall contact,
-    /// freed limbs and the weapon, and fills the panel lines "P1 facing",
-    /// "P1 wall", "P1 feet", "P1 limbs". Does nothing in the release build.
+    /// freed limbs, posed strikers stopped at a contact and the weapon, and
+    /// fills the panel lines "P1 facing", "P1 wall", "P1 feet", "P1 limbs",
+    /// "P1 posed overlap". Does nothing in the release build.
     void drawDebug() const;
 
 private:

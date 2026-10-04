@@ -961,6 +961,21 @@ void Rig::fillPanel() const {
     }
     if (StayDown) Limbs += Limbs.empty() ? "stays down" : ", stays down";
     debug::setPanel(Name + " limbs", Limbs);
+
+    // Posed parts sinking into the opponent's posed parts: nothing in
+    // physics keeps them apart (only a stopped strike and the pelvis spacing).
+    float Overlap = 0.0f;
+    BodyPart Deepest = Root;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto Part = static_cast<BodyPart>(Index);
+        const float Depth = getPosedPenetration(Part);
+        if (Depth <= Overlap) continue;
+        Overlap = Depth;
+        Deepest = Part;
+    }
+    debug::setPanel(Name + " posed overlap", Overlap > 0.0f ? std::format("{} {:.3f} m{}", getBodyPartName(Deepest),
+                                                                          Overlap, StoppedAtContact ? ", stopped" : "")
+                                                            : "-");
 }
 
 namespace {
