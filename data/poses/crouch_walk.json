@@ -1,0 +1,16 @@
+{
+  "loop": true,
+  "duration": 1.0,
+  "keys": [
+    { "t": 0.00, "pose": { "ThighL": 66, "ShinL": -96,  "FootL": 30, "ThighR": 43, "ShinR": -113, "FootR": 35 } },
+    { "t": 0.05, "pose": { "ThighL": 64, "ShinL": -98,  "FootL": 34, "ThighR": 40, "ShinR": -112, "FootR": 35 } },
+    { "t": 0.15, "pose": { "ThighL": 62, "ShinL": -103, "FootL": 35, "ThighR": 52, "ShinR": -121, "FootR": 35 } },
+    { "t": 0.25, "pose": { "ThighL": 58, "ShinL": -108, "FootL": 35, "ThighR": 62, "ShinR": -124, "FootR": 35 } },
+    { "t": 0.35, "pose": { "ThighL": 53, "ShinL": -112, "FootL": 35, "ThighR": 68, "ShinR": -117, "FootR": 35 } },
+    { "t": 0.50, "pose": { "ThighL": 43, "ShinL": -113, "FootL": 35, "ThighR": 66, "ShinR": -96,  "FootR": 30 } },
+    { "t": 0.55, "pose": { "ThighL": 40, "ShinL": -112, "FootL": 35, "ThighR": 64, "ShinR": -98,  "FootR": 34 } },
+    { "t": 0.65, "pose": { "ThighL": 52, "ShinL": -121, "FootL": 35, "ThighR": 62, "ShinR": -103, "FootR": 35 } },
+    { "t": 0.75, "pose": { "ThighL": 62, "ShinL": -124, "FootL": 35, "ThighR": 58, "ShinR": -108, "FootR": 35 } },
+    { "t": 0.85, "pose": { "ThighL": 68, "ShinL": -117, "FootL": 35, "ThighR": 53, "ShinR": -112, "FootR": 35 } }
+  ]
+}

@@ -23,7 +23,9 @@ add_executable(fighter_tests
     combat/test_clip_library.cpp
     combat/test_fight.cpp
     combat/test_commands.cpp
+    combat/test_leg_cycle.cpp
     combat/test_moves.cpp
+    combat/test_movement.cpp
     combat/test_reactions.cpp
     combat/test_snapshot.cpp
     combat/test_tuning.cpp

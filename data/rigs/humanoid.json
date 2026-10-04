@@ -51,6 +51,7 @@
     "walkSpeed": 1.2,
     "backwardSpeedScale": 0.7,
     "walkAcceleration": 8.0,
+    "walkDeceleration": 20.0,
 
     "minStiffness": 0.25,
     "stiffnessPerImpulse": 0.03,

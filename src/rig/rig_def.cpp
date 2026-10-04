@@ -38,6 +38,7 @@ constexpr std::array ControlFields = {
     ControlField{"walkSpeed", &ControlParams::WalkSpeed},
     ControlField{"backwardSpeedScale", &ControlParams::BackwardSpeedScale},
     ControlField{"walkAcceleration", &ControlParams::WalkAcceleration},
+    ControlField{"walkDeceleration", &ControlParams::WalkDeceleration},
     ControlField{"minStiffness", &ControlParams::MinStiffness},
     ControlField{"stiffnessPerImpulse", &ControlParams::StiffnessPerImpulse},
     ControlField{"stiffnessRecovery", &ControlParams::StiffnessRecovery},
@@ -68,8 +69,8 @@ constexpr std::array<std::string_view, 15> NonNegativeFields = {
     "knockdownSpin",  "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness"};
 
 /// Parameters that must be positive: they divide or set a duration.
-constexpr std::array<std::string_view, 4> PositiveFields = {"walkSpeed", "walkAcceleration", "knockdownSpeed",
-                                                            "getUpSec"};
+constexpr std::array<std::string_view, 5> PositiveFields = {"walkSpeed", "walkAcceleration", "walkDeceleration",
+                                                            "knockdownSpeed", "getUpSec"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);

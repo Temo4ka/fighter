@@ -260,6 +260,28 @@ TEST_CASE("PelvisController: walking accelerates to the target speed", "[rig]") 
     CHECK(Controller.getVelocity() == Approx(1.5f));
 }
 
+TEST_CASE("PelvisController: stopping uses the deceleration", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 6.0f, .WalkDeceleration = 20.0f, .KnockbackDecay = 5.0f});
+    Controller.setTargetVelocity(1.2f);
+    for (int Step = 0; Step < 10; ++Step) {
+        Controller.plan(0.1f);
+        Controller.commit(0.1f);
+    }
+    CHECK(Controller.getWalkVelocity() == Approx(1.2f));
+    Controller.setTargetVelocity(0.0f);
+    Controller.plan(0.05f);
+    CHECK(Controller.getWalkVelocity() == Approx(0.2f));   // 1.2 - 20 * 0.05
+    Controller.commit(0.05f);
+    Controller.plan(0.05f);
+    CHECK(Controller.getWalkVelocity() == 0.0f);
+    // Turning round brakes first, at the deceleration.
+    Controller.setTargetVelocity(1.0f);
+    Controller.plan(0.1f);
+    Controller.setTargetVelocity(-1.0f);
+    Controller.plan(0.01f);
+    CHECK(Controller.getWalkVelocity() == Approx(0.6f - 0.2f));
+}
+
 TEST_CASE("PelvisController: knockback decays and walls stop it", "[rig]") {
     PelvisController Controller(0.0f, {.WalkAcceleration = 6.0f, .KnockbackDecay = 5.0f});
     Controller.addKnockback(2.0f);
@@ -284,4 +306,18 @@ TEST_CASE("PelvisController: knockback decays and walls stop it", "[rig]") {
     Controller.shift(-0.2f);
     Controller.commit(0.1f);
     CHECK(Controller.getPositionX() == Approx(0.3f));
+}
+
+TEST_CASE("Rig: getSoleHeight lifts a bent leg's foot off the floor", "[rig]") {
+    Scene Setup(makeSetup(true));
+    PerBodyPart<float> Angles{};
+    // Both legs straight: both soles on the floor.
+    CHECK(Setup.Body.getSoleHeight(Angles, BodyPart::FootL) == Approx(0.0f).margin(0.002f));
+    CHECK(Setup.Body.getSoleHeight(Angles, BodyPart::FootR) == Approx(0.0f).margin(0.002f));
+    // The left knee bent: the right leg carries the body, the left foot is up.
+    Angles[static_cast<size_t>(BodyPart::ShinL)] = -1.2f;
+    CHECK(Setup.Body.getSoleHeight(Angles, BodyPart::FootR) == Approx(0.0f).margin(0.002f));
+    CHECK(Setup.Body.getSoleHeight(Angles, BodyPart::FootL) > 0.1f);
+    // The pose of the rig itself is not changed by the probe.
+    CHECK(Setup.Body.getSoleHeight(makeTargets(), BodyPart::FootR) == Approx(0.0f).margin(0.002f));
 }

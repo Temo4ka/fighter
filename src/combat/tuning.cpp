@@ -28,7 +28,12 @@ constexpr std::array TuningFields = {
     TuningField{"exhaustedSpeedScale", &CombatTuning::ExhaustedSpeedScale},
     TuningField{"exhaustedRecoverFraction", &CombatTuning::ExhaustedRecoverFraction},
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
-    TuningField{"blockWalkSpeedScale", &CombatTuning::BlockWalkSpeedScale},
+    TuningField{"blockBackSpeedScale", &CombatTuning::BlockBackSpeedScale},
+    TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
+    TuningField{"stanceSettleSec", &CombatTuning::StanceSettleSec},
+    TuningField{"switchStepShare", &CombatTuning::SwitchStepShare},
+    TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
+    TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
     TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
     TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
     TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
@@ -37,8 +42,9 @@ constexpr std::array TuningFields = {
 
 /// The only whole-number parameter.
 constexpr std::string_view MaxChainLengthKey = "maxChainLength";
-/// The only yes/no parameter.
+/// The yes/no parameters.
 constexpr std::string_view ContactStopInStartupKey = "contactStopInStartup";
+constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
 
 } // namespace
 
@@ -62,6 +68,13 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
                 Tuning.ContactStopInStartup = Value.get<bool>();
                 continue;
             }
+            if (Key == StopSlidesFeetKey) {
+                if (!Value.is_boolean()) {
+                    throw std::runtime_error(std::format("{} must be true or false, not {}", Key, Value.dump()));
+                }
+                Tuning.StopSlidesFeet = Value.get<bool>();
+                continue;
+            }
             const auto Found = std::ranges::find(TuningFields, Key, &TuningField::Key);
             if (Found == TuningFields.end()) throw std::runtime_error(std::format("unknown parameter '{}'", Key));
             Tuning.*(Found->Member) = Value.get<float>();
@@ -80,9 +93,18 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     }
     if (Tuning.ChainWindowSec < 0.0f) throw std::runtime_error("chainWindowSec must not be negative");
     if (Tuning.MaxChainLength < 1) throw std::runtime_error("maxChainLength must be at least 1");
-    if (Tuning.BlockWalkSpeedScale < 0.0f || Tuning.BlockWalkSpeedScale > 1.0f) {
-        throw std::runtime_error("blockWalkSpeedScale must be in [0, 1]");
+    if (Tuning.BlockBackSpeedScale < 0.0f || Tuning.BlockBackSpeedScale > 1.0f) {
+        throw std::runtime_error("blockBackSpeedScale must be in [0, 1]");
     }
+    if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
+    if (Tuning.StanceSettleSec < 0.0f) throw std::runtime_error("stanceSettleSec must not be negative");
+    if (Tuning.SwitchStepShare <= 0.0f || Tuning.SwitchStepShare > 1.0f) {
+        throw std::runtime_error("switchStepShare must be in (0, 1]");
+    }
+    if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {
+        throw std::runtime_error("crouchWalkSpeedScale must be in (0, 1]");
+    }
+    if (Tuning.CrouchStandUpSec < 0.0f) throw std::runtime_error("crouchStandUpSec must not be negative");
     if (Tuning.EndSettleSec < 0.0f) throw std::runtime_error("endSettleSec must not be negative");
     if (Tuning.ContactStopDepth <= 0.0f) throw std::runtime_error("contactStopDepth must be positive");
     if (Tuning.ContactHoldSec < 0.0f) throw std::runtime_error("contactHoldSec must not be negative");
