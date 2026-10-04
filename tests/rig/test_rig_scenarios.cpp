@@ -150,8 +150,13 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
 
 namespace {
 
-/// As test::KickRange (see there why not closer to 0.95 m).
-constexpr float KickRange = test::KickRange;
+/// Distance between the floor points at which P1 stops walking and kicks,
+/// m: the foot lands on the pelvis both in the open (the walk stops at
+/// 0.86 m) and at the wall (at 0.87 m, after the long walk there). From
+/// the walk's stops at 0.90 m at the wall (0.94 m in the open before the
+/// walk stopped on both feet) the foot grazes the top of the front thigh on
+/// its way up and the contact stop holds it there (see test::KickRange).
+constexpr float KickRange = 0.88f;
 
 bool isKnockedDown(const Battle& Fight, uint8_t Fighter) {
     return std::ranges::any_of(Fight.getEvents(), [&](const BattleEvent& Event) {
