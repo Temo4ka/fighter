@@ -13,6 +13,7 @@ add_executable(fighter_tests
     anim/test_playback.cpp
     anim/test_clips_data.cpp
     stats/test_stats.cpp
+    stats/test_balance.cpp
     stats/test_equipment.cpp
     stats/test_loading.cpp
     combat/test_battle.cpp
