@@ -23,8 +23,9 @@ using Json = nlohmann::json;
 
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
+float clampRate(float Rate);
+bool hasStartup(const Clip& Source);
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
-Pose blendPoses(const Pose& From, const Pose& To, float T);
 Pose parsePose(const Json& Node);
 void validateClip(const Clip& Result);
 
@@ -60,16 +61,48 @@ Pose sampleClip(const Clip& Source, float TimeSec) {
     return blendPoses(Before.Target, Next->Target, T);
 }
 
+float advanceClipTime(const Clip& Source, float TimeSec, float Dt, float Rate) {
+    const float Next = TimeSec + Dt * clampRate(Rate);
+    if (!Source.Loop) return std::min(Next, Source.DurationSec);
+    const float Wrapped = std::fmod(Next, Source.DurationSec);
+    return Wrapped < 0.0f ? Wrapped + Source.DurationSec : Wrapped;
+}
+
+Pose sampleClipAtRate(const Clip& Source, float ElapsedSec, float Rate) {
+    return sampleClip(Source, ElapsedSec * clampRate(Rate));
+}
+
+float getDurationAtRate(const Clip& Source, float Rate) { return Source.DurationSec / clampRate(Rate); }
+
+float getStartupAtRate(const Clip& Source, float Rate) { return Source.ActiveBeginSec / clampRate(Rate); }
+
+float getActiveEndAtRate(const Clip& Source, float Rate) { return Source.ActiveEndSec / clampRate(Rate); }
+
+float getRateForStartup(const Clip& Source, float StartupSec) {
+    if (!hasStartup(Source) || StartupSec <= 0.0f) return 1.0f;
+    return clampRate(Source.ActiveBeginSec / StartupSec);
+}
+
+float limitRateByStartup(const Clip& Source, float Rate, float MinStartupSec) {
+    const float Limited = clampRate(Rate);
+    if (!hasStartup(Source) || MinStartupSec <= 0.0f) return Limited;
+    return clampRate(std::min(Limited, Source.ActiveBeginSec / MinStartupSec));
+}
+
 Clip parseClip(std::string_view JsonText, std::string Name) {
     Clip Result;
     Result.Name = std::move(Name);
     try {
         const Json Root = Json::parse(JsonText);
-        checkKeys(Root, {"loop", "duration", "active", "strikers", "stiffness", "allowMove", "keys"}, "clip");
+        checkKeys(Root,
+                  {"loop", "duration", "active", "strikers", "stiffness", "allowMove", "blendIn", "blendOut", "keys"},
+                  "clip");
         Result.Loop = Root.value("loop", false);
         Result.DurationSec = Root.at("duration").get<float>();
         Result.Stiffness = Root.value("stiffness", 1.0f);
         Result.AllowMove = Root.value("allowMove", true);
+        Result.BlendInSec = Root.value("blendIn", DefaultBlendInSec);
+        Result.BlendOutSec = Root.value("blendOut", DefaultBlendOutSec);
         if (const auto Active = Root.find("active"); Active != Root.end()) {
             Result.ActiveBeginSec = Active->at(0).get<float>();
             Result.ActiveEndSec = Active->at(1).get<float>();
@@ -101,6 +134,13 @@ Clip loadClip(const std::filesystem::path& Path) {
 
 namespace {
 
+float clampRate(float Rate) { return std::max(Rate, MinPlaybackRate); }
+
+/// Does the clip have an active phase that starts after the clip does?
+bool hasStartup(const Clip& Source) {
+    return Source.ActiveEndSec > Source.ActiveBeginSec && Source.ActiveBeginSec > 0.0f;
+}
+
 /// Throws if \p Node has a key that is not in \p Known: a typo in a data
 /// file must not be silently ignored during live tuning.
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where) {
@@ -110,12 +150,6 @@ void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, 
             throw std::runtime_error(std::format("{}: unknown key '{}'", Where, Item.key()));
         }
     }
-}
-
-Pose blendPoses(const Pose& From, const Pose& To, float T) {
-    Pose Result = From;
-    for (auto&& [Angle, Target] : std::views::zip(Result.Angles, To.Angles)) Angle += (Target - Angle) * T;
-    return Result;
 }
 
 Pose parsePose(const Json& Node) {
@@ -134,6 +168,11 @@ void validateClip(const Clip& Result) {
     };
     if (Result.Keys.empty()) Fail("no keys");
     if (Result.DurationSec <= 0.0f) Fail("duration must be positive");
+    if (Result.ActiveBeginSec < 0.0f || Result.ActiveEndSec < Result.ActiveBeginSec ||
+        Result.ActiveEndSec > Result.DurationSec) {
+        Fail("active must be [begin, end] with 0 <= begin <= end <= duration");
+    }
+    if (Result.BlendInSec < 0.0f || Result.BlendOutSec < 0.0f) Fail("blendIn and blendOut must not be negative");
     if (Result.Keys.front().TimeSec != 0.0f) Fail("the first key must be at t = 0");
     for (const auto& Key : Result.Keys) {
         if (Key.Target.Mask != Result.Keys.front().Target.Mask) Fail("every key must set the same joints");

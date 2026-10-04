@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -25,6 +26,7 @@
 #include "app/input.hpp"
 #include "combat/battle.hpp"
 #include "core/fixed_step_loop.hpp"
+#include "core/signal.hpp"
 #include "render/battle_renderer.hpp"
 #include "render/camera.hpp"
 #include "render/resources.hpp"
@@ -77,6 +79,14 @@ private:
     render::DebugOverlay Overlay;
     bool ShowcaseVisible = false;
 #endif
+
+    /// Skins of the left and the right fighter, keys of data/visuals.json
+    /// "skins"; empty: its default_skin.
+    std::array<std::string, 2> Skins;
+    /// The events of each step go out through this signal (docs/ARCHITECTURE.md,
+    /// "События"); the second argument is the snapshot after the step.
+    Signal<const combat::BattleEvent&, const combat::RenderSnapshot&> BattleEvents;
+    Connection RendererEvents;
 
     InputSystem Input;
     FixedStepLoop Loop;
