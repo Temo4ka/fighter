@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "debug/draw.hpp"
 
@@ -146,6 +148,7 @@ void Rig::planMotion(float Dt) {
 }
 
 void Rig::applyControl(float Dt) {
+    StoppedAtContact = false;
     HitFactor = std::min(1.0f, HitFactor + Control.StiffnessRecovery * Dt);
     PostureSec += Dt;
     advancePosture();
@@ -217,6 +220,29 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
     WallSide = Planned <= MinX + Control.WallTouchDistance   ? -1
                : Planned >= MaxX - Control.WallTouchDistance ? 1
                                                              : 0;
+}
+
+std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
+    StoppedAtContact = false;
+    if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
+    std::vector<physics::Body> Posed;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
+    }
+    if (Posed.empty()) return std::nullopt;
+    const float Fraction = Physics->findPosedStop(Posed, MaxDepth);
+    if (Fraction >= 1.0f) return std::nullopt;
+    // The whole posed body goes back, so the leg stays on its hip.
+    for (const auto& Part : Parts) {
+        if (Part.Kinematic) Physics->rewindBody(Part.Handle, Fraction);
+    }
+    StoppedAtContact = true;
+    StoppedParts = Strikers;
+    return Fraction;
+}
+
+float Rig::getPosedPenetration(BodyPart Part) const {
+    return isKinematic(Part) ? Physics->getPosedPenetration(getPart(Part).Handle) : 0.0f;
 }
 
 bool Rig::isKinematic(BodyPart Part) const {
@@ -875,6 +901,15 @@ void Rig::drawFeetAndLimbs() const {
         if (!Part.Unjam || !getPart(Part.Limb).Freed) continue;
         drawShape(debug::Cat::Contacts, Part.Shape, Part.Handle.getPosition(), Part.Handle.getAngle());
         debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "free");
+    }
+    // Posed strikers held at the opponent's posed parts in the last step.
+    if (StoppedAtContact) {
+        for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+            const PartState& Part = Parts[Index];
+            if (!StoppedParts.test(Index) || !isKinematic(static_cast<BodyPart>(Index))) continue;
+            drawShape(debug::Cat::Contacts, Part.Shape, Part.Handle.getPosition(), Part.Handle.getAngle());
+            debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "stopped");
+        }
     }
     // The wall the fighter touches.
     if (WallSide != 0) {

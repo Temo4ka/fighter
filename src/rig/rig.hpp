@@ -35,10 +35,14 @@
 /// stance while the motors ramp up. A fighter told to stay down
 /// (setStayDown, a knockout) does not get up.
 ///
-/// Between two fighters (task 2.1): their arms pass each other (the
-/// "passThrough" list), a limb stuck in the opponent lets go until it is
-/// free ("unjam"), posed legs hit posed legs (physics::World), the pelvises
-/// keep apart and away from the walls (rig/spacing.hpp).
+/// Between two fighters (task 2.1): parts of the "passThrough" list pass the
+/// same parts of the opponent (empty in the shipped rig: the arms collide,
+/// a jab hits the raised guard), a limb stuck in the opponent lets go until
+/// it is free ("unjam"), posed legs hit posed legs (physics::World), the
+/// pelvises keep apart and away from the walls (rig/spacing.hpp). A posed
+/// striking limb stops where it meets the opponent's posed parts
+/// (stopAtContact): Box2D does not collide two kinematic bodies, so a kick
+/// would go through the legs it hits.
 ///
 /// The order of work per simulation step is explicit: set the targets, call
 /// planMotion(), let the battle correct the plan (rig::keepApart or
@@ -50,8 +54,10 @@
 #pragma once
 
 #include <array>
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -167,10 +173,19 @@ public:
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
+    /// Call after the physics step. If a posed part of \p Strikers sank
+    /// deeper than \p MaxDepth (m) into a posed part of the opponent during
+    /// the step, every posed part goes back along its motion of the step to
+    /// where the strikers were MaxDepth deep (the leg stays at the contact).
+    /// Returns the share of the step's motion kept, or nullopt if nothing
+    /// had to stop. Parts that are not posed now are ignored.
+    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
 
     /// \name State
     /// @{
     const ControlParams& getControl() const { return Control; }
+    /// PartRef::Fighter of the body parts.
+    uint8_t getFighterIndex() const { return FighterIndex; }
     bool isFacingRight() const { return Facing > 0.0f; }
     /// Has setFacing() asked for a turn that has not happened yet?
     bool isTurnPending() const { return RequestedFacing != Facing; }
@@ -214,6 +229,11 @@ public:
     bool isFootLocked(BodyPart Foot) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
+    /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
+    /// it does not touch them or is not posed now.
+    float getPosedPenetration(BodyPart Part) const;
+    /// Did stopAtContact() stop the posed parts in the last step?
+    bool isStoppedAtContact() const { return StoppedAtContact; }
     /// @}
 
     /// Hurtboxes come from the physics world's debug draw; the rig draws
@@ -348,6 +368,10 @@ private:
     int WallSide = 0;
     float WeaponReach = 0.0f;
     WeaponShape Weapon;
+    /// The strikers stopAtContact() last held back, and whether it did so
+    /// in the last step; for the debug draw.
+    std::bitset<BodyPartCount> StoppedParts;
+    bool StoppedAtContact = false;
     /// The last knockdown push, for the debug draw: where and how hard.
     Vec2 KnockdownPoint;
     Vec2 KnockdownVelocity;

@@ -28,13 +28,18 @@
 /// leg or pelvis fast enough is a hit like any other (a low kick). Nothing
 /// pushes back: both bodies are moved by code. A fast limb moves far in one
 /// step, so the normal of such a hit is taken from where the two parts were
-/// closest before the step, when they were still apart.
+/// closest before the step, when they were still apart. Nothing stops a posed
+/// limb either: the code that poses it asks findPosedStop() how far along its
+/// motion of the step it could go without sinking into the opponent's posed
+/// parts and moves it back there with rewindBody() (a kick stops at the leg
+/// it hits).
 ///
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -96,6 +101,29 @@ public:
     bool isOverlappingOtherFighter(Body Target) const;
     /// @}
 
+    /// \name Posed parts of different fighters
+    /// Box2D does not collide two kinematic bodies; these let the code that
+    /// poses them keep them from sinking into each other.
+    /// @{
+    /// How deep the shapes of \p Target overlap the posed (kinematic) parts
+    /// of other fighters, m; 0 if they do not touch. Only for a kinematic
+    /// \p Target; the solver keeps dynamic parts out by itself.
+    float getPosedPenetration(Body Target) const;
+    /// How much of their motion in the last step the posed bodies
+    /// \p Strikers could have made with none of them sinking deeper than
+    /// \p MaxDepth (m) into a posed part of another fighter, which stays where
+    /// it is now: 1 if they never do; 0 if the other part moved into them. A
+    /// pair that was deeper than MaxDepth already before the step is
+    /// ignored (it sank in while nothing stopped it; there is no contact to
+    /// go back to). A kinematic body moves at a constant velocity during a
+    /// step, so the share is found by bisection along that straight motion.
+    float findPosedStop(std::span<const Body> Strikers, float MaxDepth) const;
+    /// Puts \p Target back along its motion of the last step: \p Fraction 0
+    /// is where it was before the step, 1 is where it is now. Velocities do
+    /// not change.
+    void rewindBody(Body Target, float Fraction);
+    /// @}
+
     /// \name Mirroring (turning a fighter around)
     /// @{
     /// Mirrors every shape of \p Target about the body's local Y axis. The
@@ -139,6 +167,12 @@ private:
         float StrikeMass = 0.0f;
     };
 
+    /// A body placement: origin and angle.
+    struct Transform {
+        Vec2 Position;
+        float Angle = 0.0f;
+    };
+
     /// A pair of kinematic part bodies (PartBodies slots, First < Second)
     /// that touched after a step.
     using SlotPair = std::pair<uint32_t, uint32_t>;
@@ -152,6 +186,17 @@ private:
     void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
                 float Impulse);
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
+    /// The slot of a body part of a fighter, if \p Target is one.
+    std::optional<uint32_t> findSlot(Body Target) const;
+    /// How deep \p Entry, its body placed at \p Transform, overlaps the
+    /// posed parts of other fighters, m; 0 if it does not.
+    float measurePosedPenetration(const PartBody& Entry, const Transform& Placed) const;
+    /// How deep \p Entry at \p Placed overlaps \p Other at \p OtherPlaced,
+    /// m; 0 if it does not.
+    float measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
+                                 const Transform& OtherPlaced) const;
+    /// Where \p Entry was at \p Fraction of the last step.
+    Transform getTransformDuringStep(const PartBody& Entry, float Fraction) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is
     /// kinematic now, kg.
     float getStrikeMass(const PartBody& Entry) const;

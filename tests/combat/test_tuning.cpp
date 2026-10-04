@@ -36,6 +36,20 @@ TEST_CASE("parseCombatTuning: stamina, chain and block parameters", "[combat]") 
     CHECK(Tuning.EndSettleSec == 2.0f);
 }
 
+TEST_CASE("parseCombatTuning: the stop of a posed strike at a contact", "[combat]") {
+    const CombatTuning Tuning = parseCombatTuning(
+        R"({ "contactStopDepth": 0.02, "contactHoldSec": 0.1, "contactRecoveryBlendSec": 0.2 })");
+    CHECK(Tuning.ContactStopDepth == 0.02f);
+    CHECK(Tuning.ContactHoldSec == 0.1f);
+    CHECK(Tuning.ContactRecoveryBlendSec == 0.2f);
+    CHECK_FALSE(Tuning.ContactStopInStartup);
+    CHECK(parseCombatTuning(R"({ "contactStopInStartup": true })").ContactStopInStartup);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactStopInStartup": 1 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactStopDepth": 0 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactHoldSec": -1 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactRecoveryBlendSec": -1 })"), std::runtime_error);
+}
+
 TEST_CASE("loadCombatTuning: data/combat.json loads", "[combat]") {
     const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");
     CHECK(Tuning.SpawnDistance > 0.0f);

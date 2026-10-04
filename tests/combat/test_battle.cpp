@@ -380,6 +380,11 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
                                                     .ThresholdDrop = 0.1f}));
     Battle First(Data.makeConfig());
     Battle Second(Data.makeConfig());
+    // A little farther than KickRange: the body kick lands with the foot on
+    // the pelvis instead of meeting the front thigh (the posed legs collide
+    // and the foot stops there; the arms collide, so P2's guard stands
+    // differently than when they passed each other).
+    constexpr float PelvisKickRange = 1.05f;
     size_t HitCount = 0;
     bool KnockedDown = false;
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
@@ -388,9 +393,9 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
         // P1 walks into kicking range and kicks every 2.5 s, jabbing in between.
         const int Phase = Tick % 150;
         const PlayerCommands LeftCmd{
-            .MoveX = Distance > KickRange ? 1.0f : 0.0f,
+            .MoveX = Distance > PelvisKickRange ? 1.0f : 0.0f,
             .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .BodyKick = Distance <= KickRange && Phase < 3,
+            .BodyKick = Distance <= PelvisKickRange && Phase < 3,
         };
         // P2 backs away now and then, but stands still while P1 kicks: a
         // kick that meets the legs at close range is weak (legs collide).

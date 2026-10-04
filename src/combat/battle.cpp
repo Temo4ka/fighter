@@ -129,6 +129,10 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     Left.applyControl(StepDt);
     Right.applyControl(StepDt);
     Sim->PhysWorld.step(StepDt);
+    // Nothing in physics stops a posed limb: a kick that sank into the
+    // opponent's posed legs or pelvis goes back to the contact. The hits of
+    // the step are already collected, with the speed the limb came in at.
+    for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
 
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
@@ -252,6 +256,7 @@ void Battle::settle(float Dt) {
     rig::keepApart(Sim->Fighters[0].getRig(), Sim->Fighters[1].getRig(), getSpacing(Cfg.Arena, Sim->Rules.Tuning), Dt);
     for (Fighter& Player : Sim->Fighters) Player.applyControl(Dt);
     Sim->PhysWorld.step(Dt);
+    for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
     ++Tick;
     publishSnapshot();
     drawDebug();

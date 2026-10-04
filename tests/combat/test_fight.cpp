@@ -116,9 +116,8 @@ TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
     // or flinches, never more. Each jab is thrown from a standstill at its
     // own distance between the pelvises (the start distance), so that it
     // lands with the arm fully out.
-    // A tuning item since the body of task 2.1: a jab that lands while the
-    // arm still extends (0.70-0.78 m between the pelvises) slips past the
-    // guard (arms pass arms) and staggers: 0.40-0.46 m/s on the torso.
+    // The arms collide (the rig's "passThrough" is empty): from here the jab
+    // lands on the raised guard, a forearm.
     ScratchData Data("light_hit");
     std::string Spawn = "\"spawnDistance\": 2.4";
     std::vector<StrikeLanded> Hits;
@@ -147,13 +146,15 @@ TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
 
 TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][fight]") {
     // A jab alone stays below Flinch; the buildup of a series lowers the
-    // thresholds until jabs flinch. A jab that slips past the guard lands on
-    // the torso with up to 0.6 m/s (arms pass arms, task 2.1).
-    ReactionSpec Spec{.MinStrength = {0.01f, 0.7f, 1.4f, 2.0f, 1000.0f},
+    // thresholds until jabs flinch. The arms collide, so a jab lands on the
+    // raised guard (a forearm) with 0.04-0.13 m/s. P1 jabs from where the
+    // guards do not rest on each other: pressed together, a limb lets go of
+    // the opponent (unjam) and passes through it, and no jab lands.
+    ReactionSpec Spec{.MinStrength = {0.01f, 0.3f, 1.4f, 2.0f, 1000.0f},
                       .BuildupPerStrength = 5.0f,
                       .BuildupDecayPerSec = 0.1f,
                       .ThresholdDrop = 0.5f};
-    const Attack Jabs{.Button = MoveButton::Jab, .Range = JabRange, .WaitForVictim = false};
+    const Attack Jabs{.Button = MoveButton::Jab, .Range = GuardJabRange, .WaitForVictim = false};
 
     ScratchData Data("series");
     Data.write("reactions.json", makeReactionsJson(Spec));
@@ -205,8 +206,8 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
 TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat][fight]") {
     // A body kick staggers for 2 s; the low kicks that follow are weaker
     // (flinch) but neither lower the level nor keep the stagger going. (Not
-    // jabs: a jab that slips past the guard is as strong as the body kick on
-    // the pelvis, 0.5-0.6 m/s.)
+    // jabs: they land on the raised guard, and a jab that reaches the torso
+    // is as strong as the body kick on the pelvis, 0.5-0.6 m/s.)
     constexpr float StaggerSec = 2.0f;
     ScratchData Data("no_drop");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.01f, 0.03f, 0.4f, 5.0f, 1000.0f},

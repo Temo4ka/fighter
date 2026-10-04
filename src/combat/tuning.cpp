@@ -30,10 +30,15 @@ constexpr std::array TuningFields = {
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
     TuningField{"blockWalkSpeedScale", &CombatTuning::BlockWalkSpeedScale},
     TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
+    TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
+    TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
+    TuningField{"contactRecoveryBlendSec", &CombatTuning::ContactRecoveryBlendSec},
 };
 
 /// The only whole-number parameter.
 constexpr std::string_view MaxChainLengthKey = "maxChainLength";
+/// The only yes/no parameter.
+constexpr std::string_view ContactStopInStartupKey = "contactStopInStartup";
 
 } // namespace
 
@@ -48,6 +53,13 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
                     throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
                 }
                 Tuning.MaxChainLength = Value.get<int>();
+                continue;
+            }
+            if (Key == ContactStopInStartupKey) {
+                if (!Value.is_boolean()) {
+                    throw std::runtime_error(std::format("{} must be true or false, not {}", Key, Value.dump()));
+                }
+                Tuning.ContactStopInStartup = Value.get<bool>();
                 continue;
             }
             const auto Found = std::ranges::find(TuningFields, Key, &TuningField::Key);
@@ -72,6 +84,11 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         throw std::runtime_error("blockWalkSpeedScale must be in [0, 1]");
     }
     if (Tuning.EndSettleSec < 0.0f) throw std::runtime_error("endSettleSec must not be negative");
+    if (Tuning.ContactStopDepth <= 0.0f) throw std::runtime_error("contactStopDepth must be positive");
+    if (Tuning.ContactHoldSec < 0.0f) throw std::runtime_error("contactHoldSec must not be negative");
+    if (Tuning.ContactRecoveryBlendSec < 0.0f) {
+        throw std::runtime_error("contactRecoveryBlendSec must not be negative");
+    }
     return Tuning;
 }
 
