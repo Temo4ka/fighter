@@ -383,8 +383,11 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
     // A little farther than KickRange: the body kick lands with the foot on
     // the pelvis instead of meeting the front thigh (the posed legs collide
     // and the foot stops there; the arms collide, so P2's guard stands
-    // differently than when they passed each other).
-    constexpr float PelvisKickRange = 1.05f;
+    // differently than when they passed each other). P1 kicks from the
+    // switched stance here (its walk stopped with the right foot in front);
+    // from 0.95 to 1.02 m the first kick lands on the pelvis, farther it
+    // meets the torso or the guard.
+    constexpr float PelvisKickRange = 0.98f;
     size_t HitCount = 0;
     bool KnockedDown = false;
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {

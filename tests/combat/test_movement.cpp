@@ -114,7 +114,12 @@ void bringVictim(Battle& Fight, float Range) {
 struct StrikeTrace {
     std::optional<int> ActiveTick;   ///< Ticks from the press to the active phase.
     bool Landed = false;
+    std::optional<BodyPart> Victim;  ///< The part the strike landed on.
     bool NormalAtActive = false;     ///< The left foot in front when the strike lands.
+    /// Deepest overlap of P1's left foot with P2's pelvis after the startup
+    /// (the contact stop works from the active phase on; a shin that crossed
+    /// a thigh in the startup is left there), m.
+    float DeepestFoot = 0.0f;
 };
 
 /// P1 presses \p Button once and holds it until the attack starts.
@@ -127,7 +132,14 @@ StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
             Trace.ActiveTick = Tick;
             Trace.NormalAtActive = !isSwitched(getLeft(Fight));
         }
-        Trace.Landed = Trace.Landed || !getHits(Fight).empty();
+        for (const auto& Hit : getHits(Fight)) {
+            Trace.Landed = true;
+            Trace.Victim = Hit.Victim.Part;
+        }
+        if (Started && getLeft(Fight).Phase != AttackPhase::Startup) {
+            Trace.DeepestFoot =
+                std::max(Trace.DeepestFoot, getPosedPenetration(Fight, 0, BodyPart::FootL, BodyPart::Pelvis));
+        }
     }
     return Trace;
 }
@@ -229,6 +241,14 @@ TEST_CASE("Movement: from the switched stance a jab and a kick step back and lan
         CHECK(Trace.NormalAtActive);
         CHECK(Trace.Landed);
         CHECK_FALSE(isSwitched(getLeft(Fight)));
+        if (Button == MoveButton::BodyKick) {
+            // The legs stepped into the normal stance still meet the contact
+            // stop: the foot lands on the pelvis and stays at it, no deeper
+            // than the stop depth.
+            CHECK(Trace.Victim == BodyPart::Pelvis);
+            CHECK(Trace.DeepestFoot > 0.0f);
+            CHECK(Trace.DeepestFoot <= getTuning().ContactStopDepth + 1e-3f);
+        }
     }
 }
 

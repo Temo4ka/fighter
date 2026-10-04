@@ -428,8 +428,11 @@ TEST_CASE("Fight: a hit may be chained into the next strike", "[combat][fight]")
     };
 
     SECTION("a jab that hits is cancelled into the next one") {
+        // From GuardJabRange the first jab lands on the guard before the
+        // second press. (Released at JabRange, the walk ends its step and
+        // the guards end up pressed into each other: no jab lands there.)
         Battle Fight(makeConfig());
-        while (getRight(Fight).Position.X - getLeft(Fight).Position.X > JabRange) {
+        while (getRight(Fight).Position.X - getLeft(Fight).Position.X > GuardJabRange) {
             Fight.update({.MoveX = 1.0f}, {}, Dt);
         }
         run(Fight, {}, {}, TicksPerSecond / 2);

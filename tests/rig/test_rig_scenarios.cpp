@@ -27,6 +27,9 @@ constexpr double Dt = 1.0 / 60.0;
 constexpr int TicksPerSecond = 60;
 /// Distance between the fighters' floor points at which P1 jabs, m.
 constexpr float JabRange = 0.72f;
+/// Distance between the pelvises to which P1 presses in at the wall, m:
+/// closer than the rig's closeRange, the guards touch.
+constexpr float CloseJabGap = 0.66f;
 
 BattleConfig makeConfig() {
     BattleConfig Config;
@@ -92,13 +95,17 @@ JabTrace traceJab(Battle& Fight) {
 
 /// P2 backs into the right wall and P1 follows it, then P1 presses in to
 /// close range. With \p Exchange both jab at each other for 10 s meanwhile.
-/// Both rest for a second at the end.
+/// Both rest for a second at the end. Close range is measured between the
+/// pelvises: the floor point lags behind the pelvis in a step, so a walk
+/// that stops by the floor points may end with the guards pressed into each
+/// other (0.5 m between the pelvises), where no jab can gather speed.
 void pressToWall(Battle& Fight, bool Exchange) {
     for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
         Fight.update({.MoveX = getGap(Fight) > JabRange ? 1.0f : 0.0f}, {.MoveX = 1.0f}, Dt);
     }
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
-        const PlayerCommands Left{.MoveX = getGap(Fight) > 0.6f ? 1.0f : 0.0f, .Jab = Exchange && Tick % 25 < 3};
+        const PlayerCommands Left{.MoveX = getPelvisGap(Fight) > CloseJabGap ? 1.0f : 0.0f,
+                                  .Jab = Exchange && Tick % 25 < 3};
         const PlayerCommands Right{.Jab = Exchange && Tick % 29 < 3};
         Fight.update(Left, Right, Dt);
     }
