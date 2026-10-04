@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -623,4 +624,40 @@ TEST_CASE("Scenario: twice the mass stands and walks and falls and gets up witho
         CHECK(Heavy.getPartPosition(BodyPart::Head).Y > 1.5f);
         CHECK(measureJitter(Stage, Heavy, 60) < 0.2f);
     }
+}
+
+TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
+    // The left fighter swings its front leg straight out at hip height into
+    // the right one's legs and pelvis, a little more each step.
+    constexpr float Depth = 0.01f;
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::ShinL));
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    const auto kick = [&](bool Stop) {
+        Duel Kick(-0.5f, 0.5f);
+        PerBodyPart<float> Pose = loadStance();
+        const float StartThigh = Pose[static_cast<size_t>(BodyPart::ThighL)];
+        float Deepest = 0.0f;
+        int Stops = 0;
+        for (int Step = 1; Step <= 30; ++Step) {
+            const float Progress = std::min(1.0f, static_cast<float>(Step) / 15.0f);
+            Pose[static_cast<size_t>(BodyPart::ThighL)] = StartThigh + (1.6f - StartThigh) * Progress;
+            Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
+            Kick.Left.setTargetAngles(Pose);
+            Kick.run(1);
+            const bool Stopped = Stop && Kick.Left.stopAtContact(Strikers, Depth, Stops > 0).has_value();
+            Stops += Stopped ? 1 : 0;
+            CHECK(Kick.Left.isStoppedAtContact() == Stopped);
+            for (const auto Part : {BodyPart::ShinL, BodyPart::FootL}) {
+                Deepest = std::max(Deepest, Kick.Left.getPosedPenetration(Part));
+            }
+        }
+        return std::pair(Deepest, Stops);
+    };
+    const auto [Through, NoStops] = kick(false);
+    CHECK(Through > 0.05f);   // nothing else stops a posed leg
+    CHECK(NoStops == 0);
+    const auto [Held, Stops] = kick(true);
+    CHECK(Stops > 0);
+    CHECK(Held <= Depth + 1e-3f);
 }

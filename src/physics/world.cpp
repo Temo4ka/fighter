@@ -39,6 +39,9 @@ constexpr float TouchTolerance = 0.0005f;
 /// Bisection steps of findPosedStop(): the share of the step is found to
 /// 2^-20, far below a millimetre for any limb speed.
 constexpr int StopSearchSteps = 20;
+/// A pair of posed parts held at a contact deeper than this many stop depths
+/// before the step sank in while nothing stopped it (findPosedStop()).
+constexpr float InsideFactor = 2.0f;
 
 /// The closest approach of two posed shapes.
 struct ShapeGap {
@@ -249,14 +252,17 @@ bool World::isOverlappingOtherFighter(Body Target) const {
 float World::getPosedPenetration(Body Target) const {
     const auto Slot = findSlot(Target);
     if (!Slot || Target.getType() != BodyType::Kinematic) return 0.0f;
-    return measurePosedPenetration(PartBodies[*Slot], {Target.getPosition(), Target.getAngle()});
+    const PartBody& Entry = PartBodies[*Slot];
+    return measurePosedPenetration(Entry, getTransformDuringStep(Entry, 1.0f));
 }
 
-float World::findPosedStop(std::span<const Body> Strikers, float MaxDepth) const {
+std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const {
     // The pairs of a striker and an opponent's posed part to keep apart. A
-    // pair that was too deep already before the step (it sank in while
-    // nothing stopped it, in the startup of a kick) is left alone: there is
-    // no contact to go back to.
+    // pair that touched before the step is a contact that began while
+    // nothing stopped it (in the startup of a kick): it is left alone, there
+    // is no contact to go back to and it can be no hit. A pair held at the
+    // contact is about MaxDepth deep, so while holding the limit has room.
+    const float MaxBefore = Holding ? MaxDepth * InsideFactor : 0.0f;
     struct Pair {
         const PartBody* Mover = nullptr;
         const PartBody* Other = nullptr;
@@ -270,17 +276,23 @@ float World::findPosedStop(std::span<const Body> Strikers, float MaxDepth) const
             if (Other.Part.Fighter == Mover.Part.Fighter || Other.Handle.getType() != BodyType::Kinematic) continue;
             const float Before = measurePairPenetration(Mover, getTransformDuringStep(Mover, 0.0f), Other,
                                                         getTransformDuringStep(Other, 0.0f));
-            if (Before <= MaxDepth) Pairs.push_back({.Mover = &Mover, .Other = &Other});
+            if (Before <= MaxBefore) Pairs.push_back({.Mover = &Mover, .Other = &Other});
         }
     }
     // The opponent's parts stay where they are now.
-    const auto isTooDeep = [&](float Fraction) {
-        return std::ranges::any_of(Pairs, [&](const Pair& Entry) {
-            return measurePairPenetration(*Entry.Mover, getTransformDuringStep(*Entry.Mover, Fraction), *Entry.Other,
-                                          getTransformDuringStep(*Entry.Other, 1.0f)) > MaxDepth;
-        });
+    const auto getDeepest = [&](float Fraction) {
+        float Deepest = 0.0f;
+        for (const auto& Entry : Pairs) {
+            Deepest = std::max(Deepest, measurePairPenetration(*Entry.Mover,
+                                                               getTransformDuringStep(*Entry.Mover, Fraction),
+                                                               *Entry.Other, getTransformDuringStep(*Entry.Other, 1.0f)));
+        }
+        return Deepest;
     };
-    if (!isTooDeep(1.0f)) return 1.0f;
+    const auto isTooDeep = [&](float Fraction) { return getDeepest(Fraction) > MaxDepth; };
+    const float DeepestNow = getDeepest(1.0f);
+    if (DeepestNow <= 0.0f) return std::nullopt;   // no contact
+    if (DeepestNow <= MaxDepth) return 1.0f;
     if (isTooDeep(0.0f)) return 0.0f;   // the opponent moved into it
     // The largest share that is not too deep: Low is fine, High is not.
     float Low = 0.0f;
@@ -296,7 +308,7 @@ void World::rewindBody(Body Target, float Fraction) {
     const auto Slot = findSlot(Target);
     if (!Slot) return;
     const Transform Placed = getTransformDuringStep(PartBodies[*Slot], Fraction);
-    Target.setTransform(Placed.Position, Placed.Angle);
+    b2Body_SetTransform(loadBody(Target.Id), toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y});
 }
 
 void World::mirrorShapes(Body Target) {
@@ -379,6 +391,8 @@ void World::recordPartVelocities() {
         Entry.CenterBeforeStep = Entry.Handle.getWorldCenterOfMass();
         Entry.PositionBeforeStep = Entry.Handle.getPosition();
         Entry.AngleBeforeStep = Entry.Handle.getAngle();
+        const b2Rot Rotation = b2Body_GetRotation(loadBody(Entry.Handle.Id));
+        Entry.RotationBeforeStep = {Rotation.c, Rotation.s};
         Entry.VelocityBeforeStep = Entry.Handle.getLinearVelocity();
         Entry.AngularVelocityBeforeStep = Entry.Handle.getAngularVelocity();
     }
@@ -510,8 +524,8 @@ float World::measurePosedPenetration(const PartBody& Entry, const Transform& Pla
 
 float World::measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
                                     const Transform& OtherPlaced) const {
-    const b2Transform Own{toBox2D(Placed.Position), b2MakeRot(Placed.Angle)};
-    const b2Transform Theirs{toBox2D(OtherPlaced.Position), b2MakeRot(OtherPlaced.Angle)};
+    const b2Transform Own{toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y}};
+    const b2Transform Theirs{toBox2D(OtherPlaced.Position), {OtherPlaced.Rotation.X, OtherPlaced.Rotation.Y}};
     std::array<b2ShapeId, MaxShapesPerBody> OwnStorage{};
     std::array<b2ShapeId, MaxShapesPerBody> OtherStorage{};
     const std::span<b2ShapeId> OtherShapes = getShapes(loadBody(Other.Handle.Id), OtherStorage);
@@ -525,10 +539,12 @@ float World::measurePairPenetration(const PartBody& Entry, const Transform& Plac
 }
 
 World::Transform World::getTransformDuringStep(const PartBody& Entry, float Fraction) const {
-    const Vec2 Now = Entry.Handle.getPosition();
-    const float Turn = std::remainder(Entry.Handle.getAngle() - Entry.AngleBeforeStep, 2.0f * B2_PI);
-    return {.Position = Entry.PositionBeforeStep + (Now - Entry.PositionBeforeStep) * Fraction,
-            .Angle = Entry.AngleBeforeStep + Turn * Fraction};
+    const b2Transform Now = b2Body_GetTransform(loadBody(Entry.Handle.Id));
+    if (Fraction >= 1.0f) return {.Position = fromBox2D(Now.p), .Rotation = {Now.q.c, Now.q.s}};
+    const b2Rot Before{Entry.RotationBeforeStep.X, Entry.RotationBeforeStep.Y};
+    const b2Rot Turned = b2NLerp(Before, Now.q, Fraction);
+    return {.Position = Entry.PositionBeforeStep + (fromBox2D(Now.p) - Entry.PositionBeforeStep) * Fraction,
+            .Rotation = {Turned.c, Turned.s}};
 }
 
 float World::getStrikeMass(const PartBody& Entry) const {

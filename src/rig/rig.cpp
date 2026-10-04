@@ -222,7 +222,7 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
                                                              : 0;
 }
 
-std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
+std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding) {
     StoppedAtContact = false;
     if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
     std::vector<physics::Body> Posed;
@@ -230,11 +230,13 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
         if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
     }
     if (Posed.empty()) return std::nullopt;
-    const float Fraction = Physics->findPosedStop(Posed, MaxDepth);
-    if (Fraction >= 1.0f) return std::nullopt;
+    const std::optional<float> Fraction = Physics->findPosedStop(Posed, MaxDepth, Holding);
+    if (!Fraction) return std::nullopt;
     // The whole posed body goes back, so the leg stays on its hip.
-    for (const auto& Part : Parts) {
-        if (Part.Kinematic) Physics->rewindBody(Part.Handle, Fraction);
+    if (*Fraction < 1.0f) {
+        for (const auto& Part : Parts) {
+            if (Part.Kinematic) Physics->rewindBody(Part.Handle, *Fraction);
+        }
     }
     StoppedAtContact = true;
     StoppedParts = Strikers;

@@ -109,15 +109,18 @@ public:
     /// of other fighters, m; 0 if they do not touch. Only for a kinematic
     /// \p Target; the solver keeps dynamic parts out by itself.
     float getPosedPenetration(Body Target) const;
-    /// How much of their motion in the last step the posed bodies
-    /// \p Strikers could have made with none of them sinking deeper than
-    /// \p MaxDepth (m) into a posed part of another fighter, which stays where
-    /// it is now: 1 if they never do; 0 if the other part moved into them. A
-    /// pair that was deeper than MaxDepth already before the step is
-    /// ignored (it sank in while nothing stopped it; there is no contact to
-    /// go back to). A kinematic body moves at a constant velocity during a
-    /// step, so the share is found by bisection along that straight motion.
-    float findPosedStop(std::span<const Body> Strikers, float MaxDepth) const;
+    /// Do the posed bodies \p Strikers touch a posed part of another fighter
+    /// after the last step, and how much of their motion in the step could
+    /// they have made with none of them sinking deeper than \p MaxDepth (m)
+    /// into it (it stays where it is now)? Nullopt: no contact; 1: a contact
+    /// no deeper than MaxDepth; 0: the other part moved into them.
+    /// Only new contacts stop the strikers, unless \p Holding (they are held
+    /// at a contact already): then pairs that touched before the step count
+    /// too, up to twice MaxDepth deep. A deeper pair sank in while nothing
+    /// stopped it; there is no contact to go back to. A kinematic body moves
+    /// at a constant velocity during a step, so the share is found by
+    /// bisection along that straight motion.
+    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const;
     /// Puts \p Target back along its motion of the last step: \p Fraction 0
     /// is where it was before the step, 1 is where it is now. Velocities do
     /// not change.
@@ -159,6 +162,7 @@ private:
         Vec2 CenterBeforeStep;
         Vec2 PositionBeforeStep;          ///< Body origin.
         float AngleBeforeStep = 0.0f;
+        Vec2 RotationBeforeStep{1.0f, 0.0f};   ///< (cos, sin) of AngleBeforeStep, exact.
         Vec2 VelocityBeforeStep;
         float AngularVelocityBeforeStep = 0.0f;
         /// Mass of the body while it was last dynamic, kg.
@@ -167,10 +171,12 @@ private:
         float StrikeMass = 0.0f;
     };
 
-    /// A body placement: origin and angle.
+    /// A body placement: the origin and the rotation as (cos, sin), kept
+    /// exactly as Box2D stores it (an angle would not survive the round
+    /// trip unchanged).
     struct Transform {
         Vec2 Position;
-        float Angle = 0.0f;
+        Vec2 Rotation{1.0f, 0.0f};
     };
 
     /// A pair of kinematic part bodies (PartBodies slots, First < Second)
@@ -195,7 +201,7 @@ private:
     /// m; 0 if it does not.
     float measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
                                  const Transform& OtherPlaced) const;
-    /// Where \p Entry was at \p Fraction of the last step.
+    /// Where \p Entry was at \p Fraction of the last step (1 is now).
     Transform getTransformDuringStep(const PartBody& Entry, float Fraction) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is
     /// kinematic now, kg.

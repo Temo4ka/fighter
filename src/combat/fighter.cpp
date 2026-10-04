@@ -132,7 +132,8 @@ void Fighter::stopAtContact() {
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
     if (Contact == ContactStage::None && Startup && !Tuning.ContactStopInStartup) return;
-    const std::optional<float> Kept = Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth);
+    const std::optional<float> Kept =
+        Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth, Contact != ContactStage::None);
     if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
 
     // The first stop: the clip goes back to the time of the contact (clip

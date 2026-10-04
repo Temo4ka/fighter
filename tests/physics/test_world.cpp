@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iterator>
 #include <utility>
@@ -299,4 +300,73 @@ TEST_CASE("physics::World: a fast posed hit takes its normal from before the ste
     REQUIRE(Hits.size() == 1);
     const Vec2 Before = Vec2{0.35f, 0.12f}.getNormalized();
     CHECK(Hits[0].ApproachSpeed == Approx(Speed * Before.X).epsilon(0.02));
+}
+
+TEST_CASE("physics::World: how deep a posed part overlaps the other fighter's posed parts", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    Body Shin = addBall(PhysWorld, 0, {0.0f, 0.0f}, {});
+    PhysWorld.setBodyType(Shin, BodyType::Kinematic);
+    Body Leg = addBall(PhysWorld, 1, {0.15f, 0.0f}, {});
+    PhysWorld.setBodyType(Leg, BodyType::Kinematic);
+    // Radii 0.1 + 0.1, centers 0.15 apart.
+    CHECK(PhysWorld.getPosedPenetration(Shin) == Approx(0.05f).margin(1e-4f));
+    CHECK(PhysWorld.getPosedPenetration(Leg) == Approx(0.05f).margin(1e-4f));
+    // Own posed parts and dynamic parts of the other fighter do not count.
+    Body Own = addBall(PhysWorld, 0, {0.0f, 0.1f}, {});
+    PhysWorld.setBodyType(Own, BodyType::Kinematic);
+    addBall(PhysWorld, 1, {-0.1f, 0.0f}, {});
+    CHECK(PhysWorld.getPosedPenetration(Shin) == Approx(0.05f).margin(1e-4f));
+    Leg.setTransform({0.5f, 0.0f}, 0.0f);
+    CHECK(PhysWorld.getPosedPenetration(Shin) == 0.0f);
+}
+
+TEST_CASE("physics::World: a posed part goes back to where it met the other fighter", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
+    constexpr float Dt = 1.0f / 60.0f;
+    constexpr float Depth = 0.01f;
+    Body Shin = addBall(PhysWorld, 0, {0.0f, 0.0f}, {});
+    PhysWorld.setBodyType(Shin, BodyType::Kinematic);
+    Body Leg = addBall(PhysWorld, 1, {0.3f, 0.0f}, {});
+    PhysWorld.setBodyType(Leg, BodyType::Kinematic);
+
+    // 0.2 m in one step: from 0.1 m apart to 0.1 m deep.
+    Shin.moveTo({0.2f, 0.0f}, 0.4f, Dt);
+    PhysWorld.step(Dt);
+    REQUIRE(PhysWorld.getHitEvents().size() == 1);   // the hit has the speed of the whole step
+    const float TurnedTo = Shin.getAngle();   // about 0.4 (Box2D integrates the rotation)
+    const std::array Strikers = {Shin};
+    const float Kept = PhysWorld.findPosedStop(Strikers, Depth, false).value_or(-1.0f);
+    CHECK(Kept == Approx((0.1f + Depth) / 0.2f).margin(1e-4f));
+    PhysWorld.rewindBody(Shin, Kept);
+    CHECK(Shin.getPosition().X == Approx(0.11f).margin(1e-4f));
+    // b2MakeRot approximates the sine and cosine: a few mrad.
+    CHECK(Shin.getAngle() == Approx(TurnedTo * Kept).margin(0.005f));
+    CHECK(PhysWorld.getPosedPenetration(Shin) == Approx(Depth).margin(1e-4f));
+
+    // Pressed further, a part held at the contact stays there; one that is
+    // not held passes: the contact began before this step.
+    Shin.moveTo({0.25f, 0.0f}, 0.0f, Dt);
+    PhysWorld.step(Dt);
+    CHECK(PhysWorld.findPosedStop(Strikers, Depth, true).value_or(-1.0f) == Approx(0.0f).margin(1e-5f));
+    CHECK_FALSE(PhysWorld.findPosedStop(Strikers, Depth, false).has_value());
+    PhysWorld.rewindBody(Shin, 0.0f);
+    CHECK(PhysWorld.getPosedPenetration(Shin) == Approx(Depth).margin(1e-5f));   // exactly where it was
+
+    // Pulled back, it moves on: no contact.
+    Shin.moveTo({0.05f, 0.0f}, 0.0f, Dt);
+    PhysWorld.step(Dt);
+    CHECK_FALSE(PhysWorld.findPosedStop(Strikers, Depth, true).has_value());
+
+    // A new contact no deeper than the limit is a contact that needs no stop.
+    Shin.moveTo({0.105f, 0.0f}, 0.0f, Dt);
+    PhysWorld.step(Dt);
+    CHECK(PhysWorld.findPosedStop(Strikers, Depth, false) == 1.0f);
+
+    // A part that was deep inside before the step is left alone even when
+    // held: there is no contact to go back to.
+    Shin.setTransform({0.2f, 0.0f}, 0.0f);
+    PhysWorld.step(Dt);
+    Shin.moveTo({0.25f, 0.0f}, 0.0f, Dt);
+    PhysWorld.step(Dt);
+    CHECK_FALSE(PhysWorld.findPosedStop(Strikers, Depth, true).has_value());
 }

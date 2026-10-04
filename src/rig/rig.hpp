@@ -173,13 +173,16 @@ public:
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
-    /// Call after the physics step. If a posed part of \p Strikers sank
-    /// deeper than \p MaxDepth (m) into a posed part of the opponent during
-    /// the step, every posed part goes back along its motion of the step to
-    /// where the strikers were MaxDepth deep (the leg stays at the contact).
-    /// Returns the share of the step's motion kept, or nullopt if nothing
-    /// had to stop. Parts that are not posed now are ignored.
-    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
+    /// Call after the physics step. Do the posed parts of \p Strikers touch
+    /// a posed part of the opponent? If one sank deeper than \p MaxDepth (m)
+    /// during the step, every posed part goes back along its motion of the
+    /// step to where the strikers were MaxDepth deep (the leg stays at the
+    /// contact). Only a new contact counts, unless \p Holding (held at a
+    /// contact already); see physics::World::findPosedStop. Returns the
+    /// share of the step's motion kept (1 for a contact that needed no
+    /// stop), or nullopt if there is no contact. Parts that are not posed now
+    /// are ignored.
+    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding);
 
     /// \name State
     /// @{
@@ -232,7 +235,7 @@ public:
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
     /// it does not touch them or is not posed now.
     float getPosedPenetration(BodyPart Part) const;
-    /// Did stopAtContact() stop the posed parts in the last step?
+    /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
     /// @}
 
