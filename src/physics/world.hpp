@@ -198,7 +198,7 @@ private:
     /// posed parts of other fighters, m; 0 if it does not.
     float measurePosedPenetration(const PartBody& Entry, const Transform& Placed) const;
     /// How deep \p Entry at \p Placed overlaps \p Other at \p OtherPlaced,
-    /// m; 0 if it does not.
+    /// m; negative: how far apart they are.
     float measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
                                  const Transform& OtherPlaced) const;
     /// Where \p Entry was at \p Fraction of the last step (1 is now).

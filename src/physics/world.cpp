@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -262,7 +263,8 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
     // nothing stopped it (in the startup of a kick): it is left alone, there
     // is no contact to go back to and it can be no hit. A pair held at the
     // contact is about MaxDepth deep, so while holding the limit has room.
-    const float MaxBefore = Holding ? MaxDepth * InsideFactor : 0.0f;
+    // Touching is as for posed hits: closer than TouchTolerance.
+    const float MaxBefore = Holding ? MaxDepth * InsideFactor : -TouchTolerance;
     struct Pair {
         const PartBody* Mover = nullptr;
         const PartBody* Other = nullptr;
@@ -281,17 +283,17 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
     }
     // The opponent's parts stay where they are now.
     const auto getDeepest = [&](float Fraction) {
-        float Deepest = 0.0f;
+        float Deepest = std::numeric_limits<float>::lowest();
         for (const auto& Entry : Pairs) {
-            Deepest = std::max(Deepest, measurePairPenetration(*Entry.Mover,
-                                                               getTransformDuringStep(*Entry.Mover, Fraction),
-                                                               *Entry.Other, getTransformDuringStep(*Entry.Other, 1.0f)));
+            const float Depth = measurePairPenetration(*Entry.Mover, getTransformDuringStep(*Entry.Mover, Fraction),
+                                                       *Entry.Other, getTransformDuringStep(*Entry.Other, 1.0f));
+            Deepest = std::max(Deepest, Depth);
         }
         return Deepest;
     };
     const auto isTooDeep = [&](float Fraction) { return getDeepest(Fraction) > MaxDepth; };
     const float DeepestNow = getDeepest(1.0f);
-    if (DeepestNow <= 0.0f) return std::nullopt;   // no contact
+    if (DeepestNow < -TouchTolerance) return std::nullopt;   // no contact
     if (DeepestNow <= MaxDepth) return 1.0f;
     if (isTooDeep(0.0f)) return 0.0f;   // the opponent moved into it
     // The largest share that is not too deep: Low is fine, High is not.
@@ -529,7 +531,7 @@ float World::measurePairPenetration(const PartBody& Entry, const Transform& Plac
     std::array<b2ShapeId, MaxShapesPerBody> OwnStorage{};
     std::array<b2ShapeId, MaxShapesPerBody> OtherStorage{};
     const std::span<b2ShapeId> OtherShapes = getShapes(loadBody(Other.Handle.Id), OtherStorage);
-    float Deepest = 0.0f;
+    float Deepest = std::numeric_limits<float>::lowest();
     for (const auto& OwnShape : getShapes(loadBody(Entry.Handle.Id), OwnStorage)) {
         for (const auto& OtherShape : OtherShapes) {
             Deepest = std::max(Deepest, -measureGap(OwnShape, Own, OtherShape, Theirs).Distance);
