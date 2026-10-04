@@ -4,6 +4,5 @@
     "weapon": "sword",
     "damage": 1.4,
     "min_reaction": "Flinch",
-    "stamina": 14,
-    "min_startup_sec": 0.3
+    "stamina": 14
 }

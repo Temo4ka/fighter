@@ -319,9 +319,6 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     float Rate = Profile.AttackSpeedScale;
     if (!Next.Weapon.empty() && Weapon) Rate *= Weapon->SpeedScale;
     if (Exhausted) Rate *= Rules->Tuning.ExhaustedSpeedScale;
-    // However fast the fighter, the active phase starts no sooner than the
-    // move allows (O.7): the whole clip plays slower for that.
-    Rate = anim::limitRateByStartup(Clip, Rate, Next.MinStartupSec);
 
     setState(FighterState::Attacking);
     StateSec = 0.0f;

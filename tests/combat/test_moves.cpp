@@ -24,7 +24,7 @@ MoveDef makeMove(std::string Id, MoveButton Button, std::string Weapon = {}) {
 
 TEST_CASE("Moves: parse reads every field", "[combat][moves]") {
     const MoveDef Move = parseMoveDef(R"({"button": "HeavyPunch", "clip": "sword_slash", "weapon": "sword",
-        "damage": 1.4, "min_reaction": "Flinch", "stamina": 14, "min_startup_sec": 0.3})", "sword_slash");
+        "damage": 1.4, "min_reaction": "Flinch", "stamina": 14})", "sword_slash");
     CHECK(Move.Id == "sword_slash");
     CHECK(Move.Button == MoveButton::HeavyPunch);
     CHECK(Move.Clip == "sword_slash");
@@ -32,12 +32,11 @@ TEST_CASE("Moves: parse reads every field", "[combat][moves]") {
     CHECK(Move.Damage == 1.4f);
     CHECK(Move.MinReaction == ReactionLevel::Flinch);
     CHECK(Move.Stamina == 14.0f);
-    CHECK(Move.MinStartupSec == 0.3f);
 }
 
 TEST_CASE("Moves: weapon and min_reaction are optional", "[combat][moves]") {
     const MoveDef Move = parseMoveDef(
-        R"({"button": "Jab", "clip": "jab", "damage": 0.5, "stamina": 5, "min_startup_sec": 0.15})", "jab");
+        R"({"button": "Jab", "clip": "jab", "damage": 0.5, "stamina": 5})", "jab");
     CHECK(Move.Weapon.empty());
     CHECK(Move.MinReaction == ReactionLevel::None);
     CHECK(Move.CloseClip.empty());
@@ -48,7 +47,7 @@ TEST_CASE("Moves: weapon and min_reaction are optional", "[combat][moves]") {
 
 TEST_CASE("Moves: close-range clip and chains", "[combat][moves]") {
     const MoveDef Move = parseMoveDef(R"({"button": "Jab", "clip": "jab", "damage": 0.5, "stamina": 5,
-        "min_startup_sec": 0.15, "close_clip": "jab_close", "close_range_m": 0.6,
+        "close_clip": "jab_close", "close_range_m": 0.6,
         "chain_to": ["Jab", "HeavyPunch"]})", "jab");
     CHECK(Move.CloseClip == "jab_close");
     CHECK(Move.CloseRangeM == 0.6f);
@@ -59,7 +58,7 @@ TEST_CASE("Moves: close-range clip and chains", "[combat][moves]") {
     CHECK_FALSE(Move.canChainTo(MoveButton::BodyKick));
 
     const auto Parse = [](const std::string& Extra) {
-        return parseMoveDef(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1, "min_startup_sec": 0.1)" +
+        return parseMoveDef(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1)" +
                                 Extra + "}",
                             "m");
     };
@@ -74,17 +73,17 @@ TEST_CASE("Moves: close-range clip and chains", "[combat][moves]") {
 
 TEST_CASE("Moves: parse rejects bad fields", "[combat][moves]") {
     const auto Parse = [](const std::string& Text) { return parseMoveDef(Text, "m"); };
-    CHECK_THROWS_WITH(Parse(R"({"button": "Uppercut", "clip": "c", "damage": 1, "stamina": 1,
-        "min_startup_sec": 0.1})"), ContainsSubstring("unknown button 'Uppercut'"));
-    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": -1, "stamina": 1, "min_startup_sec": 0.1})"),
+    CHECK_THROWS_WITH(Parse(R"({"button": "Uppercut", "clip": "c", "damage": 1, "stamina": 1})"),
+                      ContainsSubstring("unknown button 'Uppercut'"));
+    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": -1, "stamina": 1})"),
                       Equals("field 'damage': -1 must not be negative"));
-    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1})"),
-                      Equals("missing field 'min_startup_sec'"));
-    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1, "min_startup_sec": 0.1,
+    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1})"),
+                      Equals("missing field 'stamina'"));
+    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1,
         "speed": 2})"), Equals("unknown field 'speed'"));
-    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1, "min_startup_sec": 0.1,
+    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "c", "damage": 1, "stamina": 1,
         "min_reaction": "Knockdown"})"), ContainsSubstring("field 'min_reaction'"));
-    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "", "damage": 1, "stamina": 1, "min_startup_sec": 0.1})"),
+    CHECK_THROWS_WITH(Parse(R"({"button": "Jab", "clip": "", "damage": 1, "stamina": 1})"),
                       Equals("field 'clip': must not be empty"));
 }
 
@@ -121,7 +120,7 @@ TEST_CASE("Moves: two unarmed moves on one button are an error", "[combat][moves
     std::filesystem::create_directories(Dir);
     for (const char* Name : {"a", "b"}) {
         std::ofstream(Dir / (std::string(Name) + ".json"))
-            << R"({"button": "Jab", "clip": "jab", "damage": 1, "stamina": 1, "min_startup_sec": 0.1})";
+            << R"({"button": "Jab", "clip": "jab", "damage": 1, "stamina": 1})";
     }
     CHECK_THROWS_WITH(loadMoveSet(Dir), ContainsSubstring("b.json: button Jab is already taken by 'a'"));
     std::filesystem::remove_all(Dir);
