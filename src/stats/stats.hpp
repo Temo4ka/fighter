@@ -35,7 +35,7 @@ struct PhysicalProfile {
     PerBodyPart<PartParams> Parts{};
     float MotorMaxTorque = 0.0f;   ///< N*m, from STR.
     float MotorGain = 0.0f;        ///< 1/s, from DEX: how fast a motor reaches the pose.
-    float MoveSpeedScale = 1.0f;   ///< From DEX: multiplies the walking speed of the rig.
+    float MoveSpeedScale = 1.0f;   ///< From DEX and the equipment mass: multiplies the walking speed of the rig.
     /// From DEX and the weapon: multiplies the playback speed of strikes;
     /// combat keeps the result within each move's limits (O.7).
     float AttackSpeedScale = 1.0f;
@@ -83,7 +83,10 @@ struct Loadout {
     const WeaponProps* findWeapon() const;
 };
 
-/// Balance coefficients. Loaded from data/balance.json in phase 2.
+/// Balance coefficients, loaded from data/balance.json (loadBalanceTable()).
+/// computeProfile() uses nothing else, so changing the balance is a JSON edit.
+/// Every "per" coefficient multiplies the distance of a stat from 10, the
+/// stat of the base body.
 struct BalanceTable {
     PerBodyPart<float> BaseMassKg{};   ///< Body part masses at CON = 10.
     float MassPerCon = 0.03f;          ///< +3% mass per CON point above 10.
@@ -92,24 +95,48 @@ struct BalanceTable {
     float BaseMotorGain = 12.0f;
     float GainPerDex = 0.05f;
     float MoveSpeedPerDex = 0.03f;     ///< +3% walking speed per DEX point above 10.
+    /// -0.5% walking speed per kg of equipment: heavy armor slows the walk.
+    float MoveSpeedPerGearKg = 0.005f;
+    float MoveSpeedMin = 0.5f;         ///< Walking speed scale stays within [Min, Max].
+    float MoveSpeedMax = 1.5f;
     /// +2.5% strike speed per DEX point above 10: +-25% at DEX 0 and 20 (O.7).
     float AttackSpeedPerDex = 0.025f;
+    float AttackSpeedMin = 0.75f;      ///< The O.7 corridor: stats beyond DEX 0..20 do not widen it.
+    float AttackSpeedMax = 1.25f;
     float BaseHp = 100.0f;
     float HpPerCon = 8.0f;
     float BasePoise = 1.0f;
     float PoisePerCon = 0.03f;
+    /// +150% poise at average armor 1 (the mass-weighted mean over the body).
+    float PoisePerArmor = 1.5f;
+    float MaxPartArmor = 0.9f;         ///< Armor of one body part never exceeds this, however many items stack.
     float BaseStamina = 100.0f;
     float StaminaPerCon = 5.0f;
     float BaseStaminaRegen = 20.0f;    ///< Per second at CON = 10.
     float StaminaRegenPerCon = 0.03f;  ///< +3% regeneration per CON point above 10.
 
-    /// The default table: a body of about 75 kg at CON = 10.
+    /// The same values as data/balance.json (a test keeps them equal): a body
+    /// of about 75 kg at CON = 10. For tests and tools that need no files.
     static BalanceTable getDefaults();
 };
 
-/// PLACEHOLDER for phase 0: linear formulas. Agent E replaces them with the
-/// formulas from the balance table (task 2.4); armor and the weapon do not
-/// affect poise and strike speed yet.
+/// Turns stats and equipment into the physical parameters of one fighter.
+///
+///  - Part masses: base mass x CON scale, plus the equipment mass split over
+///    the covered parts. Part armor: the sum of the covering items, capped.
+///  - Motor torque from STR, motor gain from DEX.
+///  - Walking speed from DEX, slowed by the equipment mass; strike speed
+///    from DEX; each within its corridor. The weapon's own speed scale is applied by combat per move.
+///  - Max HP, max stamina and stamina regeneration from CON.
+///  - Poise from CON and the mean armor of the body: armored fighters react
+///    less (it multiplies the reaction thresholds).
 PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, const BalanceTable& Balance);
+
+/// The sum of the masses of all body parts, kg.
+float getTotalMassKg(const PhysicalProfile& Profile);
+
+/// The mean armor of the body, weighted by the base part masses (the torso
+/// counts more than a foot).
+float getMeanArmor(const PhysicalProfile& Profile, const BalanceTable& Balance);
 
 } // namespace fighter::stats

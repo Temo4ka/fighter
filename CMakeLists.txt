@@ -21,6 +21,7 @@ include(cmake/FighterModule.cmake)
 include(cmake/Dependencies.cmake)
 
 add_subdirectory(src)
+add_subdirectory(tools)
 
 if(FIGHTER_BUILD_TESTS)
     enable_testing()

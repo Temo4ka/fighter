@@ -1,5 +1,6 @@
 #include "app/app.hpp"
 
+#include <array>
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -14,6 +15,10 @@
 
 #include "core/log.hpp"
 #include "debug/draw.hpp"
+#include "stats/describe.hpp"
+#include "stats/equipment.hpp"
+#include "stats/fighter_sheet.hpp"
+#include "stats/loading.hpp"
 
 #if FIGHTER_DEBUG
 #include "app/debug_showcase.hpp"
@@ -26,12 +31,18 @@ namespace {
 constexpr unsigned WindowWidth = 1280;
 constexpr unsigned WindowHeight = 720;
 
-// Test fighters. In phase 2 they will be read from data/fighters/*.json.
-combat::BattleConfig makeSandboxBattle(const std::filesystem::path& Root) {
+combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName);
+void publishStatsPanel(const combat::BattleConfig& Config, const stats::BalanceTable& Balance);
+
+// The built-in test fighters, used when --left / --right are not given.
+// With --left <name> / --right <name> a fighter comes from data/fighters.
+combat::BattleConfig makeSandboxBattle(const Options& Opts) {
     combat::BattleConfig Config;
     Config.Left.Stats = {.Strength = 12, .Dexterity = 10, .Constitution = 10};
     Config.Right.Stats = {.Strength = 10, .Dexterity = 12, .Constitution = 12};
-    Config.DataDir = Root / "data";
+    if (Opts.LeftFighter) Config.Left = makeFighterConfig(Opts.Root, *Opts.LeftFighter);
+    if (Opts.RightFighter) Config.Right = makeFighterConfig(Opts.Root, *Opts.RightFighter);
+    Config.DataDir = Opts.Root / "data";
     return Config;
 }
 
@@ -50,13 +61,16 @@ App::App(Options Settings)
     : Opts(std::move(Settings)),
       Window(sf::VideoMode({WindowWidth, WindowHeight}), "Fighter sandbox"),
       Assets(Opts.Root),
-      Renderer(Assets)
+      Renderer(Assets, FixedStepLoop::Config{}.StepSec)
 #if FIGHTER_DEBUG
       , Overlay(Assets)
 #endif
 {
     Window.setVerticalSyncEnabled(true);
     Cam.setWindowSize(Window.getSize());
+    RendererEvents = BattleEvents.connect([this](const combat::BattleEvent& Event, const combat::RenderSnapshot& After) {
+        Renderer.onBattleEvent(Event, After);
+    });
 
 #if FIGHTER_DEBUG
     ShowcaseVisible = Opts.Showcase;
@@ -134,6 +148,8 @@ void App::stepSimulation(double Dt) {
     } else {
         CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
     }
+    for (const combat::BattleEvent& Event : CurrentBattle->getEvents())
+        BattleEvents.emit(Event, CurrentBattle->getSnapshot());
 
 #if FIGHTER_DEBUG
     if (ShowcaseVisible) drawDebugShowcase();
@@ -151,18 +167,20 @@ void App::render(float Alpha) {
     const combat::RenderSnapshot Snapshot =
         combat::interpolate(Previous, CurrentBattle->getSnapshot(), Alpha);
 
+    Renderer.buildFrame(Cam, Snapshot, Alpha);
+
 #if FIGHTER_DEBUG
     if (Overlay.shouldShowTextures()) {
-        Renderer.drawWorld(Window, Cam, Snapshot);
+        Renderer.drawWorld(Window);
     } else {
         Overlay.drawBackdrop(Window, Cam);
     }
     if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
-    Renderer.drawHud(Window, Cam, Snapshot);
+    Renderer.drawHud(Window);
     Overlay.drawPanel(Window, Cam, debug::getDrawList());
 #else
-    Renderer.drawWorld(Window, Cam, Snapshot);
-    Renderer.drawHud(Window, Cam, Snapshot);
+    Renderer.drawWorld(Window);
+    Renderer.drawHud(Window);
 #endif
 }
 
@@ -170,7 +188,11 @@ bool App::restartBattle() {
     // The battle reads the data files (rigs, poses) when it is created.
     std::unique_ptr<combat::Battle> Fresh;
     try {
-        Fresh = std::make_unique<combat::Battle>(makeSandboxBattle(Opts.Root));
+        const combat::BattleConfig Config = makeSandboxBattle(Opts);
+        // The same table the battle loads, to show the profiles in the debug panel.
+        const stats::BalanceTable Balance = stats::loadBalanceTable(Config.DataDir / "balance.json");
+        Fresh = std::make_unique<combat::Battle>(Config);
+        publishStatsPanel(Config, Balance);
     } catch (const std::exception& Error) {
         if (!CurrentBattle) throw;   // at startup there is nothing to fall back to
         // A typo in a JSON file during live tuning must not close the sandbox.
@@ -179,6 +201,9 @@ bool App::restartBattle() {
         return false;
     }
     CurrentBattle = std::move(Fresh);
+    const combat::BattleConfig& Config = CurrentBattle->getConfig();
+    Renderer.startBattle({render::makeFighterLook(Config.Left, Skins[0], "P1"),
+                          render::makeFighterLook(Config.Right, Skins[1], "P2")});
     Previous = CurrentBattle->getSnapshot();
     ResultReported = false;
     Loop.reset();
@@ -234,6 +259,7 @@ void App::applyDebugAction(render::DebugAction Action) {
         case DebugAction::Reload:
             // A new battle re-reads data/rigs and data/poses.
             if (restartBattle()) debug::logEvent("reload: data files re-read, battle restarted");
+            if (Renderer.reloadVisuals()) debug::logEvent("reload: visuals re-read");
             break;
         case DebugAction::ToggleShowcase:
             ShowcaseVisible = !ShowcaseVisible;
@@ -241,5 +267,34 @@ void App::applyDebugAction(render::DebugAction Action) {
     }
 }
 #endif
+
+namespace {
+
+combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName) {
+    const std::filesystem::path DataDir = Root / "data";
+    const stats::ItemCatalog Catalog = stats::loadItemCatalog(DataDir / "items");
+    const stats::FighterSheet Sheet = stats::loadFighterSheet(DataDir / "fighters" / (FighterName + ".json"));
+    stats::ResolvedFighter Fighter = stats::resolveFighterSheet(Sheet, Catalog);
+    return {.Name = std::move(Fighter.Name), .Stats = Fighter.BaseStats, .Loadout = std::move(Fighter.Gear)};
+}
+
+void publishStatsPanel(const combat::BattleConfig& Config, const stats::BalanceTable& Balance) {
+    if constexpr (FIGHTER_DEBUG) {
+        const std::array<std::pair<const char*, const combat::FighterConfig*>, 2> Sides = {{
+            {"P1", &Config.Left}, {"P2", &Config.Right},
+        }};
+        for (const auto& [Side, Fighter] : Sides) {
+            const stats::PhysicalProfile Profile = stats::computeProfile(Fighter->Stats, Fighter->Loadout, Balance);
+            for (const stats::ProfileLine& Line :
+                 stats::describeProfile(Fighter->Stats, Fighter->Loadout, Profile, Balance)) {
+                const bool IsBuild = Line.Label == "build" && !Fighter->Name.empty();
+                debug::setPanel(std::format("{} {}", Side, Line.Label),
+                                IsBuild ? std::format("{}: {}", Fighter->Name, Line.Text) : Line.Text);
+            }
+        }
+    }
+}
+
+} // namespace
 
 } // namespace fighter::app

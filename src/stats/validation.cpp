@@ -1,8 +1,10 @@
 #include "stats/validation.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <format>
+#include <ranges>
 #include <string_view>
 
 #include "core/body.hpp"
@@ -14,6 +16,8 @@ namespace {
 void checkStat(std::string_view Name, int Value);
 void checkItemRange(const EquipmentItem& Item, std::string_view Name, float Value, float Max,
                     std::string_view Unit);
+void checkBalanceValue(std::string_view Key, float Value, bool MustBePositive);
+void checkCorridor(std::string_view MinKey, float Min, std::string_view MaxKey, float Max);
 
 } // namespace
 
@@ -21,6 +25,48 @@ void validateStats(const Stats& BaseStats) {
     checkStat("strength", BaseStats.Strength);
     checkStat("dexterity", BaseStats.Dexterity);
     checkStat("constitution", BaseStats.Constitution);
+}
+
+std::span<const BalanceField> getBalanceFields() {
+    static constexpr std::array<BalanceField, 22> Fields = {{
+        {"mass_per_con", &BalanceTable::MassPerCon, false},
+        {"base_motor_torque", &BalanceTable::BaseMotorTorque, true},
+        {"torque_per_str", &BalanceTable::TorquePerStr, false},
+        {"base_motor_gain", &BalanceTable::BaseMotorGain, true},
+        {"gain_per_dex", &BalanceTable::GainPerDex, false},
+        {"move_speed_per_dex", &BalanceTable::MoveSpeedPerDex, false},
+        {"move_speed_per_gear_kg", &BalanceTable::MoveSpeedPerGearKg, false},
+        {"move_speed_min", &BalanceTable::MoveSpeedMin, true},
+        {"move_speed_max", &BalanceTable::MoveSpeedMax, true},
+        {"attack_speed_per_dex", &BalanceTable::AttackSpeedPerDex, false},
+        {"attack_speed_min", &BalanceTable::AttackSpeedMin, true},
+        {"attack_speed_max", &BalanceTable::AttackSpeedMax, true},
+        {"base_hp", &BalanceTable::BaseHp, true},
+        {"hp_per_con", &BalanceTable::HpPerCon, false},
+        {"base_poise", &BalanceTable::BasePoise, true},
+        {"poise_per_con", &BalanceTable::PoisePerCon, false},
+        {"poise_per_armor", &BalanceTable::PoisePerArmor, false},
+        {"max_part_armor", &BalanceTable::MaxPartArmor, true},
+        {"base_stamina", &BalanceTable::BaseStamina, true},
+        {"stamina_per_con", &BalanceTable::StaminaPerCon, false},
+        {"base_stamina_regen", &BalanceTable::BaseStaminaRegen, true},
+        {"stamina_regen_per_con", &BalanceTable::StaminaRegenPerCon, false},
+    }};
+    return Fields;
+}
+
+void validateBalanceTable(const BalanceTable& Balance) {
+    for (auto&& [Part, Mass] : std::views::zip(std::views::iota(size_t{0}), Balance.BaseMassKg)) {
+        checkBalanceValue(std::format("base_mass_kg.{}", getBodyPartName(static_cast<BodyPart>(Part))), Mass, true);
+    }
+    for (const BalanceField& Field : getBalanceFields()) {
+        checkBalanceValue(Field.Key, Balance.*Field.Member, Field.MustBePositive);
+    }
+    checkCorridor("move_speed_min", Balance.MoveSpeedMin, "move_speed_max", Balance.MoveSpeedMax);
+    checkCorridor("attack_speed_min", Balance.AttackSpeedMin, "attack_speed_max", Balance.AttackSpeedMax);
+    if (Balance.MaxPartArmor > 1.0f) {
+        throw DataError(std::format("field 'max_part_armor': {} is out of (0, 1]", Balance.MaxPartArmor));
+    }
 }
 
 void validateItem(const EquipmentItem& Item) {
@@ -100,6 +146,18 @@ void checkItemRange(const EquipmentItem& Item, std::string_view Name, float Valu
         throw DataError(
             std::format("item '{}': {} {}{} is out of range [0, {}]{}", Item.Id, Name, Value, Unit, Max, Unit));
     }
+}
+
+void checkBalanceValue(std::string_view Key, float Value, bool MustBePositive) {
+    // Written so that NaN fails the check too.
+    const bool Valid = std::isfinite(Value) && (MustBePositive ? Value > 0.0f : Value >= 0.0f);
+    if (Valid) return;
+    throw DataError(std::format("field '{}': {} must be {}", Key, Value, MustBePositive ? "positive" : "not negative"));
+}
+
+void checkCorridor(std::string_view MinKey, float Min, std::string_view MaxKey, float Max) {
+    if (Min <= Max) return;
+    throw DataError(std::format("field '{}': {} is above '{}' {}", MinKey, Min, MaxKey, Max));
 }
 
 } // namespace

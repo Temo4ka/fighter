@@ -26,8 +26,8 @@
 | `fighters/*.json` | листы бойцов | `stats::loadFighterSheet` | есть |
 | `moves/*.json` | удары | `combat::loadMoveSet` | есть |
 | `reactions.json` | сила удара → урон и ступень реакции, накопление, блок | `combat::loadReactionTable` | есть |
-| `balance.json` | статы → физический профиль | `stats` | пример; загрузчик — задача 2.4 |
-| `visuals.json` | картинки частей тела, предметов и эффекты | рендер | черновик; окончательно — задача 2.5 |
+| `balance.json` | статы → физический профиль | `stats::loadBalanceTable` | работает (2.4) |
+| `visuals.json` | картинки частей тела и предметов, эффекты, размеры HUD | `render::loadVisuals` | есть (2.5) |
 
 ## `moves/*.json` — удары
 
@@ -147,58 +147,96 @@
 ## `balance.json` — статы в физику
 
 Поля один к одному повторяют `stats::BalanceTable` (src/stats/stats.hpp); формулы —
-`stats::computeProfile`. Задача 2.4 подключает файл и заменяет временные линейные
-формулы. Пока файл совпадает с `BalanceTable::getDefaults()`.
+`stats::computeProfile`. Все поля обязательны, неизвестный ключ — ошибка; значения проверяет
+`stats::validateBalanceTable` (массы и базовые значения > 0, «на очко» ≥ 0, `*_min` ≤ `*_max`,
+`max_part_armor` в (0, 1]). Загрузка — `stats::loadBalanceTable`; `BalanceTable::getDefaults()`
+совпадает с файлом (тест это проверяет). Бой читает файл при создании, `F5` перечитывает.
 
 | Поле | Что значит |
 |---|---|
-| `base_mass_kg` | масса частей тела при CON = 10 (все 13) |
+| `base_mass_kg` | масса частей тела при CON = 10 (все 13 имён частей; других имён нет) |
 | `mass_per_con` | +доля массы за очко CON выше 10 |
 | `base_motor_torque`, `torque_per_str` | сила моторов корпуса и её рост от STR |
 | `base_motor_gain`, `gain_per_dex` | как быстро моторы выходят на позу, рост от DEX |
-| `move_speed_per_dex` | +доля скорости ходьбы за очко DEX |
-| `attack_speed_per_dex` | +доля скорости ударов за очко DEX (±25 % на DEX 0/20, О.7) |
+| `move_speed_per_dex`, `move_speed_min`, `move_speed_max` | +доля скорости ходьбы за очко DEX и границы множителя |
+| `move_speed_per_gear_kg` | −доля скорости ходьбы за кг снаряжения (нагрузка) |
+| `attack_speed_per_dex`, `attack_speed_min`, `attack_speed_max` | +доля скорости ударов за очко DEX (±25 % на DEX 0/20, О.7) и коридор множителя (0,75…1,25) |
 | `base_hp`, `hp_per_con` | HP и его рост от CON |
 | `base_poise`, `poise_per_con` | стойкость (множитель порогов реакции) и её рост от CON |
+| `poise_per_armor` | рост стойкости от средней (по массам частей) брони тела |
+| `max_part_armor` | потолок брони одной части тела |
 | `base_stamina`, `stamina_per_con` | запас выносливости (О.13) |
 | `base_stamina_regen`, `stamina_regen_per_con` | восстановление выносливости в секунду при CON = 10 и его рост |
 
 Замедление при нулевой выносливости — правило боя, а не стата: `exhaustedSpeedScale`
 в `combat.json`.
 
-## `visuals.json` — картинки (черновик для 2.5)
+## `visuals.json` — картинки, эффекты, HUD
 
-Рендер рисует бойцов спрайтами частей тела через список отрисовки. Формат —
-отправная точка; агент C уточняет его в задаче 2.5 через ревью.
+Рендер (задача 2.5) рисует бойцов спрайтами частей тела через список отрисовки. Требования к
+самим картинкам (поза, плотность, слои, имена файлов) — в [ART.md](ART.md). Файл читает
+`render::loadVisuals`; `F5` перечитывает его и картинки с диска. Если файл испорчен, остаются
+прежние картинки и параметры, ошибка — в журнале событий панели и в логе. Бой о картинках
+не знает.
 
 ```json
 {
     "pixels_per_meter": 64,
+    "default_skin": "placeholder_smooth",
+    "background": "assets/backgrounds/bg.jpeg",
     "skins": {
-        "placeholder": {
-            "texture": "assets/placeholder/humanoid.png",
-            "parts": { "Head": { "rect": [0, 0, 24, 28], "origin": [12, 14] } }
+        "placeholder_smooth": {
+            "dir": "assets/placeholders/smooth/humanoid",
+            "items_dir": "assets/placeholders/smooth/items"
+        },
+        "placeholder_pixel": {
+            "dir": "assets/placeholders/pixel/humanoid",
+            "items_dir": "assets/placeholders/pixel/items",
+            "pixels_per_meter": 32,
+            "smooth": false
         }
     },
     "items": {
-        "iron_helmet": {
-            "texture": "assets/placeholder/items.png",
-            "parts": { "Head": { "rect": [0, 0, 26, 18], "origin": [13, 14] } }
-        }
+        "iron_helmet": {},
+        "short_sword": { "origins": { "ForearmR": [0.5, 0.5] } }
     },
     "effects": {
-        "hit_flash": { "min_reaction": "Touch", "duration_sec": 0.06 },
-        "camera_shake": { "min_reaction": "Knockback", "amplitude_m": 0.04, "duration_sec": 0.15 },
-        "dust": { "on_knockdown": true, "particles": 8, "duration_sec": 0.5 }
+        "hit_flash": { "min_reaction": "Touch", "duration_sec": 0.06, "radius_m": 0.12 },
+        "camera_shake": { "min_reaction": "Knockback", "amplitude_m": 0.04, "duration_sec": 0.15, "frequency_hz": 25 },
+        "dust": { "on_knockdown": true, "particles": 8, "duration_sec": 0.5, "spread_m": 0.5, "size_m": 0.06 }
+    },
+    "hud": {
+        "bar_width_px": 360, "hp_bar_height_px": 18, "stamina_bar_height_px": 6,
+        "margin_px": 24, "gap_px": 4, "name_font_px": 16, "timer_font_px": 28
     }
 }
 ```
 
+Все поля необязательны (значения по умолчанию — как в примере, кроме `default_skin`,
+`background` и списков); неизвестный ключ — ошибка с полным путём (`skins.a.smoth`).
+Пути — от корня проекта.
+
 | Поле | Что значит |
 |---|---|
-| `pixels_per_meter` | масштаб: сколько пикселей текстуры на метр мира (для пиксельного режима — целое) |
-| `skins.<id>.parts.<часть>` | прямоугольник `rect` = [x, y, ширина, высота] в текстуре, px; `origin` — точка, которая совпадает с центром части тела, px |
-| `items.<id>.parts.<часть>` | картинка предмета поверх части тела; рисуется после тела |
-| `effects` | неброские эффекты (О.7, п. 5): вспышка попадания, тряска камеры от сильного удара, пыль при падении; пороги — по ступени реакции из `StrikeLanded` |
+| `pixels_per_meter` | масштаб: сколько пикселей картинки на метр мира; скин и предмет могут переопределить |
+| `default_skin` | скин бойца, для которого приложение не выбрало другой; должен быть в `skins` |
+| `background` | картинка фона; растягивается с сохранением пропорций, чтобы закрыть экран. Нет файла — ровный цвет |
+| `skins.<id>.dir` | картинки частей: `<dir>/<Часть>.png` (13 файлов, имена — `getBodyPartName()`). Точка привязки — центр картинки, она ставится в центр части (ART.md) |
+| `skins.<id>.items_dir` | накладки снаряжения в стиле этого скина: `<items_dir>/<id предмета>/<Часть>.png`. Так пиксельный скин берёт пиксельные накладки |
+| `skins.<id>.pixels_per_meter` | плотность картинок скина и его накладок |
+| `skins.<id>.smooth` | сглаживание при масштабировании и повороте (`true`); для пиксель-арта — `false` |
+| `items.<id>` | необязательные уточнения для предмета; пустой объект `{}` — предмет просто перечислен (по этому списку генератор плейсхолдеров рисует накладки) |
+| `items.<id>.dir` | свой каталог накладок вместо `<items_dir скина>/<id>` |
+| `items.<id>.pixels_per_meter` | своя плотность накладок |
+| `items.<id>.origins` | точка привязки накладки на части: `{"ForearmR": [x, y]}` — доли ширины и высоты картинки от левого верхнего угла; эта точка ставится в центр части. По умолчанию `[0.5, 0.5]`. Нужна оружию, если картинка не симметрична относительно центра предплечья (ART.md) |
+| `effects` | неброские эффекты (О.7, п. 5); пороги — по ступени реакции из `StrikeLanded` (`None`…`Knockdown`, «не слабее»). Смысл каждого параметра — [TUNING.md](TUNING.md), раздел 8 |
+| `hud` | размеры полосок, отступы и шрифты интерфейса в пикселях окна (TUNING.md, раздел 8) |
 
-Какой скин у бойца, решает приложение (не модуль боя): бой о картинках не знает.
+**Какой скин у бойца** — решает приложение, а не бой: поле `Skins` в `App` (пусто — `default_skin`).
+Накладки — по снаряжению бойца (`BattleConfig`: `Loadout`, `covers` предметов).
+
+**Чего не хватает — не ошибка.** Нет картинки части — она рисуется капсулой размера
+`PartTransform::Size`; нет накладки — предмет не рисуется; неизвестный скин — все части
+капсулами. В лог пишется предупреждение (одно на скин или предмет со списком частей),
+на панели — строка `render` (сколько примитивов, спрайтов, капсул вместо картинок и
+ненайденных файлов).

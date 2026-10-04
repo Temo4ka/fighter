@@ -5,6 +5,7 @@ fighter_add_module(stats
         equipment.cpp
         fighter_sheet.cpp
         loading.cpp
+        describe.cpp
     PUBLIC_DEPS
         fighter::core
     # PRIVATE: json types stay out of the public headers.

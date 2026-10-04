@@ -5,6 +5,17 @@
 #include <ranges>
 
 namespace fighter::stats {
+namespace {
+
+/// The stat value of the base body: every "per stat" coefficient counts from it.
+constexpr int BaseStatValue = 10;
+/// Safety floors: a stat inside its validated range never gets here with the
+/// shipped balance, but an edited balance file must not give a negative body.
+constexpr float MinMassScale = 0.5f;
+constexpr float MinResource = 1.0f;   ///< HP, stamina.
+constexpr float MinPoise = 0.1f;
+
+} // namespace
 
 BalanceTable BalanceTable::getDefaults() {
     BalanceTable Table;
@@ -27,36 +38,57 @@ BalanceTable BalanceTable::getDefaults() {
 
 PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, const BalanceTable& Balance) {
     PhysicalProfile Profile;
+    // Distance of each stat from the stat of the base body.
+    const auto Str = static_cast<float>(BaseStats.Strength - BaseStatValue);
+    const auto Dex = static_cast<float>(BaseStats.Dexterity - BaseStatValue);
+    const auto Con = static_cast<float>(BaseStats.Constitution - BaseStatValue);
 
-    const float ConScale = 1.0f + Balance.MassPerCon * static_cast<float>(BaseStats.Constitution - 10);
+    const float MassScale = std::max(1.0f + Balance.MassPerCon * Con, MinMassScale);
     for (auto&& [Params, BaseMass] : std::views::zip(Profile.Parts, Balance.BaseMassKg)) {
-        Params.MassKg = BaseMass * std::max(ConScale, 0.5f);
+        Params.MassKg = BaseMass * MassScale;
     }
-
     for (const EquipmentItem& Item : Gear.Items) {
         if (Item.Covers.empty()) continue;
         const float Share = Item.MassKg / static_cast<float>(Item.Covers.size());
         for (BodyPart Part : Item.Covers) {
             PartParams& Params = Profile.Parts[static_cast<size_t>(Part)];
             Params.MassKg += Share;
-            Params.Armor = std::clamp(Params.Armor + Item.Armor, 0.0f, 0.9f);
+            Params.Armor = std::clamp(Params.Armor + Item.Armor, 0.0f, Balance.MaxPartArmor);
         }
     }
 
-    Profile.MotorMaxTorque =
-        Balance.BaseMotorTorque * (1.0f + Balance.TorquePerStr * static_cast<float>(BaseStats.Strength - 10));
-    Profile.MotorGain =
-        Balance.BaseMotorGain * (1.0f + Balance.GainPerDex * static_cast<float>(BaseStats.Dexterity - 10));
-    Profile.MoveSpeedScale =
-        std::max(1.0f + Balance.MoveSpeedPerDex * static_cast<float>(BaseStats.Dexterity - 10), 0.5f);
+    Profile.MotorMaxTorque = Balance.BaseMotorTorque * std::max(1.0f + Balance.TorquePerStr * Str, 0.0f);
+    Profile.MotorGain = Balance.BaseMotorGain * std::max(1.0f + Balance.GainPerDex * Dex, 0.0f);
+    float GearKg = 0.0f;
+    for (const EquipmentItem& Item : Gear.Items) GearKg += Item.MassKg;
+    Profile.MoveSpeedScale = std::clamp((1.0f + Balance.MoveSpeedPerDex * Dex) * (1.0f - Balance.MoveSpeedPerGearKg * GearKg),
+                                        Balance.MoveSpeedMin, Balance.MoveSpeedMax);
     Profile.AttackSpeedScale =
-        std::max(1.0f + Balance.AttackSpeedPerDex * static_cast<float>(BaseStats.Dexterity - 10), 0.5f);
-    const auto Con = static_cast<float>(BaseStats.Constitution - 10);
-    Profile.MaxHp = Balance.BaseHp + Balance.HpPerCon * Con;
-    Profile.Poise = std::max(Balance.BasePoise * (1.0f + Balance.PoisePerCon * Con), 0.1f);
-    Profile.MaxStamina = std::max(Balance.BaseStamina + Balance.StaminaPerCon * Con, 1.0f);
-    Profile.StaminaRegen = Balance.BaseStaminaRegen * std::max(1.0f + Balance.StaminaRegenPerCon * Con, 0.1f);
+        std::clamp(1.0f + Balance.AttackSpeedPerDex * Dex, Balance.AttackSpeedMin, Balance.AttackSpeedMax);
+
+    Profile.MaxHp = std::max(Balance.BaseHp + Balance.HpPerCon * Con, MinResource);
+    Profile.Poise = std::max(Balance.BasePoise * (1.0f + Balance.PoisePerCon * Con) *
+                                 (1.0f + Balance.PoisePerArmor * getMeanArmor(Profile, Balance)),
+                             MinPoise);
+    Profile.MaxStamina = std::max(Balance.BaseStamina + Balance.StaminaPerCon * Con, MinResource);
+    Profile.StaminaRegen = Balance.BaseStaminaRegen * std::max(1.0f + Balance.StaminaRegenPerCon * Con, 0.0f);
     return Profile;
+}
+
+float getTotalMassKg(const PhysicalProfile& Profile) {
+    float Sum = 0.0f;
+    for (const PartParams& Params : Profile.Parts) Sum += Params.MassKg;
+    return Sum;
+}
+
+float getMeanArmor(const PhysicalProfile& Profile, const BalanceTable& Balance) {
+    float Weighted = 0.0f;
+    float Total = 0.0f;
+    for (auto&& [Params, BaseMass] : std::views::zip(Profile.Parts, Balance.BaseMassKg)) {
+        Weighted += Params.Armor * BaseMass;
+        Total += BaseMass;
+    }
+    return Total > 0.0f ? Weighted / Total : 0.0f;
 }
 
 const WeaponProps* Loadout::findWeapon() const {
