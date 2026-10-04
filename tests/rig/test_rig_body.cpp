@@ -91,9 +91,9 @@ struct Duel {
     Rig Right;
     SpacingParams Spacing{.ArenaHalfWidth = ArenaHalfWidth};
 
-    Duel(float LeftX, float RightX, float RightMassScale = 1.0f)
-        : Left(PhysWorld, loadHumanoid(), makeSetup(LeftX, true, 0)),
-          Right(PhysWorld, loadHumanoid(), makeSetup(RightX, false, 1, RightMassScale)) {
+    Duel(float LeftX, float RightX, float RightMassScale = 1.0f, const RigDef& Def = loadHumanoid())
+        : Left(PhysWorld, Def, makeSetup(LeftX, true, 0)),
+          Right(PhysWorld, Def, makeSetup(RightX, false, 1, RightMassScale)) {
         addArena(PhysWorld);
         for (Rig* Body : {&Left, &Right}) {
             Body->setTargetAngles(loadStance());
@@ -313,9 +313,16 @@ TEST_CASE("Rig: the weapon extends the forearm that holds it", "[rig]") {
 }
 
 TEST_CASE("Rig: the arms of two fighters pass each other", "[rig]") {
+    // The shipped rig lists no part in "passThrough" (the arms collide, a
+    // jab hits the guard); a rig that lists the arms lets them pass.
+    RigDef Def = loadHumanoid();
+    REQUIRE(Def.PassThrough.none());
+    for (const auto Part : {BodyPart::UpperArmL, BodyPart::ForearmL, BodyPart::UpperArmR, BodyPart::ForearmR}) {
+        Def.PassThrough.set(static_cast<size_t>(Part));
+    }
     // Close enough for the guards to overlap, too far for a fist to reach
     // the other chest.
-    Duel Close(-0.33f, 0.33f);
+    Duel Close(-0.33f, 0.33f, 1.0f, Def);
     Close.run(30);
     for (const auto Part : {BodyPart::ForearmL, BodyPart::UpperArmL}) {
         CHECK(Close.Left.getJointAngle(Part) == Approx(loadStance()[static_cast<size_t>(Part)]).margin(0.03f));

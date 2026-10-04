@@ -36,7 +36,7 @@
 
   "kinematic": ["Pelvis", "ThighL", "ShinL", "FootL", "ThighR", "ShinR", "FootR"],
 
-  "passThrough": ["UpperArmL", "ForearmL", "UpperArmR", "ForearmR"],
+  "passThrough": [],
 
   "unjam": ["UpperArmL", "ForearmL", "UpperArmR", "ForearmR"],
 

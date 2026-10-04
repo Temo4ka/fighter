@@ -129,7 +129,8 @@ TEST_CASE("parseRigDef: parts that pass through or let go of the opponent are ph
                     std::runtime_error);
 
     const RigDef Humanoid = loadRigDef(HumanoidPath);
-    CHECK(Humanoid.PassThrough.test(static_cast<size_t>(BodyPart::ForearmR)));
+    // The arms collide: a jab hits the raised forearm (the user's decision).
+    CHECK(Humanoid.PassThrough.none());
     CHECK(Humanoid.Unjam.test(static_cast<size_t>(BodyPart::UpperArmL)));
 }
 
