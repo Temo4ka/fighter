@@ -51,9 +51,16 @@ struct CombatTuning {
     /// the nearest phase with both feet down this many times faster than
     /// walking (clip seconds per second).
     float WalkStopRate = 3.0f;
-    /// Stopped in the normal stance, the legs cross over from the walk cycle
-    /// to the stance clip in this time; walking crosses back the same way, s.
+    /// Stopped, the legs cross over from the walk cycle to the stance clip
+    /// (or the switched stance) in this time; walking crosses back the same
+    /// way, s.
     float StanceSettleSec = 0.15f;
+    /// While a walk plays on to its stop and the legs settle into the
+    /// stance, the planted foot slides along with the clip (true): the
+    /// fighter ends in the exact stance, but that foot may slide up to about
+    /// 20 cm. False: it stays where it stood, the leg bends to it (the rig's
+    /// footLockSlip), and the stance comes out uneven.
+    bool StopSlidesFeet = true;
     /// From the switched stance a jab or a kick (lead side left) steps the
     /// legs back into the normal stance during its startup: in this share of
     /// it (0..1]. The startup itself does not change.

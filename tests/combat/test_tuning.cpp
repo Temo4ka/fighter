@@ -38,12 +38,15 @@ TEST_CASE("parseCombatTuning: stamina, chain and block parameters", "[combat]") 
 
 TEST_CASE("parseCombatTuning: movement polish parameters", "[combat]") {
     const CombatTuning Tuning = parseCombatTuning(R"({ "walkStopRate": 4, "stanceSettleSec": 0.2,
-        "switchStepShare": 0.5, "crouchWalkSpeedScale": 0.4, "crouchStandUpSec": 0.1 })");
+        "switchStepShare": 0.5, "crouchWalkSpeedScale": 0.4, "crouchStandUpSec": 0.1, "stopSlidesFeet": false })");
     CHECK(Tuning.WalkStopRate == 4.0f);
     CHECK(Tuning.StanceSettleSec == 0.2f);
     CHECK(Tuning.SwitchStepShare == 0.5f);
     CHECK(Tuning.CrouchWalkSpeedScale == 0.4f);
     CHECK(Tuning.CrouchStandUpSec == 0.1f);
+    CHECK_FALSE(Tuning.StopSlidesFeet);
+    CHECK(CombatTuning{}.StopSlidesFeet);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "stopSlidesFeet": 1 })"), std::runtime_error);
 
     CHECK_THROWS_AS(parseCombatTuning(R"({ "blockWalkSpeedScale": 0.5 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "walkStopRate": 0 })"), std::runtime_error);

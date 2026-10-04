@@ -302,9 +302,8 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         setState(FighterState::Blocking);
         return nullptr;
     }
-    // A strike pressed while crouched starts once the fighter stood up;
-    // crouching again drops it.
-    if (PendingAttack && isCrouching(Cmd)) PendingAttack.reset();
+    // A strike pressed while crouched starts once the fighter stood up (a
+    // block drops it, above). Down still held crouches again after it.
     if (PendingAttack) {
         StandUpLeftSec -= Dt;
         if (StandUpLeftSec > 0.0f) return nullptr;
@@ -430,11 +429,12 @@ float Fighter::planWalking(const PlayerCommands& Cmd, float Dt) {
             // pelvis glides on a little, instead of stepping under the body
             // once more (rig::Rig::keepFeetPlanted).
             const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive());
-            if (Cycle.isStopping() || Crossing) {
+            if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
                 Body.slideFeet();
             } else {
                 Body.keepFeetPlanted();
-                if (Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
+                const bool Settled = !Cycle.isStopping() && !Crossing;
+                if (Settled && Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
             }
         }
         return 0.0f;

@@ -10,6 +10,7 @@
   "blockBackSpeedScale": 0.3,
   "walkStopRate": 3.0,
   "stanceSettleSec": 0.15,
+  "stopSlidesFeet": true,
   "switchStepShare": 0.8,
   "crouchWalkSpeedScale": 0.5,
   "crouchStandUpSec": 0.12,
