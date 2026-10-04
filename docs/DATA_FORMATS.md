@@ -20,7 +20,7 @@
 | Файл | Что | Кто читает | Состояние |
 |---|---|---|---|
 | `rigs/*.json` | тело: части, суставы, параметры управления | `rig::loadRigDef` | есть |
-| `poses/*.json` | клипы поз | `anim::loadClip` | есть; новые клипы — задача 2.2 |
+| `poses/*.json` | клипы поз; кроме клипов ударов бой обязательно читает `stance`, `walk`, `crouch`, `crouch_walk`, блоки и реакции, необязательно — `stance_switched` | `anim::loadClip` | есть; новые клипы — задача 2.2 |
 | `combat.json` | параметры боя вне тел (расстояния, порог попадания, усталость) | `combat::loadCombatTuning` | есть |
 | `items/*.json` | снаряжение и свойства оружия | `stats::loadItemCatalog` | есть |
 | `fighters/*.json` | листы бойцов | `stats::loadFighterSheet` | есть |
