@@ -27,7 +27,7 @@ app ──► render ──► combat ──► stats ──► core
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`) | — | — |
-| `render` | `Camera`, `Resources`, `BattleRenderer`, `DebugOverlay` | да | — |
+| `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
 `combat` и всё под ним не зависят от SFML: модуль боя встраивается во внешний проект
@@ -54,7 +54,15 @@ app ──► render ──► combat ──► stats ──► core
 `physics::World` владеет миром Box2D, копировать его нельзя, перемещать можно.
 
 **Рендер не видит физику.** `Battle` после каждого шага публикует `RenderSnapshot`
-(позиции, HP, таймер). Рендер читает только снимки.
+(позиции, HP, таймер). Рендер читает только снимки и события.
+
+**Список отрисовки.** Кадр строится в два шага: `buildRenderList()` (src/render/scene.hpp)
+превращает снимок в общие примитивы — спрайт, капсула, прямоугольник, круг, полоска, текст —
+со слоем (фон → арена → дальний боец → ближний → эффекты → интерфейс), а `drawRenderList()`
+рисует любой список одним циклом и об игре ничего не знает. Какая картинка у части тела или
+предмета — в `data/visuals.json`, не в коде; часть без картинки рисуется капсулой.
+Сборка списка не требует окна и проверяется тестами. Рисовать можно в любой
+`sf::RenderTarget` — задел под пиксельный режим (T.4).
 
 **Данные и live-тюнинг.** Риги, клипы и параметры боя лежат в `data/` (JSON) и читаются
 при создании `Battle` из `BattleConfig::DataDir`. Новый `Battle` — значит, перечитанные файлы:
@@ -95,8 +103,9 @@ App после шага:                 ▼
 
 - `Battle` не вызывает чужой код во время шага и не хранит подписчиков. Он копит
   события шага в список, `getEvents()` отдаёт их до следующего `update()`.
-- `App` после каждого шага рассылает события через `Signal` (src/core/signal.hpp).
-  Подписчики — системы представления: звук, эффекты, HUD, меню.
+- `App` после каждого шага рассылает события через `Signal` (src/core/signal.hpp)
+  вместе со снимком после шага (`App::BattleEvents`). Подписчики — системы представления:
+  звук, эффекты, HUD, меню. Сейчас подписан рендер: вспышки, тряска камеры и пыль.
 - Почему так: подписчики не влияют на порядок симуляции, поэтому сохраняется
   детерминизм. При будущем сетевом откате, когда шаги пересчитываются, `App`
   решает, повторять ли звуки и эффекты, а сам бой об этом не знает.
