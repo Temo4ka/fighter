@@ -254,7 +254,7 @@ float World::getPosedPenetration(Body Target) const {
     const auto Slot = findSlot(Target);
     if (!Slot || Target.getType() != BodyType::Kinematic) return 0.0f;
     const PartBody& Entry = PartBodies[*Slot];
-    return measurePosedPenetration(Entry, getTransformDuringStep(Entry, 1.0f));
+    return measurePosedPenetration(Entry, getPlacementDuringStep(Entry, 1.0f));
 }
 
 std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const {
@@ -276,8 +276,8 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
         const PartBody& Mover = PartBodies[*Slot];
         for (const auto& Other : PartBodies) {
             if (Other.Part.Fighter == Mover.Part.Fighter || Other.Handle.getType() != BodyType::Kinematic) continue;
-            const float Before = measurePairPenetration(Mover, getTransformDuringStep(Mover, 0.0f), Other,
-                                                        getTransformDuringStep(Other, 0.0f));
+            const float Before = measurePairPenetration(Mover, getPlacementDuringStep(Mover, 0.0f), Other,
+                                                        getPlacementDuringStep(Other, 0.0f));
             if (Before <= MaxBefore) Pairs.push_back({.Mover = &Mover, .Other = &Other});
         }
     }
@@ -285,8 +285,8 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
     const auto getDeepest = [&](float Fraction) {
         float Deepest = std::numeric_limits<float>::lowest();
         for (const auto& Entry : Pairs) {
-            const float Depth = measurePairPenetration(*Entry.Mover, getTransformDuringStep(*Entry.Mover, Fraction),
-                                                       *Entry.Other, getTransformDuringStep(*Entry.Other, 1.0f));
+            const float Depth = measurePairPenetration(*Entry.Mover, getPlacementDuringStep(*Entry.Mover, Fraction),
+                                                       *Entry.Other, getPlacementDuringStep(*Entry.Other, 1.0f));
             Deepest = std::max(Deepest, Depth);
         }
         return Deepest;
@@ -309,7 +309,7 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
 void World::rewindBody(Body Target, float Fraction) {
     const auto Slot = findSlot(Target);
     if (!Slot) return;
-    const Transform Placed = getTransformDuringStep(PartBodies[*Slot], Fraction);
+    const Placement Placed = getPlacementDuringStep(PartBodies[*Slot], Fraction);
     b2Body_SetTransform(loadBody(Target.Id), toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y});
 }
 
@@ -515,17 +515,17 @@ std::optional<uint32_t> World::findSlot(Body Target) const {
     return detail::decodePartSlot(b2Body_GetUserData(loadBody(Target.Id)));
 }
 
-float World::measurePosedPenetration(const PartBody& Entry, const Transform& Placed) const {
+float World::measurePosedPenetration(const PartBody& Entry, const Placement& Placed) const {
     float Deepest = 0.0f;
     for (const auto& Other : PartBodies) {
         if (Other.Part.Fighter == Entry.Part.Fighter || Other.Handle.getType() != BodyType::Kinematic) continue;
-        Deepest = std::max(Deepest, measurePairPenetration(Entry, Placed, Other, getTransformDuringStep(Other, 1.0f)));
+        Deepest = std::max(Deepest, measurePairPenetration(Entry, Placed, Other, getPlacementDuringStep(Other, 1.0f)));
     }
     return Deepest;
 }
 
-float World::measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
-                                    const Transform& OtherPlaced) const {
+float World::measurePairPenetration(const PartBody& Entry, const Placement& Placed, const PartBody& Other,
+                                    const Placement& OtherPlaced) const {
     const b2Transform Own{toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y}};
     const b2Transform Theirs{toBox2D(OtherPlaced.Position), {OtherPlaced.Rotation.X, OtherPlaced.Rotation.Y}};
     std::array<b2ShapeId, MaxShapesPerBody> OwnStorage{};
@@ -540,7 +540,7 @@ float World::measurePairPenetration(const PartBody& Entry, const Transform& Plac
     return Deepest;
 }
 
-World::Transform World::getTransformDuringStep(const PartBody& Entry, float Fraction) const {
+World::Placement World::getPlacementDuringStep(const PartBody& Entry, float Fraction) const {
     const b2Transform Now = b2Body_GetTransform(loadBody(Entry.Handle.Id));
     if (Fraction >= 1.0f) return {.Position = fromBox2D(Now.p), .Rotation = {Now.q.c, Now.q.s}};
     const b2Rot Before{Entry.RotationBeforeStep.X, Entry.RotationBeforeStep.Y};

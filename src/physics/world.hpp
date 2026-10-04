@@ -174,7 +174,7 @@ private:
     /// A body placement: the origin and the rotation as (cos, sin), kept
     /// exactly as Box2D stores it (an angle would not survive the round
     /// trip unchanged).
-    struct Transform {
+    struct Placement {
         Vec2 Position;
         Vec2 Rotation{1.0f, 0.0f};
     };
@@ -194,15 +194,15 @@ private:
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
     /// The slot of a body part of a fighter, if \p Target is one.
     std::optional<uint32_t> findSlot(Body Target) const;
-    /// How deep \p Entry, its body placed at \p Transform, overlaps the
+    /// How deep \p Entry, its body placed at \p Placed, overlaps the
     /// posed parts of other fighters, m; 0 if it does not.
-    float measurePosedPenetration(const PartBody& Entry, const Transform& Placed) const;
+    float measurePosedPenetration(const PartBody& Entry, const Placement& Placed) const;
     /// How deep \p Entry at \p Placed overlaps \p Other at \p OtherPlaced,
     /// m; negative: how far apart they are.
-    float measurePairPenetration(const PartBody& Entry, const Transform& Placed, const PartBody& Other,
-                                 const Transform& OtherPlaced) const;
+    float measurePairPenetration(const PartBody& Entry, const Placement& Placed, const PartBody& Other,
+                                 const Placement& OtherPlaced) const;
     /// Where \p Entry was at \p Fraction of the last step (1 is now).
-    Transform getTransformDuringStep(const PartBody& Entry, float Fraction) const;
+    Placement getPlacementDuringStep(const PartBody& Entry, float Fraction) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is
     /// kinematic now, kg.
     float getStrikeMass(const PartBody& Entry) const;
