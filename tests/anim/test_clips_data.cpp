@@ -229,6 +229,22 @@ TEST_CASE("Clips: the held poses are single-key loops with their own masks", "[a
     CHECK(BlockLow.Keys.front().Target.getAngle(BodyPart::ShinL) < -80.0f * RadiansPerDegree);
 }
 
+TEST_CASE("Clips: crouch_walk is a legs-only loop that keeps the knees bent", "[anim][clips]") {
+    const Clip& CrouchWalk = getClip("crouch_walk");
+    CHECK(CrouchWalk.Loop);
+    CHECK(CrouchWalk.Strikers.none());
+    CHECK(setsAll(CrouchWalk, {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR, BodyPart::ShinR,
+                               BodyPart::FootR}));
+    CHECK_FALSE(setsAny(CrouchWalk, {BodyPart::Torso, BodyPart::Head, BodyPart::UpperArmL, BodyPart::UpperArmR}));
+    // Sampled finely, both knees stay at least as bent as a deep squat.
+    for (float Time = 0.0f; Time < CrouchWalk.DurationSec; Time += 0.01f) {
+        const Pose Sampled = sampleClip(CrouchWalk, Time);
+        INFO("t=" << Time);
+        CHECK(Sampled.getAngle(BodyPart::ShinL) < -80.0f * RadiansPerDegree);
+        CHECK(Sampled.getAngle(BodyPart::ShinR) < -80.0f * RadiansPerDegree);
+    }
+}
+
 TEST_CASE("Clips: the high guard lifts the fists above the low guard", "[anim][clips]") {
     // Forearm direction in the world: torso lean + upper arm + forearm. The
     // forearm of the high guard points more upright than that of the low one.
