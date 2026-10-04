@@ -157,6 +157,7 @@
 | `base_motor_torque`, `torque_per_str` | сила моторов корпуса и её рост от STR |
 | `base_motor_gain`, `gain_per_dex` | как быстро моторы выходят на позу, рост от DEX |
 | `move_speed_per_dex`, `move_speed_min`, `move_speed_max` | +доля скорости ходьбы за очко DEX и границы множителя |
+| `move_speed_per_gear_kg` | −доля скорости ходьбы за кг снаряжения (нагрузка) |
 | `attack_speed_per_dex`, `attack_speed_min`, `attack_speed_max` | +доля скорости ударов за очко DEX (±25 % на DEX 0/20, О.7) и коридор множителя (0,75…1,25) |
 | `base_hp`, `hp_per_con` | HP и его рост от CON |
 | `base_poise`, `poise_per_con` | стойкость (множитель порогов реакции) и её рост от CON |

@@ -35,7 +35,7 @@ struct PhysicalProfile {
     PerBodyPart<PartParams> Parts{};
     float MotorMaxTorque = 0.0f;   ///< N*m, from STR.
     float MotorGain = 0.0f;        ///< 1/s, from DEX: how fast a motor reaches the pose.
-    float MoveSpeedScale = 1.0f;   ///< From DEX: multiplies the walking speed of the rig.
+    float MoveSpeedScale = 1.0f;   ///< From DEX and the equipment mass: multiplies the walking speed of the rig.
     /// From DEX and the weapon: multiplies the playback speed of strikes;
     /// combat keeps the result within each move's limits (O.7).
     float AttackSpeedScale = 1.0f;
@@ -95,6 +95,8 @@ struct BalanceTable {
     float BaseMotorGain = 12.0f;
     float GainPerDex = 0.05f;
     float MoveSpeedPerDex = 0.03f;     ///< +3% walking speed per DEX point above 10.
+    /// -0.5% walking speed per kg of equipment: heavy armor slows the walk.
+    float MoveSpeedPerGearKg = 0.005f;
     float MoveSpeedMin = 0.5f;         ///< Walking speed scale stays within [Min, Max].
     float MoveSpeedMax = 1.5f;
     /// +2.5% strike speed per DEX point above 10: +-25% at DEX 0 and 20 (O.7).
@@ -123,8 +125,8 @@ struct BalanceTable {
 ///  - Part masses: base mass x CON scale, plus the equipment mass split over
 ///    the covered parts. Part armor: the sum of the covering items, capped.
 ///  - Motor torque from STR, motor gain from DEX.
-///  - Walking speed and strike speed scales from DEX, each within its
-///    corridor. The weapon's own speed scale is applied by combat per move.
+///  - Walking speed from DEX, slowed by the equipment mass; strike speed
+///    from DEX; each within its corridor. The weapon's own speed scale is applied by combat per move.
 ///  - Max HP, max stamina and stamina regeneration from CON.
 ///  - Poise from CON and the mean armor of the body: armored fighters react
 ///    less (it multiplies the reaction thresholds).
