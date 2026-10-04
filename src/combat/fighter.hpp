@@ -138,8 +138,7 @@ public:
     /// Time of the clip on top (attack, block, reaction, walk or stance), s.
     float getClipTime() const;
     /// Clip seconds per second of the current attack (O.7): the fighter's
-    /// attack speed and weapon, slowed when exhausted and, if needed, so that
-    /// the active phase starts no sooner than the move's min_startup_sec.
+    /// attack speed and weapon, slowed when exhausted.
     float getAttackRate() const { return AttackRate; }
     /// "jab 0.12/0.44 s x1.25 startup 0.13 s, active, blend 0.40": the clip
     /// on top for the debug panel.

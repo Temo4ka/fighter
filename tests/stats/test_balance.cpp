@@ -209,6 +209,21 @@ TEST_CASE("computeProfile: walking speed follows DEX and is clamped", "[stats][b
     CHECK(computeProfile({.Dexterity = 1}, {}, Table).MoveSpeedScale == Approx(0.95f));
 }
 
+TEST_CASE("computeProfile: equipment mass slows the walk, not the strikes", "[stats][balance]") {
+    const BalanceTable Table = BalanceTable::getDefaults();
+    Loadout Light;
+    Light.Items.push_back({.Id = "vest", .Slot = EquipmentSlot::Body, .Covers = {BodyPart::Torso}, .MassKg = 4.0f});
+    Loadout Heavy;
+    Heavy.Items.push_back({.Id = "plate", .Slot = EquipmentSlot::Body, .Covers = {BodyPart::Torso}, .MassKg = 20.0f});
+    const PhysicalProfile Naked = computeProfile({}, {}, Table);
+    const PhysicalProfile Vest = computeProfile({}, Light, Table);
+    const PhysicalProfile Plate = computeProfile({}, Heavy, Table);
+    CHECK(Vest.MoveSpeedScale < Naked.MoveSpeedScale);
+    CHECK(Plate.MoveSpeedScale < Vest.MoveSpeedScale);
+    CHECK(Plate.MoveSpeedScale == Approx(1.0f - Table.MoveSpeedPerGearKg * 20.0f));
+    CHECK(Plate.AttackSpeedScale == Naked.AttackSpeedScale);
+}
+
 TEST_CASE("computeProfile: armor raises poise and heavier armor raises it more", "[stats][balance]") {
     const BalanceTable Balance = BalanceTable::getDefaults();
     const ItemCatalog Catalog = loadItemCatalog(DataDir / "items");

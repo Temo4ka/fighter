@@ -59,8 +59,10 @@ PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, cons
 
     Profile.MotorMaxTorque = Balance.BaseMotorTorque * std::max(1.0f + Balance.TorquePerStr * Str, 0.0f);
     Profile.MotorGain = Balance.BaseMotorGain * std::max(1.0f + Balance.GainPerDex * Dex, 0.0f);
-    Profile.MoveSpeedScale =
-        std::clamp(1.0f + Balance.MoveSpeedPerDex * Dex, Balance.MoveSpeedMin, Balance.MoveSpeedMax);
+    float GearKg = 0.0f;
+    for (const EquipmentItem& Item : Gear.Items) GearKg += Item.MassKg;
+    Profile.MoveSpeedScale = std::clamp((1.0f + Balance.MoveSpeedPerDex * Dex) * (1.0f - Balance.MoveSpeedPerGearKg * GearKg),
+                                        Balance.MoveSpeedMin, Balance.MoveSpeedMax);
     Profile.AttackSpeedScale =
         std::clamp(1.0f + Balance.AttackSpeedPerDex * Dex, Balance.AttackSpeedMin, Balance.AttackSpeedMax);
 

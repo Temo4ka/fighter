@@ -21,14 +21,13 @@
 /// \code
 ///   // data/moves/jab.json; the id is the file stem
 ///   {"button": "Jab", "clip": "jab", "damage": 0.6, "min_reaction": "Touch",
-///    "stamina": 5, "min_startup_sec": 0.15,
+///    "stamina": 5,
 ///    "close_clip": "jab_close", "close_range_m": 0.6,
 ///    "chain_to": ["Jab", "HeavyPunch"]}
 ///
 ///   // data/moves/sword_slash.json
 ///   {"button": "HeavyPunch", "clip": "sword_slash", "weapon": "sword",
-///    "damage": 1.4, "min_reaction": "Flinch", "stamina": 14,
-///    "min_startup_sec": 0.3}
+///    "damage": 1.4, "min_reaction": "Flinch", "stamina": 14}
 /// \endcode
 ///
 /// The file is internal to the combat module.
@@ -69,9 +68,6 @@ struct MoveDef {
     /// strength: a jab always at least touches.
     ReactionLevel MinReaction = ReactionLevel::None;
     float Stamina = 0.0f;              ///< Spent when the move starts (O.13).
-    /// However fast the fighter, the striking phase starts no sooner than
-    /// this after the button, s (O.7).
-    float MinStartupSec = 0.0f;
     /// Played instead of Clip when the fighters' pelvises are closer than
     /// CloseRangeM when the move starts; empty: Clip at any range.
     std::string CloseClip;

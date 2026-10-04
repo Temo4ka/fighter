@@ -41,7 +41,7 @@ MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
     try {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
-        checkFieldNames(Root, {"button", "clip", "weapon", "damage", "min_reaction", "stamina", "min_startup_sec",
+        checkFieldNames(Root, {"button", "clip", "weapon", "damage", "min_reaction", "stamina",
                                "close_clip", "close_range_m", "chain_to"});
 
         const auto ButtonName = getField(Root, "button").get<std::string>();
@@ -73,7 +73,6 @@ MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
             Move.MinReaction = *Level;
         }
         Move.Stamina = readNonNegative(Root, "stamina");
-        Move.MinStartupSec = readNonNegative(Root, "min_startup_sec");
 
         // The close-range clip and its range come together.
         if (Root.contains("close_clip") != Root.contains("close_range_m")) {

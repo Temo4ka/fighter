@@ -280,9 +280,14 @@ TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][d
     SECTION("high and low leave the torso open") {
         for (const PlayerCommands& Guard : {PlayerCommands{.Up = true, .Block = true},
                                             PlayerCommands{.Down = true, .Block = true}}) {
+            // The guard is up in the asked zone before the kick...
+            Battle Guarding(makeConfig());
+            run(Guarding, {}, Guard, 2);
+            CHECK(getRight(Guarding).State == FighterState::Blocking);
+            CHECK(getRight(Guarding).Block == (Guard.Up ? BlockZone::High : BlockZone::Low));
+            // ...and the kick to the torso goes through it (it may stagger or
+            // knock the fighter down, so the state after the kick is not checked).
             const auto [Hits, View] = kickAt(Guard);
-            CHECK(View.State == FighterState::Blocking);
-            CHECK(View.Block == (Guard.Up ? BlockZone::High : BlockZone::Low));
             CHECK_FALSE(Hits.front().Blocked);
             CHECK(Hits.front().Reaction >= ReactionLevel::Flinch);   // the kick's min_reaction
         }
@@ -310,8 +315,7 @@ TEST_CASE("Fight: stamina runs out, slows the fighter down and comes back", "[co
     const float MaxStamina = getLeft(Fight).MaxStamina;
     const float SlowScale = loadCombatTuning(Config.DataDir / "combat.json").ExhaustedSpeedScale;
 
-    // P1 jabs the air until it is exhausted: holding the button repeats. (A
-    // jab, since its startup floor does not limit its speed already.)
+    // P1 jabs the air until it is exhausted: holding the button repeats.
     std::vector<Started> Starts;
     std::vector<BattleEvent> Log;
     for (int Tick = 0; Tick < 20 * TicksPerSecond && countEvents<Exhausted>(Log) == 0; ++Tick) {
@@ -448,9 +452,7 @@ TEST_CASE("Fight: a weapon brings its own move", "[combat][fight][data]") {
     CHECK(heavyMoveOf(loadFighter("knight")) == "hammer_smash");
 }
 
-TEST_CASE("Fight: DEX speeds strikes up, but not past the startup floor", "[combat][fight][data]") {
-    const std::vector<MoveDef> Moves = loadMoveSet(std::filesystem::path(FIGHTER_DATA_DIR) / "moves");
-    const MoveDef& JabMove = *findMove(Moves, MoveButton::Jab, "");
+TEST_CASE("Fight: DEX speeds strikes up within the O.7 corridor", "[combat][fight][data]") {
     // Ticks of the startup and of the whole jab.
     const auto measure = [](int Dexterity) {
         BattleConfig Config = makeConfig();
@@ -469,8 +471,12 @@ TEST_CASE("Fight: DEX speeds strikes up, but not past the startup floor", "[comb
     const auto [SlowStartup, SlowTotal] = measure(0);
     const auto [FastStartup, FastTotal] = measure(20);
     CHECK(FastTotal < SlowTotal);
-    CHECK(FastStartup <= SlowStartup);
-    CHECK(static_cast<float>(FastStartup) / TicksPerSecond >= JabMove.MinStartupSec - static_cast<float>(Dt));
+    CHECK(FastStartup < SlowStartup);
+    // The corridor (attack_speed_min/max in balance.json) is the only limit:
+    // DEX 20 is at most 1.25x faster than DEX 10, DEX 0 at most 1.25x slower.
+    const auto [BaseStartup, BaseTotal] = measure(10);
+    CHECK(static_cast<float>(BaseTotal) / static_cast<float>(FastTotal) <= 1.25f + 0.1f);
+    CHECK(static_cast<float>(SlowTotal) / static_cast<float>(BaseTotal) <= 1.0f / 0.75f + 0.1f);
 }
 
 TEST_CASE("Fight: a fighter at the wall cannot retreat", "[combat][fight]") {

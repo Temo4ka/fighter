@@ -14,6 +14,7 @@
     "base_motor_gain": 12.0,
     "gain_per_dex": 0.05,
     "move_speed_per_dex": 0.03,
+    "move_speed_per_gear_kg": 0.005,
     "move_speed_min": 0.5,
     "move_speed_max": 1.5,
     "attack_speed_per_dex": 0.025,

@@ -28,13 +28,14 @@ void validateStats(const Stats& BaseStats) {
 }
 
 std::span<const BalanceField> getBalanceFields() {
-    static constexpr std::array<BalanceField, 21> Fields = {{
+    static constexpr std::array<BalanceField, 22> Fields = {{
         {"mass_per_con", &BalanceTable::MassPerCon, false},
         {"base_motor_torque", &BalanceTable::BaseMotorTorque, true},
         {"torque_per_str", &BalanceTable::TorquePerStr, false},
         {"base_motor_gain", &BalanceTable::BaseMotorGain, true},
         {"gain_per_dex", &BalanceTable::GainPerDex, false},
         {"move_speed_per_dex", &BalanceTable::MoveSpeedPerDex, false},
+        {"move_speed_per_gear_kg", &BalanceTable::MoveSpeedPerGearKg, false},
         {"move_speed_min", &BalanceTable::MoveSpeedMin, true},
         {"move_speed_max", &BalanceTable::MoveSpeedMax, true},
         {"attack_speed_per_dex", &BalanceTable::AttackSpeedPerDex, false},
