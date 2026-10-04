@@ -6,9 +6,10 @@
 ///
 /// \file
 /// This file declares CombatTuning, the battle parameters that belong to
-/// neither fighter's body: where the fighters start, how close they may get
-/// and which contacts count as hits. They are read from data/combat.json when a Battle is created, so
-/// a restart (F5 in the sandbox) picks up edited values.
+/// neither fighter's body: where the fighters start, how close they may get,
+/// which contacts count as hits, stamina, chains and blocking. They are read
+/// from data/combat.json when a Battle is created, so a restart (F5 in the
+/// sandbox) picks up edited values.
 ///
 /// The file is internal to the combat module.
 ///
@@ -35,6 +36,19 @@ struct CombatTuning {
     float SeparationSpeed = 4.0f;
     /// With no stamina left, walking and strikes are this much slower (O.13).
     float ExhaustedSpeedScale = 0.7f;
+    /// An exhausted fighter is slow until its stamina is back to this share
+    /// of the maximum.
+    float ExhaustedRecoverFraction = 0.3f;
+    /// A strike that hit may be cancelled into the next one of its chain
+    /// (MoveDef::ChainTo) this long after its active phase ends, s.
+    float ChainWindowSec = 0.3f;
+    /// The longest chain, strikes: jab -> jab -> heavy is 3 (O.7).
+    int MaxChainLength = 3;
+    /// Walking while blocking is this much slower.
+    float BlockWalkSpeedScale = 0.5f;
+    /// After the end of the fight the bodies keep moving this long without
+    /// input, so that a knockout fall plays out, s.
+    float EndSettleSec = 1.2f;
 };
 
 /// Parses the tuning from JSON text. Every key is optional; an unknown key

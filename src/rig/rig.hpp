@@ -105,6 +105,10 @@ public:
     /// hit pushes to the right, -1 to the left. Stiffness drops; a standing
     /// fighter gets knockback or, if the hit is strong enough, is knocked down.
     void applyHit(float Impulse, float Direction);
+    /// The same, but the caller decides whether the hit knocks the fighter
+    /// down (combat's reaction levels, task 2.3): with \p KnockDown a fighter
+    /// that is not lying already falls, otherwise it is only pushed back.
+    void applyHit(float Impulse, float Direction, bool KnockDown);
 
     /// \name State
     /// @{

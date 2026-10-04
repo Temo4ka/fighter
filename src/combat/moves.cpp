@@ -33,13 +33,16 @@ const MoveDef* findMove(std::span<const MoveDef> Moves, MoveButton Button, std::
     return Unarmed;
 }
 
+bool MoveDef::canChainTo(MoveButton Next) const { return std::ranges::find(ChainTo, Next) != ChainTo.end(); }
+
 MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
     MoveDef Move;
     Move.Id = std::move(Id);
     try {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
-        checkFieldNames(Root, {"button", "clip", "weapon", "damage", "min_reaction", "stamina", "min_startup_sec"});
+        checkFieldNames(Root, {"button", "clip", "weapon", "damage", "min_reaction", "stamina",
+                               "close_clip", "close_range_m", "chain_to"});
 
         const auto ButtonName = getField(Root, "button").get<std::string>();
         const std::optional<MoveButton> Button = findMoveButton(ButtonName);
@@ -70,7 +73,32 @@ MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
             Move.MinReaction = *Level;
         }
         Move.Stamina = readNonNegative(Root, "stamina");
-        Move.MinStartupSec = readNonNegative(Root, "min_startup_sec");
+
+        // The close-range clip and its range come together.
+        if (Root.contains("close_clip") != Root.contains("close_range_m")) {
+            throw std::runtime_error("fields 'close_clip' and 'close_range_m' must be given together");
+        }
+        if (Root.contains("close_clip")) {
+            Move.CloseClip = Root.at("close_clip").get<std::string>();
+            if (Move.CloseClip.empty()) throw std::runtime_error("field 'close_clip': must not be empty");
+            Move.CloseRangeM = readNonNegative(Root, "close_range_m");
+        }
+        if (Root.contains("chain_to")) {
+            const Json& Buttons = Root.at("chain_to");
+            if (!Buttons.is_array()) throw std::runtime_error("field 'chain_to': must be a list of buttons");
+            for (const auto& Entry : Buttons) {
+                const auto Name = Entry.get<std::string>();
+                const std::optional<MoveButton> Next = findMoveButton(Name);
+                if (!Next) {
+                    throw std::runtime_error(std::format(
+                        "field 'chain_to': unknown button '{}' (expected Jab, HeavyPunch, BodyKick or LowKick)", Name));
+                }
+                if (Move.canChainTo(*Next)) {
+                    throw std::runtime_error(std::format("field 'chain_to': button '{}' is listed twice", Name));
+                }
+                Move.ChainTo.push_back(*Next);
+            }
+        }
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());
     }

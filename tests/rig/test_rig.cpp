@@ -225,6 +225,23 @@ TEST_CASE("Rig: a strong hit knocks the fighter down, then it gets up", "[rig]")
     CHECK(Body.getStiffness() == 1.0f);
 }
 
+TEST_CASE("Rig: the caller may decide about the knockdown", "[rig]") {
+    const RigDef Def = loadHumanoid();
+    // Strong enough for the rig's own threshold, but combat says no.
+    Scene Strong(makeSetup(true));
+    simulate(Strong.PhysWorld, Strong.Body, 10);
+    const float Impulse = 2.0f * Def.Control.KnockdownSpeed * Strong.Body.getTotalMass() / Def.Control.KnockbackScale;
+    Strong.Body.applyHit(Impulse, 1.0f, false);
+    CHECK(Strong.Body.getPosture() == Posture::Standing);
+    CHECK(Strong.Body.getController().getKnockback() > 0.0f);
+
+    // A weak hit that combat makes a knockdown.
+    Scene Weak(makeSetup(true));
+    simulate(Weak.PhysWorld, Weak.Body, 10);
+    Weak.Body.applyHit(1.0f, -1.0f, true);
+    CHECK(Weak.Body.getPosture() == Posture::KnockedDown);
+}
+
 TEST_CASE("PelvisController: walking accelerates to the target speed", "[rig]") {
     PelvisController Controller(1.0f, {.WalkAcceleration = 6.0f, .KnockbackDecay = 5.0f});
     Controller.setTargetVelocity(1.5f);

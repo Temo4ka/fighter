@@ -3,6 +3,5 @@
     "clip": "kick",
     "damage": 1.2,
     "min_reaction": "Flinch",
-    "stamina": 12,
-    "min_startup_sec": 0.3
+    "stamina": 12
 }

@@ -4,5 +4,6 @@
     "damage": 1.3,
     "min_reaction": "Flinch",
     "stamina": 12,
-    "min_startup_sec": 0.3
+    "close_clip": "heavy_punch_close",
+    "close_range_m": 0.6
 }

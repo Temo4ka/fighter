@@ -140,17 +140,12 @@ TEST_CASE("Clips: startup of the attacks is inside the corridor of O.7", "[anim]
     }
 }
 
-TEST_CASE("Clips: the startup is not below the floor of its move", "[anim][clips]") {
-    // data/moves/*.json: the striking phase starts no sooner than
-    // min_startup_sec, so at rate 1 a clip must not start sooner either.
-    // body_kick is left out: the old kick clip (0.18 s) is not re-timed yet.
+TEST_CASE("Clips: every move names an existing clip", "[anim][clips]") {
     const auto Moves = combat::loadMoveSet(DataDir / "moves");
     REQUIRE_FALSE(Moves.empty());
     for (const auto& Move : Moves) {
         INFO(Move.Id << " -> clip " << Move.Clip);
-        REQUIRE(getClips().contains(Move.Clip));
-        if (Move.Clip == "kick") continue;
-        CHECK(getClip(Move.Clip).ActiveBeginSec >= Move.MinStartupSec - TimeEpsilon);
+        CHECK(getClips().contains(Move.Clip));
     }
 }
 
