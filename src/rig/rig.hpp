@@ -345,7 +345,7 @@ public:
     /// freed limbs, posed strikers stopped at a contact and the weapon, the
     /// physical parts away from the ghost (a line to it with the angle), and
     /// fills the panel lines "P1 facing", "P1 wall", "P1 feet", "P1 limbs",
-    /// "P1 body" (pose error, carrier transfer, holding torque),
+    /// "P1 pose" (pose error, carrier transfer, holding torque),
     /// "P1 posed overlap". Does nothing in the release build.
     void drawDebug() const;
 

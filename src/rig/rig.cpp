@@ -1337,7 +1337,7 @@ void Rig::fillPanel() const {
         Hold = Joint.HoldTorque;
         HoldPart = Joint.Child;
     }
-    debug::setPanel(Name + " body", std::format("pose error {:.0f} deg ({}), carried: {}, hold {} {:.0f} N*m",
+    debug::setPanel(Name + " pose", std::format("error {:.0f} deg ({}), carried: {}, hold {} {:.0f} N*m",
                                                 Error.Angle * 180.0f / Pi, getBodyPartName(Error.Part),
                                                 Carrying ? "yes" : "no", getBodyPartName(HoldPart), Hold));
 
