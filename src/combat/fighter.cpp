@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -96,6 +97,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     Shown = Fade.step(Target, Dt);
 
     Body.setTargetAngles(Shown.Angles);
+    // The strikers of an attack stop at the opponent by themselves; the
+    // spacing keeps the rest of the body off it.
+    const bool Striking = getMove() && Contact == ContactStage::None && AttackTime < AttackClip->ActiveEndSec;
+    Body.setStrikingParts(Striking ? AttackClip->Strikers : std::bitset<BodyPartCount>{});
     Body.setMoveVelocity(Velocity);
     Body.setBaseStiffness(Top ? Top->Stiffness : 1.0f);
     Body.planMotion(Dt);
@@ -142,7 +147,7 @@ void Fighter::stopAtContact() {
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
     const std::optional<float> Kept =
-        Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth, Contact != ContactStage::None);
+        Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth);
     if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
 
     // The first stop: the clip goes back to the time of the contact (clip

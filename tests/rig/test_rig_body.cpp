@@ -676,7 +676,7 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
             Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
             Kick.Left.setTargetAngles(Pose);
             Kick.run(1);
-            const bool Stopped = Stop && Kick.Left.stopAtContact(Strikers, Depth, Stops > 0).has_value();
+            const bool Stopped = Stop && Kick.Left.stopAtContact(Strikers, Depth).has_value();
             Stops += Stopped ? 1 : 0;
             CHECK(Kick.Left.isStoppedAtContact() == Stopped);
             for (const auto Part : {BodyPart::ShinL, BodyPart::FootL}) {

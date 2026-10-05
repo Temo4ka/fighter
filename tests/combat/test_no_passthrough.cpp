@@ -98,6 +98,7 @@ struct OverlapLog {
     std::string Where;
     /// How many steps overlapped deeper than the tolerance, per pair of parts.
     std::map<std::string, int> DeepSteps;
+    std::map<std::string, float> PairDeepest;
 
     void watch(const Battle& Fight, float Tolerance) {
         const std::optional<physics::PartOverlap> Now = Fight.findDeepestOverlap();
@@ -107,6 +108,7 @@ struct OverlapLog {
                                              getBodyPartName(Now->First.Part), Now->Second.Fighter + 1,
                                              getBodyPartName(Now->Second.Part));
         if (Now->Depth > Tolerance) ++DeepSteps[Pair];
+        PairDeepest[Pair] = std::max(PairDeepest[Pair], Now->Depth);
         if (Now->Depth <= Deepest) return;
         Deepest = Now->Depth;
         Where = std::format("{:.3f} m {} at tick {} (P1 {} {}, P2 {} {}, pelvises {:.2f} m apart)", Now->Depth, Pair,
@@ -118,7 +120,9 @@ struct OverlapLog {
 
     void report(const std::string& Name) const {
         std::fprintf(stderr, "%s: deepest %s\n", Name.c_str(), Where.c_str());
-        for (const auto& [Pair, Steps] : DeepSteps) std::fprintf(stderr, "  %s: %d steps\n", Pair.c_str(), Steps);
+        for (const auto& [Pair, Steps] : DeepSteps) {
+            std::fprintf(stderr, "  %s: %d steps, deepest %.3f\n", Pair.c_str(), Steps, PairDeepest.at(Pair));
+        }
     }
 };
 

@@ -59,6 +59,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -103,6 +104,13 @@ struct ExtentX {
     float Max = 0.0f;
 };
 
+/// Where a part of a rig is going to be (Rig::predictBody).
+struct PartPlacement {
+    physics::Body Handle;
+    Vec2 Position;            ///< Body origin, m.
+    float Angle = 0.0f;       ///< rad.
+};
+
 /// The physics world owns the bodies and joints: a rig must not outlive it.
 class Rig {
 public:
@@ -139,6 +147,11 @@ public:
     /// while the fighter is down or getting up the turn waits until it
     /// stands. Target angles stay "as for facing right".
     void setFacing(bool FacingRight);
+    /// The posed parts that strike now (the strikers of an attack before it
+    /// stopped at a contact): they stop at the opponent by themselves
+    /// (stopAtContact), so the spacing of the fighters leaves them out
+    /// (predictBody). Combat sets it every step; none by default.
+    void setStrikingParts(const std::bitset<BodyPartCount>& Striking) { StrikingParts = Striking; }
     /// Keeps a knocked-down fighter on the floor as a limp ragdoll: it does
     /// not get up until this is cleared. Combat sets it on a knockout; a
     /// fighter that is still standing (or getting up) collapses where it is.
@@ -185,16 +198,15 @@ public:
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
-    /// Call after the physics step. Do the posed parts of \p Strikers touch
-    /// a posed part of the opponent? If one sank deeper than \p MaxDepth (m)
-    /// during the step, every posed part goes back along its motion of the
-    /// step to where the strikers were MaxDepth deep (the leg stays at the
-    /// contact). Only a new contact counts, unless \p Holding (held at a
-    /// contact already); see physics::World::findPosedStop. Returns the
-    /// share of the step's motion kept (1 for a contact that needed no
-    /// stop), or nullopt if there is no contact. Parts that are not posed now
-    /// are ignored.
-    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding);
+    /// Call after the physics step. Did the posed parts of \p Strikers run
+    /// into the opponent (its posed parts, or a part the solver could not
+    /// push away)? If one sank deeper than \p MaxDepth (m) during the step,
+    /// every posed part goes back along its motion of the step to where the
+    /// strikers were MaxDepth deep (the leg stays at the contact); see
+    /// physics::World::findPosedStop. Returns the share of the step's motion
+    /// kept (1 for a contact that needed no stop), or nullopt if there is no
+    /// contact. Parts that are not posed now are ignored.
+    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
 
     /// \name State
     /// @{
@@ -254,6 +266,19 @@ public:
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
     /// it does not touch them or is not posed now.
     float getPosedPenetration(BodyPart Part) const;
+    /// Where the body will be after the next applyControl() if the pelvis
+    /// controller ends the step at \p RootX: the posed parts exactly (the
+    /// pose of the target angles with the planted feet held, or the blend of
+    /// getting up), the torso and the head (physical, but held on the
+    /// pelvis) moved along with the pelvis. The arms are left out (the solver
+    /// keeps them off the opponent, and they yield), and so are the parts of
+    /// setStrikingParts(); none while the fighter is knocked down. The
+    /// spacing tries pelvis positions with it before it corrects the plan
+    /// (rig/spacing.hpp). Nothing moves.
+    std::vector<PartPlacement> predictBody(float RootX, float Dt) const;
+    /// The smallest gap between the shapes of \p Own and \p Other, m;
+    /// negative: how deep they overlap. Nothing moves.
+    float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
     /// @}
@@ -339,15 +364,20 @@ private:
     /// \p Corrections added to the joint targets (indexed by child part).
     PerBodyPart<Placement> computeTargetPose(Placement RootPlacement,
                                              const PerBodyPart<float>& Corrections = {}) const;
-    /// Root placement at the controller position, at the height where the
-    /// lowest kinematic part touches the floor.
-    Placement getStandingRoot() const;
+    /// Root placement at \p RootX, at the height where the lowest
+    /// kinematic part touches the floor.
+    Placement getStandingRoot(float RootX) const;
     float getPostureStiffness() const;
     void advancePosture();
     void moveKinematicParts(float Dt);
+    /// The pose of the kinematic parts with the root at \p RootX: the target
+    /// pose, the planted feet of \p Limbs held (their locks are updated), or
+    /// the blend of getting up at \p PostureTime.
+    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime) const;
     /// Holds planted feet in place: returns the joint corrections of the
-    /// legs for the uncorrected pose \p Pose and updates the locks.
-    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, float Dt);
+    /// legs for the uncorrected pose \p Pose and updates the locks of
+    /// \p Limbs.
+    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const;
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
@@ -404,6 +434,7 @@ private:
     int WallSide = 0;
     float WeaponReach = 0.0f;
     WeaponShape Weapon;
+    std::bitset<BodyPartCount> StrikingParts;   ///< setStrikingParts().
     /// The strikers stopAtContact() last held back, and whether it did so
     /// in the last step; for the debug draw.
     std::bitset<BodyPartCount> StoppedParts;

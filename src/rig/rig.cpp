@@ -142,7 +142,7 @@ void Rig::setBaseStiffness(float Stiffness) { BaseStiffness = Stiffness; }
 void Rig::snapToTargets() {
     Controller.reset(Controller.getPositionX());
     releaseFeet();
-    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot());
+    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot(Controller.getPositionX()));
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         Part.Handle.setTransform(Target.Position, Target.Angle);
         Part.Handle.setLinearVelocity({});
@@ -239,7 +239,7 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
                                                              : 0;
 }
 
-std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding) {
+std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
     StoppedAtContact = false;
     if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
     std::vector<physics::Body> Posed;
@@ -247,7 +247,7 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
         if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
     }
     if (Posed.empty()) return std::nullopt;
-    const std::optional<float> Fraction = Physics->findPosedStop(Posed, MaxDepth, Holding);
+    const std::optional<float> Fraction = Physics->findPosedStop(Posed, MaxDepth);
     if (!Fraction) return std::nullopt;
     // The whole posed body goes back, so the leg stays on its hip.
     if (*Fraction < 1.0f) {
@@ -549,11 +549,11 @@ PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement,
     return Pose;
 }
 
-Rig::Placement Rig::getStandingRoot() const {
+Rig::Placement Rig::getStandingRoot(float RootX) const {
     // Pose the body with the root on the floor line, then lift it so that
     // the lowest kinematic part (a sole) just touches the floor. Bent knees
     // (a crouch) leave the feet higher, so the pelvis goes down.
-    const Placement OnFloor{.Position = {Controller.getPositionX(), 0.0f},
+    const Placement OnFloor{.Position = {RootX, 0.0f},
                             .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
     const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor);
     float Lowest = std::numeric_limits<float>::max();
@@ -587,36 +587,79 @@ void Rig::advancePosture() {
 }
 
 void Rig::moveKinematicParts(float Dt) {
-    const Placement RootPlacement = getStandingRoot();
-    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
-    if (CurrentPosture == Posture::Standing) {
-        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Dt));
-    } else {
-        releaseFeet();
-    }
-    // Getting up blends from where the parts lay to the stance.
-    const bool Blending = CurrentPosture == Posture::GettingUp;
-    const float Blend = Blending ? smoothStep(std::clamp(PostureSec / Control.GetUpSec, 0.0f, 1.0f)) : 1.0f;
-
-    for (auto&& [Part, Target, From] : std::views::zip(Parts, Pose, GetUpFrom)) {
-        if (!Part.Kinematic) continue;
-        Placement Goal = Target;
-        if (Blending) {
-            Goal.Position = lerp(From.Position, Target.Position, Blend);
-            Goal.Angle = From.Angle + wrapAngle(Target.Angle - From.Angle) * Blend;
-        }
-        Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
+    if (CurrentPosture != Posture::Standing) releaseFeet();
+    const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec);
+    for (auto&& [Part, Goal] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
     }
 }
 
-PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) {
+PerBodyPart<Rig::Placement> Rig::computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt,
+                                                   float PostureTime) const {
+    const Placement RootPlacement = getStandingRoot(RootX);
+    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
+    if (CurrentPosture == Posture::Standing) Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt));
+    if (CurrentPosture != Posture::GettingUp) return Pose;
+    // Getting up blends from where the parts lay to the stance.
+    const float Blend = smoothStep(std::clamp(PostureTime / Control.GetUpSec, 0.0f, 1.0f));
+    for (auto&& [Goal, From] : std::views::zip(Pose, GetUpFrom)) {
+        Goal.Position = lerp(From.Position, Goal.Position, Blend);
+        Goal.Angle = From.Angle + wrapAngle(Goal.Angle - From.Angle) * Blend;
+    }
+    return Pose;
+}
+
+std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
+    std::vector<PartPlacement> Result;
+    if (CurrentPosture == Posture::KnockedDown) return Result;
+    // applyControl() advances the posture time before it poses the parts.
+    std::vector<Leg> Limbs = Legs;
+    const PerBodyPart<Placement> Pose = computePosedPose(RootX, Limbs, Dt, PostureSec + Dt);
+    const Vec2 Shift{RootX - getPart(Root).Handle.getPosition().X, 0.0f};
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const PartState& Part = Parts[Index];
+        if (StrikingParts.test(Index) || Part.Unjam) continue;
+        if (Part.Kinematic) {
+            const Placement& Placed = Pose[Index];
+            Result.push_back({.Handle = Part.Handle, .Position = Placed.Position, .Angle = Placed.Angle});
+            // A lifted foot comes down where it is: the spacing keeps the
+            // floor below it clear too, so that it does not step onto the
+            // opponent's foot (in a side view the feet are in one plane).
+            const bool IsFoot = std::ranges::any_of(Legs, [&](const Leg& Limb) {
+                return static_cast<size_t>(Limb.Foot) == Index;
+            });
+            const float Lift = getLowestPoint(Part.Shape, Placed.Position, Placed.Angle);
+            if (IsFoot && Lift > 0.0f) {
+                Result.push_back(
+                    {.Handle = Part.Handle, .Position = Placed.Position - Vec2{0.0f, Lift}, .Angle = Placed.Angle});
+            }
+        } else {
+            Result.push_back(
+                {.Handle = Part.Handle, .Position = Part.Handle.getPosition() + Shift, .Angle = Part.Handle.getAngle()});
+        }
+    }
+    return Result;
+}
+
+float Rig::measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const {
+    float Smallest = std::numeric_limits<float>::max();
+    for (const auto& Mine : Own) {
+        for (const auto& Theirs : Other) {
+            Smallest = std::min(Smallest, Physics->getGapAt(Mine.Handle, Mine.Position, Mine.Angle, Theirs.Handle,
+                                                            Theirs.Position, Theirs.Angle));
+        }
+    }
+    return Smallest;
+}
+
+PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const {
     // Standing still after a push, the feet are left away from the stance:
     // the foot farthest off steps back under the body, one at a time and
     // only while all feet stand (not during a kick).
     const bool Idle = Controller.getWalkVelocity() == 0.0f && std::abs(Controller.getKnockback()) < MinRestepKnockback;
-    const bool AllPlanted = std::ranges::all_of(Legs, &Leg::Locked);
+    const bool AllPlanted = std::ranges::all_of(Limbs, &Leg::Locked);
     Leg* Farthest = nullptr;
-    for (auto& Limb : Legs) {
+    for (auto& Limb : Limbs) {
         if (Limb.Locked && (!Farthest || getRestepDistance(Limb) > getRestepDistance(*Farthest))) Farthest = &Limb;
     }
     if (Idle && AllPlanted && Farthest && Control.FootRestepDistance > 0.0f &&
@@ -627,7 +670,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
     }
 
     PerBodyPart<float> Corrections{};
-    for (auto& Limb : Legs) {
+    for (auto& Limb : Limbs) {
         const JointState& Ankle = Joints[Limb.Ankle];
         const Placement& Shin = Pose[static_cast<size_t>(Ankle.Parent)];
         const Vec2 ClipAnkle = Shin.Position + rotate(Ankle.AnchorInParent, Shin.Angle);

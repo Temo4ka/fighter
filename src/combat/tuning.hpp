@@ -34,6 +34,9 @@ struct CombatTuning {
     float BodyHalfWidth = 0.25f;
     /// Overlapping pelvises are pushed apart at most this fast, m/s.
     float SeparationSpeed = 4.0f;
+    /// Overlapping bodies (legs, torsos, heads; rig/spacing.hpp) are pushed
+    /// apart at most this fast, m/s.
+    float PosedSeparationSpeed = 12.0f;
     /// With no stamina left, walking and strikes are this much slower (O.13).
     float ExhaustedSpeedScale = 0.7f;
     /// An exhausted fighter is slow until its stamina is back to this share

@@ -34,6 +34,11 @@
 /// it back there with rewindBody() (a kick stops at the leg it hits, or at a
 /// torso the solver cannot push out of its way).
 ///
+/// A posed limb is fast enough to sink into a dynamic part in one step,
+/// before Box2D has seen the contact (it creates contacts from where bodies
+/// were at the start of a step). Such a new overlap is a hit too, found the
+/// same way as a hit between posed parts.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once
@@ -120,23 +125,23 @@ public:
     /// Do the posed bodies \p Strikers run into a part of another fighter in
     /// the last step, and how much of their motion in the step could they
     /// have made with none of them sinking deeper than \p MaxDepth (m) into
-    /// it (it stays where it is now)? Nullopt: no contact; 1: a contact no
-    /// deeper than MaxDepth; 0: the other part moved into them.
+    /// it, or than it was before the step (it stays where it is now)?
+    /// Nullopt: no contact; 1: a contact that needs no stop; 0: the other
+    /// part moved into them.
     /// Only closing contacts count: the striker moved towards the other part
     /// before the step (a contact it slides along or leaves is no stop). A
     /// posed part of the opponent counts when the striker touches it, a
-    /// dynamic one only when the striker sank deeper than MaxDepth into it:
-    /// the solver did not push it out of the way (it is held by its joints,
-    /// or it ignores posed parts, as a knocked-down body does).
-    /// A posed pair stops the strikers only as a new contact, unless
-    /// \p Holding (they are held at a contact already): then pairs that
-    /// touched before the step count too, up to twice MaxDepth deep. A
-    /// deeper pair sank in while nothing stopped it; there is no contact to
-    /// go back to. A dynamic pair counts if it was no deeper than MaxDepth
-    /// (twice that if holding) before the step. A kinematic body moves at a
-    /// constant velocity during a step, so the share is found by bisection
-    /// along that straight motion.
-    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const;
+    /// dynamic one only when the striker sank too deep into it: the solver
+    /// did not push it out of the way (it is held by its joints, or it
+    /// ignores posed parts, as a knocked-down body does). A kinematic body
+    /// moves at a constant velocity during a step, so the share is found by
+    /// bisection along that straight motion.
+    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth) const;
+    /// The smallest gap between the shapes of \p First and \p Second, their
+    /// bodies placed at the given origins and angles, m; negative: how deep
+    /// they overlap. Nothing moves.
+    float getGapAt(Body First, Vec2 FirstPosition, float FirstAngle, Body Second, Vec2 SecondPosition,
+                   float SecondAngle) const;
     /// Puts \p Target back along its motion of the last step: \p Fraction 0
     /// is where it was before the step, 1 is where it is now. Velocities do
     /// not change.
@@ -205,6 +210,9 @@ private:
     /// Hits between the kinematic parts of different fighters, which Box2D
     /// does not collide.
     void collectPosedHits();
+    /// Hits of kinematic parts that sank into a dynamic part of another
+    /// fighter in the step, before Box2D had a contact for them.
+    void collectTunnelHits();
     void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
                 float Impulse);
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;

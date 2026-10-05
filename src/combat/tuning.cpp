@@ -25,6 +25,7 @@ constexpr std::array TuningFields = {
     TuningField{"hitSpeedThreshold", &CombatTuning::HitSpeedThreshold},
     TuningField{"bodyHalfWidth", &CombatTuning::BodyHalfWidth},
     TuningField{"separationSpeed", &CombatTuning::SeparationSpeed},
+    TuningField{"posedSeparationSpeed", &CombatTuning::PosedSeparationSpeed},
     TuningField{"exhaustedSpeedScale", &CombatTuning::ExhaustedSpeedScale},
     TuningField{"exhaustedRecoverFraction", &CombatTuning::ExhaustedRecoverFraction},
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
@@ -77,6 +78,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.SpawnDistance <= 0.0f) throw std::runtime_error("spawnDistance must be positive");
     if (Tuning.BodyHalfWidth <= 0.0f) throw std::runtime_error("bodyHalfWidth must be positive");
     if (Tuning.SeparationSpeed <= 0.0f) throw std::runtime_error("separationSpeed must be positive");
+    if (Tuning.PosedSeparationSpeed <= 0.0f) throw std::runtime_error("posedSeparationSpeed must be positive");
     if (Tuning.ExhaustedSpeedScale <= 0.0f || Tuning.ExhaustedSpeedScale > 1.0f) {
         throw std::runtime_error("exhaustedSpeedScale must be in (0, 1]");
     }

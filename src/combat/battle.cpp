@@ -10,6 +10,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <cstdio>
+#include <cstdlib>
 
 #include "combat/clip_library.hpp"
 #include "combat/fighter.hpp"
@@ -141,6 +143,9 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     // opponent's posed legs or pelvis goes back to the contact. The hits of
     // the step are already collected, with the speed the limb came in at.
     for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
+    if (std::getenv("DBG_SPACING")) {
+        if (const auto O = findDeepestOverlap(); O && O->Depth > 0.01f) std::fprintf(stderr, "TICK %llu overlap %.4f P%d %s / P%d %s states %d %d\n", (unsigned long long)Tick, O->Depth, O->First.Fighter + 1, std::string(getBodyPartName(O->First.Part)).c_str(), O->Second.Fighter + 1, std::string(getBodyPartName(O->Second.Part)).c_str(), (int)Left.getState(), (int)Right.getState());
+    }
 
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
@@ -422,7 +427,8 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena) {
 rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning) {
     return {.ArenaHalfWidth = Arena.HalfWidthM,
             .BodyHalfWidth = Tuning.BodyHalfWidth,
-            .SeparationSpeed = Tuning.SeparationSpeed};
+            .SeparationSpeed = Tuning.SeparationSpeed,
+            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed};
 }
 
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,

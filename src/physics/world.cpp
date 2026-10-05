@@ -11,6 +11,9 @@
 #include <span>
 #include <utility>
 #include <vector>
+#include <cstdlib>
+#include <cstdio>
+#include <string>
 
 #include <box2d/box2d.h>
 
@@ -37,15 +40,20 @@ constexpr int MaxShapesPerBody = 8;
 constexpr int MaxContactsPerBody = 32;
 /// Posed shapes closer than this touch, m (as Box2D overlap queries).
 constexpr float TouchTolerance = 0.0005f;
+/// A posed part that went from apart to this deep into a dynamic part in one
+/// step tunnelled into it (collectTunnelHits()), m: Box2D lets touching
+/// bodies sink in by less than that.
+constexpr float TunnelDepth = 0.01f;
+/// Shape cores closer than this intersect: the distance says nothing about
+/// how deep the shapes overlap, m.
+constexpr float CoreTouchDistance = 1e-5f;
 /// Bisection steps of findPosedStop(): the share of the step is found to
 /// 2^-20, far below a millimetre for any limb speed.
 constexpr int StopSearchSteps = 20;
-/// A pair of posed parts held at a contact deeper than this many stop depths
-/// before the step sank in while nothing stopped it (findPosedStop()).
-constexpr float InsideFactor = 2.0f;
-/// A posed striker approaching another part slower than this does not run
-/// into it (findPosedStop()): it slides along it or leaves it, m/s.
-constexpr float MinClosingSpeed = 0.05f;
+/// A posed striker whose motion in a step takes it less than this deeper
+/// into another part does not run into it (findPosedStop()): it slides
+/// along it or leaves it, m.
+constexpr float MinClosingDepth = 1e-4f;
 
 /// The closest approach of two posed shapes.
 struct ShapeGap {
@@ -59,6 +67,8 @@ float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other);
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage);
 b2ShapeProxy makeLocalProxy(b2ShapeId Shape);
 ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, b2Transform TransformB);
+std::optional<ShapeGap> measureDeepOverlap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB,
+                                           b2Transform TransformB);
 ShapeGap measureBodyGap(b2BodyId BodyA, b2Transform TransformA, b2BodyId BodyB, b2Transform TransformB);
 b2Transform makeTransform(Vec2 Position, Vec2 Rotation);
 b2Transform getTransform(b2ShapeId Shape);
@@ -69,6 +79,9 @@ World::World(Config Settings) : SubSteps(Settings.SubSteps), HitSpeedThreshold(S
     b2WorldDef Def = b2DefaultWorldDef();
     Def.gravity = toBox2D(Settings.Gravity);
     Def.hitEventThreshold = Settings.HitSpeedThreshold;
+    if (std::getenv("DBG_HERTZ")) Def.contactHertz = std::stof(std::getenv("DBG_HERTZ"));
+    if (std::getenv("DBG_SUBSTEPS")) SubSteps = std::stoi(std::getenv("DBG_SUBSTEPS"));
+    if (std::getenv("DBG_PUSH")) Def.maxContactPushSpeed = std::stof(std::getenv("DBG_PUSH"));
     // Fighters must never fall asleep: their motors work every step.
     Def.enableSleep = false;
     Id = b2StoreWorldId(b2CreateWorld(&Def));
@@ -203,9 +216,14 @@ void World::setStrikeMass(Body Target, float Kg) {
 
 void World::step(float Dt) {
     recordPartVelocities();
-    b2World_Step(loadWorld(Id), Dt, SubSteps);
-    collectHits();
+    Hits.clear();
+    const int Passes = std::getenv("DBG_PASSES") ? std::stoi(std::getenv("DBG_PASSES")) : 1;
+    for (int Pass = 0; Pass < Passes; ++Pass) {
+        b2World_Step(loadWorld(Id), Dt / static_cast<float>(Passes), SubSteps);
+        collectHits();
+    }
     collectPosedHits();
+    collectTunnelHits();
 }
 
 bool World::isTouchingOtherFighter(Body Target) const {
@@ -290,18 +308,15 @@ float World::getPosedPenetration(Body Target) const {
     return measurePosedPenetration(Entry, getPlacementDuringStep(Entry, 1.0f));
 }
 
-std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const {
-    // The pairs of a striker and an opponent's posed part to keep apart. A
-    // pair that touched before the step is a contact that began while
-    // nothing stopped it (in the startup of a kick): it is left alone, there
-    // is no contact to go back to and it can be no hit. A pair held at the
-    // contact is about MaxDepth deep, so while holding the limit has room.
-    // Touching is as for posed hits: closer than TouchTolerance.
-    const float MaxPosedBefore = Holding ? MaxDepth * InsideFactor : -TouchTolerance;
-    const float MaxDynamicBefore = Holding ? MaxDepth * InsideFactor : MaxDepth;
+std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth) const {
+    // The pairs of a striker and a part of another fighter that it runs
+    // into. A striker sinks no deeper into a part than MaxDepth, or than it
+    // already was before the step (held at a contact, or pressed in by the
+    // other part): there is no contact to go back to before that.
     struct Pair {
         const PartBody* Mover = nullptr;
         const PartBody* Other = nullptr;
+        float Limit = 0.0f;   ///< How deep the mover may be, m.
     };
     std::vector<Pair> Pairs;
     for (const auto& Striker : Strikers) {
@@ -312,44 +327,56 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
         const Placement MoverNow = getPlacementDuringStep(Mover, 1.0f);
         for (const auto& Other : PartBodies) {
             if (Other.Part.Fighter == Mover.Part.Fighter) continue;
-            const bool Posed = Other.Handle.getType() == BodyType::Kinematic;
             const Placement OtherBefore = getPlacementDuringStep(Other, 0.0f);
-            const ShapeGap GapBefore = measureBodyGap(loadBody(Mover.Handle.Id), makeTransform(MoverBefore.Position, MoverBefore.Rotation),
-                                                      loadBody(Other.Handle.Id), makeTransform(OtherBefore.Position, OtherBefore.Rotation));
-            if (-GapBefore.Distance > (Posed ? MaxPosedBefore : MaxDynamicBefore)) continue;
+            const ShapeGap GapBefore =
+                measureBodyGap(loadBody(Mover.Handle.Id), makeTransform(MoverBefore.Position, MoverBefore.Rotation),
+                               loadBody(Other.Handle.Id), makeTransform(OtherBefore.Position, OtherBefore.Rotation));
+            const float Limit = std::max(MaxDepth, -GapBefore.Distance);
             const float Now = measurePairPenetration(Mover, MoverNow, Other, getPlacementDuringStep(Other, 1.0f));
-            if (Now < -TouchTolerance || (!Posed && Now <= MaxDepth)) continue;
-            // Closing: the striker moved towards the other part (the
-            // normal points from it to the other part).
-            const Vec2 Relative = getVelocityBeforeStep(Mover, GapBefore.Point) -
-                                  getVelocityBeforeStep(Other, GapBefore.Point);
-            if (dot(Relative, GapBefore.Normal) < MinClosingSpeed) continue;
-            Pairs.push_back({.Mover = &Mover, .Other = &Other});
+            // A posed part is a contact as soon as the striker touches it
+            // (as for posed hits); a dynamic one only when the solver did
+            // not keep the striker out of it.
+            const bool Posed = Other.Handle.getType() == BodyType::Kinematic;
+            if (Posed ? Now < -TouchTolerance : Now <= Limit) continue;
+            // Closing: the striker's own motion in the step took it deeper
+            // into the other part (where that part is now). A contact it
+            // slides along or leaves, or one the other part pressed into it,
+            // is no stop.
+            const float NowFromStart = measurePairPenetration(Mover, MoverBefore, Other, getPlacementDuringStep(Other, 1.0f));
+            if (std::getenv("DBG_STOP")) std::fprintf(stderr, "STOP now %.4f from start %.4f limit %.4f posed %d\n", Now, NowFromStart, Limit, Posed);
+            if (Now - NowFromStart < MinClosingDepth) continue;
+            Pairs.push_back({.Mover = &Mover, .Other = &Other, .Limit = Limit});
         }
     }
-    // The opponent's parts stay where they are now.
-    const auto getDeepest = [&](float Fraction) {
-        float Deepest = std::numeric_limits<float>::lowest();
+    if (Pairs.empty()) return std::nullopt;
+    // How much deeper than allowed the strikers are at a share of their
+    // motion; the opponent's parts stay where they are now.
+    const auto getExcess = [&](float Fraction) {
+        float Excess = std::numeric_limits<float>::lowest();
         for (const auto& Entry : Pairs) {
             const float Depth = measurePairPenetration(*Entry.Mover, getPlacementDuringStep(*Entry.Mover, Fraction),
                                                        *Entry.Other, getPlacementDuringStep(*Entry.Other, 1.0f));
-            Deepest = std::max(Deepest, Depth);
+            Excess = std::max(Excess, Depth - Entry.Limit);
         }
-        return Deepest;
+        return Excess;
     };
-    const auto isTooDeep = [&](float Fraction) { return getDeepest(Fraction) > MaxDepth; };
-    const float DeepestNow = getDeepest(1.0f);
-    if (DeepestNow < -TouchTolerance) return std::nullopt;   // no contact
-    if (DeepestNow <= MaxDepth) return 1.0f;
-    if (isTooDeep(0.0f)) return 0.0f;   // the opponent moved into it
+    if (getExcess(1.0f) <= 0.0f) return 1.0f;   // touching, not too deep
+    if (getExcess(0.0f) > 0.0f) return 0.0f;    // the opponent moved into it
     // The largest share that is not too deep: Low is fine, High is not.
     float Low = 0.0f;
     float High = 1.0f;
     for (int Step = 0; Step < StopSearchSteps; ++Step) {
         const float Middle = (Low + High) * 0.5f;
-        (isTooDeep(Middle) ? High : Low) = Middle;
+        (getExcess(Middle) > 0.0f ? High : Low) = Middle;
     }
     return Low;
+}
+
+float World::getGapAt(Body First, Vec2 FirstPosition, float FirstAngle, Body Second, Vec2 SecondPosition,
+                      float SecondAngle) const {
+    return measureBodyGap(loadBody(First.Id), {toBox2D(FirstPosition), b2MakeRot(FirstAngle)}, loadBody(Second.Id),
+                          {toBox2D(SecondPosition), b2MakeRot(SecondAngle)})
+        .Distance;
 }
 
 void World::rewindBody(Body Target, float Fraction) {
@@ -447,7 +474,6 @@ void World::recordPartVelocities() {
 }
 
 void World::collectHits() {
-    Hits.clear();
     const b2ContactEvents Events = b2World_GetContactEvents(loadWorld(Id));
     for (const auto& Event : std::span(Events.hitEvents, static_cast<size_t>(Events.hitCount))) {
         const auto SlotA = detail::decodePartSlot(b2Body_GetUserData(b2Shape_GetBody(Event.shapeIdA)));
@@ -534,6 +560,48 @@ void World::collectPosedHits() {
         }
     }
     TouchingPosed = std::move(Touching);   // built in sorted order
+}
+
+void World::collectTunnelHits() {
+    const size_t Known = Hits.size();
+    for (const auto& Posed : PartBodies) {
+        if (Posed.Handle.getType() != BodyType::Kinematic) continue;
+        const b2Transform PosedBefore = makeTransform(Posed.PositionBeforeStep, Posed.RotationBeforeStep);
+        const b2Transform PosedNow = b2Body_GetTransform(loadBody(Posed.Handle.Id));
+        for (const auto& Other : PartBodies) {
+            if (Other.Part.Fighter == Posed.Part.Fighter || Other.Handle.getType() != BodyType::Dynamic) continue;
+            // Apart before the step, inside each other after it.
+            const ShapeGap Before =
+                measureBodyGap(loadBody(Posed.Handle.Id), PosedBefore, loadBody(Other.Handle.Id),
+                               makeTransform(Other.PositionBeforeStep, Other.RotationBeforeStep));
+            if (Before.Distance <= TouchTolerance) continue;
+            const ShapeGap Now = measureBodyGap(loadBody(Posed.Handle.Id), PosedNow, loadBody(Other.Handle.Id),
+                                                b2Body_GetTransform(loadBody(Other.Handle.Id)));
+            if (Now.Distance >= -TunnelDepth) continue;
+            // Box2D may have seen this one after all.
+            const bool Reported = std::any_of(Hits.begin(), Hits.begin() + static_cast<std::ptrdiff_t>(Known),
+                                              [&](const HitEvent& Hit) {
+                                                  const auto isPair = [&](PartRef First, PartRef Second) {
+                                                      return First.Fighter == Posed.Part.Fighter &&
+                                                             First.Part == Posed.Part.Part &&
+                                                             Second.Fighter == Other.Part.Fighter &&
+                                                             Second.Part == Other.Part.Part;
+                                                  };
+                                                  return isPair(Hit.Attacker, Hit.Victim) ||
+                                                         isPair(Hit.Victim, Hit.Attacker);
+                                              });
+            if (Reported) continue;
+            // As a posed hit: the normal from before the step, the impulse
+            // of the same collision between free bodies.
+            const Vec2 Relative =
+                getVelocityBeforeStep(Posed, Before.Point) - getVelocityBeforeStep(Other, Before.Point);
+            const float Approach = dot(Relative, Before.Normal);
+            if (Approach < HitSpeedThreshold) continue;
+            const float MassA = getStrikeMass(Posed);
+            const float MassB = getStrikeMass(Other);
+            addHit(Posed, Other, Now.Point, Before.Normal, Approach, Approach * MassA * MassB / (MassA + MassB));
+        }
+    }
 }
 
 void World::addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
@@ -682,6 +750,11 @@ ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, 
     b2SimplexCache Cache{};
     const b2DistanceOutput Output = b2ShapeDistance(&Input, &Cache, nullptr, 0);
 
+    // Cores that intersect have no distance: the depth comes from the
+    // contact manifold of the two shapes, as the solver sees it.
+    if (Output.distance <= CoreTouchDistance) {
+        if (const auto Deep = measureDeepOverlap(ShapeA, TransformA, ShapeB, TransformB)) return *Deep;
+    }
     const float RadiusA = Input.proxyA.radius;
     const float RadiusB = Input.proxyB.radius;
     Vec2 Normal = fromBox2D(Output.normal);
@@ -692,6 +765,60 @@ ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, 
     const Vec2 SurfaceA = fromBox2D(Output.pointA) + Normal * RadiusA;
     const Vec2 SurfaceB = fromBox2D(Output.pointB) - Normal * RadiusB;
     return {.Distance = Output.distance - RadiusA - RadiusB, .Point = (SurfaceA + SurfaceB) * 0.5f, .Normal = Normal};
+}
+
+/// How deep two shapes whose cores intersect overlap: the deepest point of
+/// their contact manifold. Nullopt if the manifold has no point.
+std::optional<ShapeGap> measureDeepOverlap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB,
+                                           b2Transform TransformB) {
+    const b2ShapeType TypeA = b2Shape_GetType(ShapeA);
+    const b2ShapeType TypeB = b2Shape_GetType(ShapeB);
+    // The functions take the "larger" shape first: polygon, capsule, circle.
+    const auto getRank = [](b2ShapeType Type) {
+        return Type == b2_polygonShape ? 0 : Type == b2_capsuleShape ? 1 : Type == b2_circleShape ? 2 : 3;
+    };
+    if (getRank(TypeA) > 2 || getRank(TypeB) > 2) return std::nullopt;
+    const bool Swapped = getRank(TypeA) > getRank(TypeB);
+    const b2ShapeId First = Swapped ? ShapeB : ShapeA;
+    const b2ShapeId Second = Swapped ? ShapeA : ShapeB;
+    const b2Transform FirstAt = Swapped ? TransformB : TransformA;
+    const b2Transform SecondAt = Swapped ? TransformA : TransformB;
+
+    b2Manifold Manifold{};
+    const b2ShapeType FirstType = b2Shape_GetType(First);
+    const b2ShapeType SecondType = b2Shape_GetType(Second);
+    if (FirstType == b2_polygonShape) {
+        const b2Polygon Polygon = b2Shape_GetPolygon(First);
+        if (SecondType == b2_polygonShape) {
+            const b2Polygon Other = b2Shape_GetPolygon(Second);
+            Manifold = b2CollidePolygons(&Polygon, FirstAt, &Other, SecondAt);
+        } else if (SecondType == b2_capsuleShape) {
+            const b2Capsule Other = b2Shape_GetCapsule(Second);
+            Manifold = b2CollidePolygonAndCapsule(&Polygon, FirstAt, &Other, SecondAt);
+        } else {
+            const b2Circle Other = b2Shape_GetCircle(Second);
+            Manifold = b2CollidePolygonAndCircle(&Polygon, FirstAt, &Other, SecondAt);
+        }
+    } else if (FirstType == b2_capsuleShape) {
+        const b2Capsule Capsule = b2Shape_GetCapsule(First);
+        if (SecondType == b2_capsuleShape) {
+            const b2Capsule Other = b2Shape_GetCapsule(Second);
+            Manifold = b2CollideCapsules(&Capsule, FirstAt, &Other, SecondAt);
+        } else {
+            const b2Circle Other = b2Shape_GetCircle(Second);
+            Manifold = b2CollideCapsuleAndCircle(&Capsule, FirstAt, &Other, SecondAt);
+        }
+    } else {
+        const b2Circle Circle = b2Shape_GetCircle(First);
+        const b2Circle Other = b2Shape_GetCircle(Second);
+        Manifold = b2CollideCircles(&Circle, FirstAt, &Other, SecondAt);
+    }
+    if (Manifold.pointCount == 0) return std::nullopt;
+    const auto Points = std::span(Manifold.points).first(static_cast<size_t>(Manifold.pointCount));
+    const auto Deepest = std::ranges::min_element(Points, {}, &b2ManifoldPoint::separation);
+    // The manifold normal points from its first shape to its second one.
+    const Vec2 Normal = fromBox2D(Manifold.normal) * (Swapped ? -1.0f : 1.0f);
+    return ShapeGap{.Distance = Deepest->separation, .Point = fromBox2D(Deepest->point), .Normal = Normal};
 }
 
 } // namespace
