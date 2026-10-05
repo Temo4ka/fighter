@@ -283,29 +283,6 @@ TEST_CASE("Clip rate: the rate that gives a wanted startup", "[anim][playback]")
     CHECK(getRateForStartup(Attack, 0.0f) == 1.0f);
 }
 
-TEST_CASE("Clip rate: a floor on the startup limits the rate", "[anim][playback]") {
-    const Clip Attack = parseClip(AttackJson, "attack");   // active from 0.2 s
-    // A fighter 25 % faster would start at 0.16 s; the floor is 0.18 s.
-    CHECK(limitRateByStartup(Attack, 1.25f, 0.18f) == Approx(0.2f / 0.18f));
-    CHECK(getStartupAtRate(Attack, limitRateByStartup(Attack, 1.25f, 0.18f)) == Approx(0.18f));
-    // Below the floor already, or a slower fighter: unchanged.
-    CHECK(limitRateByStartup(Attack, 1.0f, 0.2f) == Approx(1.0f));
-    CHECK(limitRateByStartup(Attack, 0.8f, 0.18f) == Approx(0.8f));
-    // No floor, no active phase: unchanged.
-    CHECK(limitRateByStartup(Attack, 1.25f, 0.0f) == Approx(1.25f));
-    CHECK(limitRateByStartup(parseClip(LoopJson, "walk"), 1.25f, 0.5f) == Approx(1.25f));
-}
-
-TEST_CASE("Clip rate: the attack clips of data keep their startup under their rate corridor", "[anim][playback]") {
-    // O.7: DEX shifts the startup by +-25 %. For the jab (0.16 s at rate 1)
-    // that is 0.128-0.213 s, and the floor of data/moves/jab.json (0.15 s)
-    // holds the fastest fighter back.
-    const Clip Jab = loadClip(PosesDir / "jab.json");
-    const float FastRate = limitRateByStartup(Jab, 1.25f, 0.15f);
-    CHECK(getStartupAtRate(Jab, FastRate) >= 0.15f - 1e-4f);
-    CHECK(getStartupAtRate(Jab, 0.75f) <= 0.25f);
-}
-
 TEST_CASE("describePlayback: the line for the panel", "[anim][playback]") {
     const Clip Attack = parseClip(AttackJson, "attack");
     PoseTransition Fade;

@@ -35,14 +35,17 @@
 /// stance while the motors ramp up. A fighter told to stay down
 /// (setStayDown, a knockout) does not get up.
 ///
-/// Between two fighters (task 2.1): parts of the "passThrough" list pass the
-/// same parts of the opponent (empty in the shipped rig: the arms collide,
-/// a jab hits the raised guard), a limb stuck in the opponent lets go until
-/// it is free ("unjam"), posed legs hit posed legs (physics::World), the
-/// pelvises keep apart and away from the walls (rig/spacing.hpp). A posed
-/// striking limb stops where it meets the opponent's posed parts
-/// (stopAtContact): Box2D does not collide two kinematic bodies, so a kick
-/// would go through the legs it hits.
+/// Between two fighters (task 2.1) nothing passes through the opponent:
+/// parts of the "passThrough" list pass the same parts of the opponent
+/// (empty in the shipped rig: the arms collide, a jab hits the raised
+/// guard), a limb stuck in the opponent yields: its motors soften and it
+/// pulls back to the rig's yield pose, still colliding ("unjam"), posed legs
+/// hit posed legs (physics::World), the bodies keep apart and away from the
+/// walls (rig/spacing.hpp), a knocked-down body collides with the standing
+/// fighter's legs. A posed striking limb stops where it meets the
+/// opponent's posed parts (stopAtContact), and a posed leg swung too deep
+/// into the opponent is held back (holdLimbsBack): Box2D does not collide
+/// two kinematic bodies, so a kick would go through the legs it hits.
 ///
 /// The order of work per simulation step is explicit: set the targets, call
 /// planMotion(), let the battle correct the plan (rig::keepApart or
@@ -58,6 +61,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -102,6 +106,21 @@ struct ExtentX {
     float Max = 0.0f;
 };
 
+/// Where a part of a rig is going to be (Rig::predictBody).
+struct PartPlacement {
+    physics::Body Handle;
+    Vec2 Position;            ///< Body origin, m.
+    float Angle = 0.0f;       ///< rad.
+    /// A striker of an attack (Rig::setStrikingParts) is in two places: where
+    /// it is now, carried with the pelvis (Position, Angle), and where the
+    /// clip poses it (these). It overlaps only if it overlaps in both: its
+    /// own motion into the opponent is stopped by Rig::stopAtContact, the
+    /// opponent's into it is the spacing's to prevent.
+    bool Striking = false;
+    Vec2 PosedPosition;
+    float PosedAngle = 0.0f;
+};
+
 /// The physics world owns the bodies and joints: a rig must not outlive it.
 class Rig {
 public:
@@ -117,6 +136,18 @@ public:
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
     void setBaseStiffness(float Stiffness);
+    /// Takes the planted feet where they stand now as the stance: standing
+    /// still, a foot steps back under the body only when it is pushed
+    /// FootRestepDistance further from there (not from the clip). Combat
+    /// calls it when a walk has stopped on both feet, so that the feet left
+    /// off the clip by the walk do not take an extra step. Lifting a foot
+    /// forgets it.
+    void keepFeetPlanted();
+    /// For this step the feet slide towards the clip's pose along the floor
+    /// instead of holding their place: a planted foot lets go and closes on
+    /// the clip at ControlParams::FootSlideSpeed at most, with no jump. Combat calls it while a walk plays on quickly to a stop, so
+    /// that the stop ends in the clip's pose.
+    void slideFeet() { SlidingFeet = true; }
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -127,6 +158,17 @@ public:
     /// while the fighter is down or getting up the turn waits until it
     /// stands. Target angles stay "as for facing right".
     void setFacing(bool FacingRight);
+    /// The posed parts that strike now (the strikers of an attack before it
+    /// stopped at a contact): they stop at the opponent by themselves
+    /// (stopAtContact), so the spacing of the fighters treats them apart
+    /// (predictBody). \p Attacking: the strikers of the attack all through
+    /// it; a lifted foot among them does not step down where it is, so the
+    /// spacing keeps no floor below it clear. Combat sets both every step;
+    /// none by default.
+    void setStrikingParts(const std::bitset<BodyPartCount>& Striking, const std::bitset<BodyPartCount>& Attacking) {
+        StrikingParts = Striking;
+        AttackingParts = Attacking;
+    }
     /// Keeps a knocked-down fighter on the floor as a limp ragdoll: it does
     /// not get up until this is cleared. Combat sets it on a knockout; a
     /// fighter that is still standing (or getting up) collapses where it is.
@@ -137,6 +179,12 @@ public:
     /// through getController() before applyControl().
     void planMotion(float Dt);
     PelvisController& getController() { return Controller; }
+    /// Pushes the whole body by \p Delta (m, along X) in this step: the
+    /// planned pelvis position and the planted feet move together, so a
+    /// foot pressed into the opponent's leaves with the body. The spacing
+    /// of the fighters calls it (rig/spacing.hpp) between planMotion() and
+    /// applyControl().
+    void pushBody(float Delta);
     const PelvisController& getController() const { return Controller; }
 
     /// Moves the kinematic parts, drives the motors of the physical ones and
@@ -173,16 +221,29 @@ public:
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
-    /// Call after the physics step. Do the posed parts of \p Strikers touch
-    /// a posed part of the opponent? If one sank deeper than \p MaxDepth (m)
-    /// during the step, every posed part goes back along its motion of the
-    /// step to where the strikers were MaxDepth deep (the leg stays at the
-    /// contact). Only a new contact counts, unless \p Holding (held at a
-    /// contact already); see physics::World::findPosedStop. Returns the
-    /// share of the step's motion kept (1 for a contact that needed no
-    /// stop), or nullopt if there is no contact. Parts that are not posed now
-    /// are ignored.
-    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding);
+    /// Call after the physics step. Did the posed parts of \p Strikers run
+    /// into the opponent (its posed parts, or a part the solver could not
+    /// push away) by their own motion, relative to the pelvis? If one sank
+    /// deeper than \p MaxDepth (m) during the step, the posed limbs of the
+    /// strikers go back along that relative motion to where the strikers
+    /// were MaxDepth deep (the leg stays at the contact and on its hip); the
+    /// pelvis and the other limbs keep the step's motion. See
+    /// physics::World::findPosedStop. Returns the share of the step's motion
+    /// kept (1 for a contact that needed no stop), or nullopt if there is no
+    /// contact. Parts that are not posed now are ignored.
+    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
+
+    /// Call after the physics step and stopAtContact(). A posed limb (a leg)
+    /// whose own motion in the step, relative to the pelvis, took it deeper
+    /// than \p MaxDepth (m) into the opponent goes back along that motion to
+    /// MaxDepth deep (it stays on its hip; the pelvis keeps its motion).
+    /// Nothing in physics stops a posed limb, and the spacing of the
+    /// fighters (rig/spacing.hpp) can push the bodies apart only so fast: a
+    /// foot swung through the opponent's in one step, or the thigh of a kick
+    /// rising into a guard the solver cannot push away, stops there instead.
+    /// Touching is fine; the strikers stopAtContact() already stopped are no
+    /// deeper than that.
+    void holdLimbsBack(float MaxDepth);
 
     /// \name State
     /// @{
@@ -198,9 +259,10 @@ public:
     bool isStayingDown() const { return StayDown; }
     /// Is \p Part moved by code right now (not physical)?
     bool isKinematic(BodyPart Part) const;
-    /// Has \p Part let go of the opponent: it passes through the opponent
-    /// until it is free (ControlParams::JamAngle)?
-    bool isUnjamming(BodyPart Part) const;
+    /// Does the limb of \p Part yield: it was stuck in the opponent, so its
+    /// motors are soft and it pulls back to the yield pose
+    /// (ControlParams::JamAngle, YieldSec)? It still collides.
+    bool isYielding(BodyPart Part) const;
     float getStiffness() const;
     /// Mass of the whole fighter (the profile's), kg.
     float getTotalMass() const { return TotalMass; }
@@ -230,11 +292,35 @@ public:
     bool isAgainstWall() const { return WallSide != 0 && static_cast<float>(WallSide) == -Facing; }
     /// Is this foot planted and held in place on the floor?
     bool isFootLocked(BodyPart Foot) const;
+    /// How high the sole of \p Foot would be above the floor if the body
+    /// stood in the pose \p Angles (as for setTargetAngles(), clamped to the
+    /// joint limits) with its lowest posed part on the floor, m. 0 for a foot
+    /// that carries the body. Combat finds the phases of a walk cycle where
+    /// both feet stand with it; it is the same lift as standing.
+    float getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
     /// it does not touch them or is not posed now.
     float getPosedPenetration(BodyPart Part) const;
+    /// Where the body will be after the next applyControl() if the pelvis
+    /// controller ends the step at \p RootX: the posed parts exactly (the
+    /// pose of the target angles with the planted feet held, or the blend of
+    /// getting up), the torso and the head (physical, but held on the
+    /// pelvis) moved along with the pelvis. A pelvis away from the planned
+    /// one takes the planted feet along (pushBody()). The parts of
+    /// setStrikingParts() stop at the opponent by themselves: they are
+    /// both where they are now, moved along with the pelvis, and where the
+    /// clip poses them (PartPlacement::Striking), so the opponent does not
+    /// walk into them. The arms are left out (the solver keeps them off
+    /// the opponent, and they yield); none while the fighter is knocked down. The
+    /// spacing tries pelvis positions with it before it corrects the plan
+    /// (rig/spacing.hpp). Nothing moves.
+    std::vector<PartPlacement> predictBody(float RootX, float Dt) const;
+    /// The smallest gap between the shapes of \p Own and \p Other, m;
+    /// negative: how deep they overlap (a striker: the larger of its gaps
+    /// at its two places, PartPlacement::Striking). Nothing moves.
+    float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
     /// @}
@@ -254,11 +340,11 @@ private:
         Vec2 Size;                ///< Bounds of the shape in the body frame.
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
-        uint64_t CollisionMask = 0; ///< While standing; a knockdown also drops the posed parts.
-        bool Unjam = false;       ///< May let go of the opponent (RigDef::Unjam).
+        bool Unjam = false;       ///< May yield when stuck in the opponent (RigDef::Unjam).
         BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
         float StuckSec = 0.0f;    ///< Limb only: how long it has been stuck in the opponent.
-        bool Freed = false;       ///< Passes through the opponent until it is free.
+        bool Yielding = false;    ///< Soft, pulling back to the yield pose.
+        float YieldSec = 0.0f;    ///< Limb only: how long it has been yielding.
     };
 
     struct JointState {
@@ -268,7 +354,9 @@ private:
         float Strength = 1.0f;
         float LowerAngle = 0.0f;  ///< Mirrored, rad.
         float UpperAngle = 0.0f;
-        float Target = 0.0f;      ///< Mirrored and clamped to the limits, rad.
+        float Wish = 0.0f;        ///< The clip's angle, mirrored and clamped to the limits, rad.
+        float Target = 0.0f;      ///< What the motor drives to: Wish, or the yield pose, rad.
+        float YieldWish = 0.0f;   ///< Wish when the limb started to yield, rad.
         Vec2 AnchorInParent;      ///< Hinge in the parent's body frame (reference pose).
         Vec2 ChildFromAnchor;     ///< Child body origin relative to the hinge (reference pose).
         float RestDirection = 0.0f; ///< Direction of the child from the hinge in the reference pose, rad.
@@ -286,6 +374,7 @@ private:
         bool Stepping = false;    ///< Steps back under the body; plants when there.
         float LockX = 0.0f;       ///< World X of the planted ankle, m.
         float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
+        float KeptOffsetX = 0.0f; ///< The offset keepFeetPlanted() took as the stance, m.
     };
 
     /// Where a body origin is and how the body is turned.
@@ -316,24 +405,45 @@ private:
     /// \p Corrections added to the joint targets (indexed by child part).
     PerBodyPart<Placement> computeTargetPose(Placement RootPlacement,
                                              const PerBodyPart<float>& Corrections = {}) const;
-    /// Root placement at the controller position, at the height where the
-    /// lowest kinematic part touches the floor.
-    Placement getStandingRoot() const;
+    /// Root placement at \p RootX, at the height where the lowest
+    /// kinematic part touches the floor.
+    Placement getStandingRoot(float RootX) const;
     float getPostureStiffness() const;
     void advancePosture();
     void moveKinematicParts(float Dt);
+    /// The pose of the kinematic parts with the root at \p RootX: the target
+    /// pose, the planted feet of \p Limbs held (their locks are updated), or
+    /// the blend of getting up at \p PostureTime.
+    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime) const;
     /// Holds planted feet in place: returns the joint corrections of the
-    /// legs for the uncorrected pose \p Pose and updates the locks.
-    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, float Dt);
+    /// legs for the uncorrected pose \p Pose and updates the locks of
+    /// \p Limbs.
+    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const;
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
                     PerBodyPart<float>& Corrections) const;
     void releaseFeet();
+    /// The topmost part of the limb of \p Part below the root (a thigh for
+    /// a foot); the part itself if its parent is the root.
+    BodyPart getLimbTop(BodyPart Part) const;
+    /// Puts the posed parts of the limb whose topmost part is \p Top back
+    /// along their motion of the last step relative to the pelvis
+    /// (physics::World::rewindBody).
+    void rewindLimb(BodyPart Top, float Fraction);
+    /// How far a planted foot is from where it should stand still.
+    static float getRestepDistance(const Leg& Limb);
     void driveMotors();
     void updateJams(float Dt);
-    void setLimbFreed(BodyPart Limb, bool Freed);
-    void refreshCollisionMask(PartState& Part) const;
+    void setLimbYielding(BodyPart Limb, bool Yielding);
+    /// Would the limb whose topmost part is \p Limb, posed at the clip's
+    /// angles from where its parent is now, overlap the opponent? The
+    /// opponent's limbs of the "unjam" list (its arms) do not block it: a
+    /// guard comes back against the opponent's guard and rests on it (the
+    /// solver keeps them apart), as two guards do that never jammed.
+    bool isWishBlocked(BodyPart Limb) const;
+    /// Joint targets from the wishes and the yielding limbs.
+    void refreshTargets();
     void knockDown(Vec2 Velocity, float Spin);
     void startGettingUp();
     void turnAround();
@@ -358,7 +468,11 @@ private:
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.
     std::vector<Leg> Legs;
+    bool SlidingFeet = false;         ///< slideFeet() for the next applyControl().
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
+    PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
+    std::bitset<BodyPartCount> YieldPosed;
+    std::bitset<BodyPartCount> UnjamParts;   ///< RigDef::Unjam.
 
     PelvisController Controller;
     Posture CurrentPosture = Posture::Standing;
@@ -372,10 +486,14 @@ private:
     int WallSide = 0;
     float WeaponReach = 0.0f;
     WeaponShape Weapon;
+    std::bitset<BodyPartCount> StrikingParts;   ///< setStrikingParts().
+    std::bitset<BodyPartCount> AttackingParts;  ///< setStrikingParts().
     /// The strikers stopAtContact() last held back, and whether it did so
     /// in the last step; for the debug draw.
     std::bitset<BodyPartCount> StoppedParts;
     bool StoppedAtContact = false;
+    /// The limbs (topmost parts) holdLimbsBack() held back in the last step.
+    std::bitset<BodyPartCount> HeldLimbs;
     /// The last knockdown push, for the debug draw: where and how hard.
     Vec2 KnockdownPoint;
     Vec2 KnockdownVelocity;

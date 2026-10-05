@@ -115,12 +115,6 @@ float getActiveEndAtRate(const Clip& Source, float Rate);
 /// started. 1 when the clip has no active phase or \p StartupSec is not positive.
 float getRateForStartup(const Clip& Source, float StartupSec);
 
-/// \p Rate lowered, if needed, so that the active phase starts no sooner than
-/// \p MinStartupSec after the clip started. A fighter however fast cannot
-/// strike before the floor of the move (MoveDef::MinStartupSec). Unchanged
-/// when the clip has no active phase or the floor is not positive.
-float limitRateByStartup(const Clip& Source, float Rate, float MinStartupSec);
-
 /// Parses a clip from JSON text. Throws std::runtime_error with a message
 /// that names the problem.
 Clip parseClip(std::string_view JsonText, std::string Name);

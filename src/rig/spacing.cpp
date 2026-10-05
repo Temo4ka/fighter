@@ -2,12 +2,20 @@
 
 #include <algorithm>
 #include <format>
+#include <utility>
 
 #include "debug/draw.hpp"
 #include "rig/pelvis_controller.hpp"
 
 namespace fighter::rig {
 namespace {
+
+/// Bisection steps of the shift that takes the posed parts apart: to a
+/// few micrometres.
+constexpr int SeparationSearchSteps = 14;
+/// Posed parts that the largest shift of a step takes apart by less than
+/// this are not pushed apart (planted feet do not move with the pelvis), m.
+constexpr float MinUsefulShift = 0.001f;
 
 void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt);
 void keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt);
@@ -64,7 +72,8 @@ float pushApartOnHit(Rig& Attacker, Rig& Victim) {
 
 namespace {
 
-/// Keeps two standing pelvises 2 * BodyHalfWidth apart.
+/// Keeps two standing fighters apart: their pelvises 2 * BodyHalfWidth, and
+/// their posed parts (the legs) off each other.
 void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt) {
     // Who is on the left now: a fighter may have got up on the other side.
     const bool InOrder = First.getController().getPositionX() <= Second.getController().getPositionX();
@@ -72,29 +81,69 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     Rig& Right = InOrder ? Second : First;
     PelvisController& LeftMotion = Left.getController();
     PelvisController& RightMotion = Right.getController();
+    const float LeftPlanned = LeftMotion.getPlannedX();
+    const float RightPlanned = RightMotion.getPlannedX();
+
+    // Where the pelvises end up when the fighters move \p Shift apart: split
+    // by mass (the heavier one gives way less), and a fighter at a wall
+    // cannot give way, the other one takes the rest.
+    const float LeftShare = Right.getTotalMass() / (Left.getTotalMass() + Right.getTotalMass());
+    const auto place = [&](float Shift) {
+        float LeftX = LeftPlanned - Shift * LeftShare;
+        float RightX = RightPlanned + Shift * (1.0f - LeftShare);
+        if (LeftX < -MaxX) {
+            RightX += -MaxX - LeftX;
+            LeftX = -MaxX;
+        }
+        if (RightX > MaxX) {
+            LeftX = std::max(LeftX - (RightX - MaxX), -MaxX);
+            RightX = MaxX;
+        }
+        return std::pair(LeftX, RightX);
+    };
 
     // The overlap goes away at a limited speed. Walking into each other is
     // slower than that; a fighter getting up next to the other one is
     // pushed out smoothly instead of jumping.
     const float MinGap = 2.0f * Params.BodyHalfWidth;
-    const float Gap = RightMotion.getPlannedX() - LeftMotion.getPlannedX();
-    const float Overlap = std::min(MinGap - Gap, Params.SeparationSpeed * Dt);
-    if (Overlap <= 0.0f) return;
-    const float LeftMass = Left.getTotalMass();
-    const float RightMass = Right.getTotalMass();
-    LeftMotion.shift(-Overlap * RightMass / (LeftMass + RightMass));
-    RightMotion.shift(Overlap * LeftMass / (LeftMass + RightMass));
+    float Shift = std::clamp(MinGap - (RightPlanned - LeftPlanned), 0.0f, Params.SeparationSpeed * Dt);
+
+    // The bodies keep off each other where they will stand after this step
+    // (see the file comment). A pair that moving apart does not take apart
+    // (two planted feet) is not pushed for nothing.
+    const float MaxShift = std::max(Shift, Params.PosedSeparationSpeed * Dt);
+    const auto getOverlap = [&](float Trial) {
+        const auto [LeftX, RightX] = place(Trial);
+        return -Left.measureGap(Left.predictBody(LeftX, Dt), Right.predictBody(RightX, Dt));
+    };
+    const float Overlap = getOverlap(Shift);
+    if (Overlap > 0.0f) {
+        const float OverlapApart = getOverlap(MaxShift);
+        if (OverlapApart <= 0.0f) {
+            // The smallest shift that takes them apart: Low overlaps, High
+            // does not.
+            float Low = Shift;
+            float High = MaxShift;
+            for (int Step = 0; Step < SeparationSearchSteps; ++Step) {
+                const float Middle = (Low + High) * 0.5f;
+                (getOverlap(Middle) > 0.0f ? Low : High) = Middle;
+            }
+            Shift = High;
+        } else if (OverlapApart < Overlap - MinUsefulShift) {
+            Shift = MaxShift;
+        }
+    }
+    if constexpr (FIGHTER_DEBUG) {
+        debug::setPanel("spacing", Overlap > 0.0f ? std::format("bodies overlap {:.3f} m -> apart {:.3f} m", Overlap,
+                                                                Shift)
+                                                  : std::format("pelvises apart {:.3f} m", Shift));
+    }
+    if (Shift <= 0.0f) return;
+    const auto [LeftX, RightX] = place(Shift);
+    Left.pushBody(LeftX - LeftPlanned);
+    Right.pushBody(RightX - RightPlanned);
     LeftMotion.limit(-MaxX, MaxX);
     RightMotion.limit(-MaxX, MaxX);
-
-    // A fighter at a wall cannot give way: the other one takes the rest.
-    const float Rest = Gap + Overlap - (RightMotion.getPlannedX() - LeftMotion.getPlannedX());
-    if (Rest <= 0.0f) return;
-    if (LeftMotion.getPlannedX() <= -MaxX) {
-        RightMotion.shift(Rest);
-    } else {
-        LeftMotion.shift(-Rest);
-    }
 }
 
 /// Keeps a standing pelvis away from the body of a fighter on the floor.

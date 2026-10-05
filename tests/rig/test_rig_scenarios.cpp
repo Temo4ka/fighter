@@ -4,14 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <filesystem>
 #include <optional>
 #include <utility>
 #include <variant>
 
 #include "../combat/scenario.hpp"
 #include "combat/battle.hpp"
-#include "rig/rig_def.hpp"
 
 using namespace fighter;
 using namespace fighter::combat;
@@ -27,6 +25,9 @@ constexpr double Dt = 1.0 / 60.0;
 constexpr int TicksPerSecond = 60;
 /// Distance between the fighters' floor points at which P1 jabs, m.
 constexpr float JabRange = 0.72f;
+/// Distance between the pelvises to which P1 presses in at the wall, m:
+/// closer than the rig's closeRange, the guards touch.
+constexpr float CloseJabGap = 0.66f;
 
 BattleConfig makeConfig() {
     BattleConfig Config;
@@ -92,13 +93,17 @@ JabTrace traceJab(Battle& Fight) {
 
 /// P2 backs into the right wall and P1 follows it, then P1 presses in to
 /// close range. With \p Exchange both jab at each other for 10 s meanwhile.
-/// Both rest for a second at the end.
+/// Both rest for a second at the end. Close range is measured between the
+/// pelvises: the floor point lags behind the pelvis in a step, so a walk
+/// that stops by the floor points may end with the guards pressed into each
+/// other (0.5 m between the pelvises), where no jab can gather speed.
 void pressToWall(Battle& Fight, bool Exchange) {
     for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
         Fight.update({.MoveX = getGap(Fight) > JabRange ? 1.0f : 0.0f}, {.MoveX = 1.0f}, Dt);
     }
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
-        const PlayerCommands Left{.MoveX = getGap(Fight) > 0.6f ? 1.0f : 0.0f, .Jab = Exchange && Tick % 25 < 3};
+        const PlayerCommands Left{.MoveX = getPelvisGap(Fight) > CloseJabGap ? 1.0f : 0.0f,
+                                  .Jab = Exchange && Tick % 25 < 3};
         const PlayerCommands Right{.Jab = Exchange && Tick % 29 < 3};
         Fight.update(Left, Right, Dt);
     }
@@ -127,11 +132,11 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     Battle Fight(makeConfig());
     pressToWall(Fight, true);
     const auto& Fighters = Fight.getSnapshot().Fighters;
-    // Still close: every landed jab pushes the fighters apart to the rig's
-    // closeRange, and P1 presses in again.
-    const float CloseRange =
-        rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json").Control.CloseRange;
-    CHECK(getPelvisGap(Fight) < CloseRange + 0.05f);
+    // Still close: as close as P1 gets without the exchange. The legs keep
+    // the stances apart (about 0.75 m between the pelvises), so P1 cannot
+    // press in to the rig's closeRange any more; landed jabs do not drive
+    // the fighters apart for good either.
+    CHECK(getPelvisGap(Fight) < getPelvisGap(Quiet) + 0.05f);
     // The arms are back in the guard, not stuck in the opponent: between
     // the guard resting on the opponent's chest (pressed back a few cm) and
     // the free one. Jammed, it was 10 cm short.
@@ -150,8 +155,13 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
 
 namespace {
 
-/// As test::KickRange (see there why not closer to 0.95 m).
-constexpr float KickRange = test::KickRange;
+/// Distance between the floor points at which P1 stops walking and kicks,
+/// m: the foot lands on the pelvis both in the open (the walk stops at
+/// 0.86 m) and at the wall (at 0.87 m, after the long walk there). From
+/// the walk's stops at 0.90 m at the wall (0.94 m in the open before the
+/// walk stopped on both feet) the foot grazes the top of the front thigh on
+/// its way up and the contact stop holds it there (see test::KickRange).
+constexpr float KickRange = 0.88f;
 
 bool isKnockedDown(const Battle& Fight, uint8_t Fighter) {
     return std::ranges::any_of(Fight.getEvents(), [&](const BattleEvent& Event) {

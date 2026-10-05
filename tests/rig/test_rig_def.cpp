@@ -134,6 +134,36 @@ TEST_CASE("parseRigDef: parts that pass through or let go of the opponent are ph
     CHECK(Humanoid.Unjam.test(static_cast<size_t>(BodyPart::UpperArmL)));
 }
 
+TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]") {
+    const RigDef Arms = parseRigDef(
+        makeRigJson(R"(, "unjam": ["UpperArmL", "ForearmL"], "yieldPose": { "ForearmL": 90 },)"
+                    R"( "control": { "yieldStiffness": 0.2, "yieldSec": 0.4 })"));
+    CHECK(Arms.YieldPosed.count() == 1);
+    CHECK(Arms.YieldPosed.test(static_cast<size_t>(BodyPart::ForearmL)));
+    CHECK(Arms.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] == Catch::Approx(1.5708f));
+    CHECK(Arms.Control.YieldStiffness == 0.2f);
+    CHECK(Arms.Control.YieldSec == 0.4f);
+    // Only a part that yields has a yield pose; names are checked.
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "yieldPose": { "ForearmL": 90 })")), std::runtime_error);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "unjam": ["ForearmL"], "yieldPose": { "Forearm": 90 })")),
+                    std::runtime_error);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "yieldSec": -1 })")), std::runtime_error);
+
+    // The humanoid tucks both arms: the elbows bend.
+    const RigDef Humanoid = loadRigDef(HumanoidPath);
+    for (const auto Part : {BodyPart::UpperArmL, BodyPart::ForearmL, BodyPart::UpperArmR, BodyPart::ForearmR}) {
+        CHECK(Humanoid.YieldPosed.test(static_cast<size_t>(Part)));
+    }
+    CHECK(Humanoid.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] > 2.0f);
+}
+
+TEST_CASE("parseRigDef: how fast the feet slide to the clip", "[rig]") {
+    const RigDef Sliding = parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 1.5 })"));
+    CHECK(Sliding.Control.FootSlideSpeed == 1.5f);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 0 })")), std::runtime_error);
+    CHECK(loadRigDef(HumanoidPath).Control.FootSlideSpeed > 0.0f);
+}
+
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
     CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);

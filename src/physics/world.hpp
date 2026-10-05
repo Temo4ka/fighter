@@ -30,14 +30,20 @@
 /// step, so the normal of such a hit is taken from where the two parts were
 /// closest before the step, when they were still apart. Nothing stops a posed
 /// limb either: the code that poses it asks findPosedStop() how far along its
-/// motion of the step it could go without sinking into the opponent's posed
-/// parts and moves it back there with rewindBody() (a kick stops at the leg
-/// it hits).
+/// motion of the step it could go without sinking into the opponent and moves
+/// it back there with rewindBody() (a kick stops at the leg it hits, or at a
+/// torso the solver cannot push out of its way).
+///
+/// A posed limb is fast enough to sink into a dynamic part in one step,
+/// before Box2D has seen the contact (it creates contacts from where bodies
+/// were at the start of a step). Such a new overlap is a hit too, found the
+/// same way as a hit between posed parts.
 ///
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
+#include <bitset>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -55,7 +61,19 @@ class World {
 public:
     struct Config {
         Vec2 Gravity{0.0f, -9.81f};   ///< m/s^2, Y up.
-        int SubSteps = 4;             ///< Box2D solver substeps per simulation step.
+        /// Box2D steps per step(), each over an equal share of its Dt: a
+        /// fast limb moves less per Box2D step, so it sinks less deep into
+        /// what it hits before the solver sees the contact.
+        int StepPasses = 1;
+        int SubSteps = 4;             ///< Box2D solver substeps per Box2D step.
+        /// Stiffness of the contacts between bodies, Hz: a body pressed into
+        /// another one (an arm pushed by its motors) sinks in less the
+        /// stiffer they are. Box2D caps it at 1/8 of the substep rate.
+        float ContactHertz = 30.0f;
+        /// Friction between body parts of different fighters; nullopt: the
+        /// frictions of the two shapes mixed as for any contact. A limb
+        /// pressed onto the opponent drags it along less the lower it is.
+        std::optional<float> FighterFriction;
         /// Closing speed above which a contact between body parts of
         /// different fighters is reported as a hit, m/s.
         float HitSpeedThreshold = 1.0f;
@@ -99,6 +117,20 @@ public:
     /// Does a shape of \p Target overlap a body part of another fighter,
     /// whatever their collision filters say?
     bool isOverlappingOtherFighter(Body Target) const;
+    /// Would \p Target, placed with its origin at \p Position and turned by
+    /// \p Angle, come closer than \p Margin (m) to a body part of another
+    /// fighter (other than \p Ignored), whatever their collision filters
+    /// say? Nothing moves.
+    bool isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin,
+                                     const std::bitset<BodyPartCount>& Ignored = {}) const;
+    /// The deepest overlap between any body parts of different fighters,
+    /// whatever their types and collision filters: the measure of "nothing
+    /// passes through the opponent". Nullopt if no two parts overlap.
+    std::optional<PartOverlap> findDeepestOverlap() const;
+    /// Every pair of body parts of different fighters that overlap now, with
+    /// the deepest overlap of their shapes, whatever their types and
+    /// collision filters; in a deterministic order.
+    std::vector<PartOverlap> findOverlaps() const;
     /// @}
 
     /// \name Posed parts of different fighters
@@ -109,22 +141,39 @@ public:
     /// of other fighters, m; 0 if they do not touch. Only for a kinematic
     /// \p Target; the solver keeps dynamic parts out by itself.
     float getPosedPenetration(Body Target) const;
-    /// Do the posed bodies \p Strikers touch a posed part of another fighter
-    /// after the last step, and how much of their motion in the step could
-    /// they have made with none of them sinking deeper than \p MaxDepth (m)
-    /// into it (it stays where it is now)? Nullopt: no contact; 1: a contact
-    /// no deeper than MaxDepth; 0: the other part moved into them.
-    /// Only new contacts stop the strikers, unless \p Holding (they are held
-    /// at a contact already): then pairs that touched before the step count
-    /// too, up to twice MaxDepth deep. A deeper pair sank in while nothing
-    /// stopped it; there is no contact to go back to. A kinematic body moves
-    /// at a constant velocity during a step, so the share is found by
-    /// bisection along that straight motion.
-    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const;
+    /// Do the posed bodies \p Strikers run into a part of another fighter in
+    /// the last step, and how much of their motion in the step could they
+    /// have made with none of them sinking deeper than \p MaxDepth (m) into
+    /// it, or than it was before the step (it stays where it is now)?
+    /// Nullopt: no contact; 1: a contact that needs no stop; 0: the other
+    /// part moved into them.
+    /// Only closing contacts count: the striker's own motion in the step
+    /// took it deeper into the other part (a contact it slides along or
+    /// leaves, or one the other part moved into, is no stop). With a valid
+    /// \p Carrier (the body the strikers hang on, a pelvis) the striker's own
+    /// motion is the one relative to the carrier: a strike carried into the
+    /// opponent by the whole body is kept apart by the code that moves the
+    /// body (rig::keepApart), not stopped here; the share returned is then
+    /// the share of that relative motion, the carrier staying where it is. A
+    /// posed part of the opponent counts when the striker touches it, a
+    /// dynamic one only when the striker sank too deep into it: the solver
+    /// did not push it out of the way (it is held by its joints, or pinned
+    /// to the floor). Going back may not take a striker deeper into any
+    /// other part than it is now; if no share keeps every part shallow
+    /// enough, the least deep one is returned. A kinematic body moves at a
+    /// constant velocity during a step, so the share is found by bisection
+    /// along that straight motion.
+    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, Body Carrier = {}) const;
+    /// The smallest gap between the shapes of \p First and \p Second, their
+    /// bodies placed at the given origins and angles, m; negative: how deep
+    /// they overlap. Nothing moves.
+    float getGapAt(Body First, Vec2 FirstPosition, float FirstAngle, Body Second, Vec2 SecondPosition,
+                   float SecondAngle) const;
     /// Puts \p Target back along its motion of the last step: \p Fraction 0
-    /// is where it was before the step, 1 is where it is now. Velocities do
-    /// not change.
-    void rewindBody(Body Target, float Fraction);
+    /// is where it was before the step, 1 is where it is now. With a valid
+    /// \p Carrier only the motion relative to the carrier goes back (as in
+    /// findPosedStop()). Velocities do not change.
+    void rewindBody(Body Target, float Fraction, Body Carrier = {});
     /// @}
 
     /// \name Mirroring (turning a fighter around)
@@ -183,12 +232,26 @@ private:
     /// that touched after a step.
     using SlotPair = std::pair<uint32_t, uint32_t>;
 
+    /// A hit between two dynamic parts in the current step: its impulse is
+    /// summed over the Box2D steps of the simulation step.
+    struct SolvedHit {
+        uint64_t ShapeA = 0;   ///< b2ShapeId packed with b2StoreShapeId.
+        uint64_t ShapeB = 0;
+        size_t HitIndex = 0;   ///< Into Hits.
+    };
+
     void destroy();
     void recordPartVelocities();
+    /// Hits reported by Box2D in its last step. Called after every Box2D
+    /// step of a simulation step: it also adds the contact impulse of that
+    /// Box2D step to the hits between dynamic parts found so far.
     void collectHits();
     /// Hits between the kinematic parts of different fighters, which Box2D
     /// does not collide.
     void collectPosedHits();
+    /// Hits of kinematic parts that sank into a dynamic part of another
+    /// fighter in the step, before Box2D had a contact for them.
+    void collectTunnelHits();
     void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
                 float Impulse);
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
@@ -201,6 +264,11 @@ private:
     /// m; negative: how far apart they are.
     float measurePairPenetration(const PartBody& Entry, const Placement& Placed, const PartBody& Other,
                                  const Placement& OtherPlaced) const;
+    /// Where \p Entry is at \p Fraction of its motion in the last step (1 is
+    /// now). With a \p Carrier only its motion relative to the carrier is
+    /// cut short: the carrier stays where it is now, so 0 is where the entry
+    /// would be had it moved rigidly with the carrier.
+    Placement getMotionPlacement(const PartBody& Entry, const PartBody* Carrier, float Fraction) const;
     /// Where \p Entry was at \p Fraction of the last step (1 is now).
     Placement getPlacementDuringStep(const PartBody& Entry, float Fraction) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is
@@ -208,9 +276,12 @@ private:
     float getStrikeMass(const PartBody& Entry) const;
 
     uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
+    int StepPasses = 1;
     int SubSteps = 4;
+    std::optional<float> FighterFriction;   ///< Config::FighterFriction.
     std::vector<PartBody> PartBodies;
     std::vector<HitEvent> Hits;
+    std::vector<SolvedHit> SolvedHits;   ///< Of the current step.
     float HitSpeedThreshold = 1.0f;
     std::vector<SlotPair> TouchingPosed;   ///< Sorted.
 };

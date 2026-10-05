@@ -83,12 +83,6 @@ float getRateForStartup(const Clip& Source, float StartupSec) {
     return clampRate(Source.ActiveBeginSec / StartupSec);
 }
 
-float limitRateByStartup(const Clip& Source, float Rate, float MinStartupSec) {
-    const float Limited = clampRate(Rate);
-    if (!hasStartup(Source) || MinStartupSec <= 0.0f) return Limited;
-    return clampRate(std::min(Limited, Source.ActiveBeginSec / MinStartupSec));
-}
-
 Clip parseClip(std::string_view JsonText, std::string Name) {
     Clip Result;
     Result.Name = std::move(Name);

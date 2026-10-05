@@ -7,8 +7,9 @@
   "allowMove": false,
   "keys": [
     { "t": 0.00, "pose": { "Torso": -8, "ThighL": 25,  "ShinL": -30,  "FootL": 5 } },
-    { "t": 0.12, "pose": { "Torso": 0,  "ThighL": 95,  "ShinL": -100, "FootL": 15 } },
-    { "t": 0.24, "pose": { "Torso": 10, "ThighL": 110, "ShinL": -5,   "FootL": -15 } },
+    { "t": 0.08, "pose": { "Torso": -4, "ThighL": 70,  "ShinL": -125, "FootL": 20 } },
+    { "t": 0.16, "pose": { "Torso": 0,  "ThighL": 120, "ShinL": -130, "FootL": 20 } },
+    { "t": 0.28, "pose": { "Torso": 10, "ThighL": 110, "ShinL": -5,   "FootL": -15 } },
     { "t": 0.40, "pose": { "Torso": 10, "ThighL": 110, "ShinL": -5,   "FootL": -15 } },
     { "t": 0.52, "pose": { "Torso": 0,  "ThighL": 80,  "ShinL": -90,  "FootL": 15 } },
     { "t": 0.66, "pose": { "Torso": -8, "ThighL": 25,  "ShinL": -30,  "FootL": 5 } }

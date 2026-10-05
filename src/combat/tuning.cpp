@@ -25,20 +25,39 @@ constexpr std::array TuningFields = {
     TuningField{"hitSpeedThreshold", &CombatTuning::HitSpeedThreshold},
     TuningField{"bodyHalfWidth", &CombatTuning::BodyHalfWidth},
     TuningField{"separationSpeed", &CombatTuning::SeparationSpeed},
+    TuningField{"posedSeparationSpeed", &CombatTuning::PosedSeparationSpeed},
     TuningField{"exhaustedSpeedScale", &CombatTuning::ExhaustedSpeedScale},
     TuningField{"exhaustedRecoverFraction", &CombatTuning::ExhaustedRecoverFraction},
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
-    TuningField{"blockWalkSpeedScale", &CombatTuning::BlockWalkSpeedScale},
+    TuningField{"blockBackSpeedScale", &CombatTuning::BlockBackSpeedScale},
+    TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
+    TuningField{"stanceSettleSec", &CombatTuning::StanceSettleSec},
+    TuningField{"switchStepShare", &CombatTuning::SwitchStepShare},
+    TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
+    TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
     TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
     TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
     TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
     TuningField{"contactRecoveryBlendSec", &CombatTuning::ContactRecoveryBlendSec},
+    TuningField{"contactHertz", &CombatTuning::ContactHertz},
+    TuningField{"fighterFriction", &CombatTuning::FighterFriction},
+    TuningField{"armOverlapTolerance", &CombatTuning::ArmOverlapTolerance},
+    TuningField{"overlapTolerance", &CombatTuning::OverlapTolerance},
 };
 
-/// The only whole-number parameter.
-constexpr std::string_view MaxChainLengthKey = "maxChainLength";
-/// The only yes/no parameter.
-constexpr std::string_view ContactStopInStartupKey = "contactStopInStartup";
+/// A whole-number key of the file and the parameter it sets.
+struct CountField {
+    std::string_view Key;
+    int CombatTuning::*Member;
+};
+
+constexpr std::array CountFields = {
+    CountField{"maxChainLength", &CombatTuning::MaxChainLength},
+    CountField{"physicsSteps", &CombatTuning::PhysicsSteps},
+    CountField{"physicsSubSteps", &CombatTuning::PhysicsSubSteps},
+};
+/// The yes/no parameters.
+constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
 
 } // namespace
 
@@ -48,18 +67,18 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
         for (const auto& [Key, Value] : Root.items()) {
-            if (Key == MaxChainLengthKey) {
+            if (const auto Count = std::ranges::find(CountFields, Key, &CountField::Key); Count != CountFields.end()) {
                 if (!Value.is_number_integer()) {
                     throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
                 }
-                Tuning.MaxChainLength = Value.get<int>();
+                Tuning.*(Count->Member) = Value.get<int>();
                 continue;
             }
-            if (Key == ContactStopInStartupKey) {
+            if (Key == StopSlidesFeetKey) {
                 if (!Value.is_boolean()) {
                     throw std::runtime_error(std::format("{} must be true or false, not {}", Key, Value.dump()));
                 }
-                Tuning.ContactStopInStartup = Value.get<bool>();
+                Tuning.StopSlidesFeet = Value.get<bool>();
                 continue;
             }
             const auto Found = std::ranges::find(TuningFields, Key, &TuningField::Key);
@@ -72,6 +91,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.SpawnDistance <= 0.0f) throw std::runtime_error("spawnDistance must be positive");
     if (Tuning.BodyHalfWidth <= 0.0f) throw std::runtime_error("bodyHalfWidth must be positive");
     if (Tuning.SeparationSpeed <= 0.0f) throw std::runtime_error("separationSpeed must be positive");
+    if (Tuning.PosedSeparationSpeed <= 0.0f) throw std::runtime_error("posedSeparationSpeed must be positive");
     if (Tuning.ExhaustedSpeedScale <= 0.0f || Tuning.ExhaustedSpeedScale > 1.0f) {
         throw std::runtime_error("exhaustedSpeedScale must be in (0, 1]");
     }
@@ -80,15 +100,30 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     }
     if (Tuning.ChainWindowSec < 0.0f) throw std::runtime_error("chainWindowSec must not be negative");
     if (Tuning.MaxChainLength < 1) throw std::runtime_error("maxChainLength must be at least 1");
-    if (Tuning.BlockWalkSpeedScale < 0.0f || Tuning.BlockWalkSpeedScale > 1.0f) {
-        throw std::runtime_error("blockWalkSpeedScale must be in [0, 1]");
+    if (Tuning.BlockBackSpeedScale < 0.0f || Tuning.BlockBackSpeedScale > 1.0f) {
+        throw std::runtime_error("blockBackSpeedScale must be in [0, 1]");
     }
+    if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
+    if (Tuning.StanceSettleSec < 0.0f) throw std::runtime_error("stanceSettleSec must not be negative");
+    if (Tuning.SwitchStepShare <= 0.0f || Tuning.SwitchStepShare > 1.0f) {
+        throw std::runtime_error("switchStepShare must be in (0, 1]");
+    }
+    if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {
+        throw std::runtime_error("crouchWalkSpeedScale must be in (0, 1]");
+    }
+    if (Tuning.CrouchStandUpSec < 0.0f) throw std::runtime_error("crouchStandUpSec must not be negative");
     if (Tuning.EndSettleSec < 0.0f) throw std::runtime_error("endSettleSec must not be negative");
     if (Tuning.ContactStopDepth <= 0.0f) throw std::runtime_error("contactStopDepth must be positive");
     if (Tuning.ContactHoldSec < 0.0f) throw std::runtime_error("contactHoldSec must not be negative");
     if (Tuning.ContactRecoveryBlendSec < 0.0f) {
         throw std::runtime_error("contactRecoveryBlendSec must not be negative");
     }
+    if (Tuning.PhysicsSteps < 1) throw std::runtime_error("physicsSteps must be at least 1");
+    if (Tuning.PhysicsSubSteps < 1) throw std::runtime_error("physicsSubSteps must be at least 1");
+    if (Tuning.ContactHertz <= 0.0f) throw std::runtime_error("contactHertz must be positive");
+    if (Tuning.FighterFriction < 0.0f) throw std::runtime_error("fighterFriction must not be negative");
+    if (Tuning.ArmOverlapTolerance < 0.0f) throw std::runtime_error("armOverlapTolerance must not be negative");
+    if (Tuning.OverlapTolerance < 0.0f) throw std::runtime_error("overlapTolerance must not be negative");
     return Tuning;
 }
 

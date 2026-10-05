@@ -15,7 +15,11 @@
 ///   Idle, Walking, Crouching, Blocking -- free: the commands choose the
 ///       next state; an attack button starts the move findMove() gives for
 ///       the button and the weapon held. Block wins over attacking, attacking
-///       over crouching, crouching over walking.
+///       over crouching, crouching over walking. Crouched, the fighter walks
+///       slowly with bent knees (the crouch_walk clip) and may low kick or
+///       block low; any other strike stands it up first (Idle for
+///       CombatTuning::CrouchStandUpSec), then starts. Blocking, it can only
+///       step back, slowly.
 ///   Attacking -- the move's clip plays (startup, active, recovery); walking
 ///       only if the clip allows it. A clean hit may cancel the recovery into
 ///       a move of MoveDef::ChainTo (a short chain). Back to free at the end.
@@ -29,6 +33,12 @@
 ///       A lying fighter cannot be hit (no juggling, O.7); a fighter getting
 ///       up can, and a knockdown hit fells it again.
 ///   KnockedOut -- HP reached 0: it falls and stays down.
+///
+/// Walking stops on both feet (combat/leg_cycle.hpp): released, the walk
+/// cycle plays on to the nearest double-support phase and holds it, so the
+/// fighter stands in the normal stance or the switched one (right foot
+/// forward). From the switched stance a strike led by the left side (jab,
+/// kicks) steps the legs back into the normal stance during its startup.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -46,6 +56,7 @@
 #include "anim/pose.hpp"
 #include "combat/clip_library.hpp"
 #include "combat/commands.hpp"
+#include "combat/leg_cycle.hpp"
 #include "combat/moves.hpp"
 #include "combat/reactions.hpp"
 #include "combat/snapshot.hpp"
@@ -102,18 +113,28 @@ public:
     /// weapon power for a weapon move, \p Direction +1 if the hit pushes it
     /// to the right, -1 to the left. Applies damage, buildup, block stamina
     /// and the reaction (stun, knockdown, knockout) and returns what it did.
-    HitOutcome takeHit(const physics::HitEvent& Hit, const MoveDef& Move, float PowerScale, float Direction);
+    /// A \p JammedStrike (Fighter::isJammed) gets no min_reaction.
+    HitOutcome takeHit(const physics::HitEvent& Hit, const MoveDef& Move, float PowerScale, float Direction,
+                       bool JammedStrike = false);
     /// The current attack landed; it hits only once, later contacts are
-    /// bumps. \p Clean: not blocked, so it may be chained.
+    /// bumps. \p Clean: not blocked and not jammed, so it may be chained.
     void onStrikeLanded(bool Clean);
-    /// Call after the physics step: a posed striking limb of an attack in or
-    /// past its striking phase that sank into the opponent's posed parts
-    /// goes back to the contact (rig::Rig::stopAtContact). The first stop of
-    /// an attack holds the clip at the contact pose for
-    /// CombatTuning::ContactHoldSec; then the recovery plays, blending from
-    /// the contact pose over CombatTuning::ContactRecoveryBlendSec. The hit
-    /// itself is the physics world's, as for any strike.
+    /// Call after the physics step: a posed striking limb of an attack that
+    /// ran into the opponent (its posed parts, or a part the solver could
+    /// not push away) goes back to the contact (rig::Rig::stopAtContact), in
+    /// any phase of the attack. The first stop of an attack holds the clip
+    /// at the contact pose for CombatTuning::ContactHoldSec; then the
+    /// recovery plays, blending from the contact pose over
+    /// CombatTuning::ContactRecoveryBlendSec. The hit itself is the physics
+    /// world's, as for any strike. A first stop in the startup jams the
+    /// attack (isJammed): the leg did hit, so that contact is a strike too,
+    /// with its real speed, but not a clean one (no min_reaction, no chain).
+    /// The other posed limbs (the legs) are held back at the opponent too,
+    /// attacking or not (rig::Rig::holdLimbsBack).
     void stopAtContact();
+    /// Did the current attack run into the opponent in its startup
+    /// (stopAtContact)?
+    bool isJammed() const { return getMove() && Jammed; }
     /// Is the attack holding the pose of a posed strike stopped at the
     /// opponent (stopAtContact)?
     bool isHoldingContact() const { return getMove() && Contact == ContactStage::Holding; }
@@ -153,6 +174,16 @@ public:
     /// Where the opponent is; the fighter turns that way when it is free to.
     bool getDesiredFacingRight() const { return DesiredFacingRight; }
     const std::optional<HitRecord>& getLastHit() const { return LastHit; }
+    /// The stance the legs stand in when the fighter stands still.
+    StanceVariant getStanceVariant() const { return Walk.getVariant(); }
+    /// Released the move key: the walk cycle plays on to both feet down.
+    bool isStopping() const { return Walk.isStopping() || CrouchWalk.isStopping(); }
+    bool isCrouchWalking() const { return State == FighterState::Crouching && CrouchWalk.isPlaying(); }
+    /// A strike pressed while crouched waits until the fighter stands up.
+    bool isStandingUp() const { return PendingAttack.has_value(); }
+    /// The attack steps the legs into the normal stance during its startup
+    /// (from the switched one, or from a walk).
+    bool isSwitchStepping() const { return SwitchStep; }
 
     void fillView(FighterView& View) const;
     /// The panel lines of this fighter ("<Name> stamina" ...) and the Block
@@ -160,6 +191,8 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
+    /// The strikers' part of stopAtContact().
+    void stopStrikeAtContact();
     /// What a posed strike stopped at the opponent does (stopAtContact).
     enum class ContactStage : uint8_t {
         None,        ///< Not stopped in this attack.
@@ -174,9 +207,16 @@ private:
     /// Advances the attack; returns the move a chain started, or nullptr.
     const MoveDef* advanceAttack(const PlayerCommands& Cmd, const Surroundings& Around, float Dt);
     /// Chooses the free state for \p Cmd; returns the move it started, or nullptr.
-    const MoveDef* chooseFreeState(const PlayerCommands& Cmd, const Surroundings& Around);
-    void startMove(const MoveDef& Next, const Surroundings& Around, int ChainPosition);
+    const MoveDef* chooseFreeState(const PlayerCommands& Cmd, const Surroundings& Around, float Dt);
+    /// \p Cmd: the commands of this step (does the fighter walk on?).
+    void startMove(const MoveDef& Next, const Surroundings& Around, const PlayerCommands& Cmd, int ChainPosition);
     float planWalking(const PlayerCommands& Cmd, float Dt);
+    /// The pose for the motors this step: stance, legs, the clip on top.
+    anim::Pose buildTargetPose(const anim::Clip* Top, float Dt);
+    std::string describeLegs() const;
+    /// The legs of the switched stance: the stance_switched clip, or the
+    /// stance's legs mirrored.
+    anim::Pose getSwitchedStanceLegs() const;
     const anim::Clip* getTopClip() const;
     float getTopClipTime() const;
     void spendStamina(float Amount);
@@ -197,9 +237,21 @@ private:
     PlayerCommands PreviousCmd;            ///< For the presses that request a chain.
     bool DesiredFacingRight = true;
 
-    bool Walking = false;                  ///< The walk cycle plays (also while finishing a step).
-    float WalkTime = 0.0f;                 ///< Phase of the walk cycle, s.
-    float WalkDirection = 1.0f;            ///< +1 forwards, -1 backwards (the cycle runs in reverse).
+    LegCycle Walk;                         ///< Walking, stopping and the stance it held.
+    LegCycle CrouchWalk;                   ///< Walking crouched; held while Crouching.
+    /// The legs below the clip on top cross over (legs only) when they change
+    /// between the stance and the walk cycle, and for the switch-step.
+    anim::PoseTransition LegFade;
+    anim::Pose ShownLegs;                  ///< What LegFade gave last step.
+    /// What sets the legs below the clip on top.
+    enum class LegSource : uint8_t { Stance, SwitchedStance, Walk };
+    LegSource ShownSource = LegSource::Stance; ///< Last step's; a change crosses over (LegFade).
+    bool ShowsCrouchWalk = false;          ///< The crouch walk set the legs last step.
+    bool FeetSettling = false;             ///< A walk stopped: the feet are kept where they land.
+    bool SwitchStep = false;               ///< The attack steps the legs into the normal stance.
+    bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
+    std::optional<MoveButton> PendingAttack; ///< Pressed while crouched: starts once the fighter stood up.
+    float StandUpLeftSec = 0.0f;
 
     BlockZone Guard = BlockZone::Mid;      ///< Meaningful while Blocking.
 
@@ -209,6 +261,7 @@ private:
     float AttackTimeBefore = 0.0f;         ///< Clip time before the last step, s.
     ContactStage Contact = ContactStage::None;
     float ContactHoldLeftSec = 0.0f;       ///< While Holding, real time.
+    bool Jammed = false;                   ///< Stopped at the opponent in the startup.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
     bool AttackLanded = false;
     bool AttackHitClean = false;

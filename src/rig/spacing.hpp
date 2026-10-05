@@ -15,9 +15,20 @@
 ///  - each pelvis stays BodyHalfWidth away from the walls; a fighter at a
 ///    wall touches it (Rig::getWallSide, Rig::isAgainstWall), and knockback
 ///    into the wall stops there;
-///  - two standing fighters keep their pelvises 2 * BodyHalfWidth apart: the
-///    overlap goes away at SeparationSpeed at most and is split by mass (the
-///    heavier one gives way less); a fighter at a wall cannot give way;
+///  - two standing fighters keep their pelvises 2 * BodyHalfWidth apart (at
+///    SeparationSpeed at most), and their bodies off each other: the posed
+///    parts (the legs) as they will stand after the step, the torsos and
+///    heads (Rig::predictBody), at PosedSeparationSpeed at most. Box2D does
+///    not collide posed parts, and a torso held on a posed pelvis cannot get
+///    out of the way. The overlap is split by mass (the heavier one gives
+///    way less); a fighter at a wall cannot give way. The push moves the
+///    whole body, planted feet included (Rig::pushBody). The arms are left
+///    out (the solver keeps them apart, and a stuck one yields). The
+///    striking parts of an attack overlap only where they are and where the
+///    clip takes them alike: their own motion into the opponent stops there
+///    (Rig::stopAtContact), the opponent's into them is kept off here. What
+///    the spacing cannot keep apart in time (a leg swung through the
+///    opponent's in one step) Rig::holdLimbsBack stops;
 ///  - a standing fighter keeps its pelvis BodyHalfWidth + lyingClearance
 ///    (rig file) away from the body of a fighter lying on the floor, so its
 ///    legs do not walk through it.
@@ -43,6 +54,9 @@ struct SpacingParams {
     float BodyHalfWidth = 0.25f;
     /// Overlapping pelvises are pushed apart at most this fast, m/s.
     float SeparationSpeed = 4.0f;
+    /// Overlapping bodies (legs, torsos, heads) are pushed apart at most this
+    /// fast, m/s: a leg swings into the opponent's faster than walking.
+    float PosedSeparationSpeed = 12.0f;
 };
 
 /// Corrects the planned pelvis motion of both fighters for the walls and

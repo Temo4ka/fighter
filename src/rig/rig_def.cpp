@@ -38,6 +38,7 @@ constexpr std::array ControlFields = {
     ControlField{"walkSpeed", &ControlParams::WalkSpeed},
     ControlField{"backwardSpeedScale", &ControlParams::BackwardSpeedScale},
     ControlField{"walkAcceleration", &ControlParams::WalkAcceleration},
+    ControlField{"walkDeceleration", &ControlParams::WalkDeceleration},
     ControlField{"minStiffness", &ControlParams::MinStiffness},
     ControlField{"stiffnessPerImpulse", &ControlParams::StiffnessPerImpulse},
     ControlField{"stiffnessRecovery", &ControlParams::StiffnessRecovery},
@@ -55,21 +56,25 @@ constexpr std::array ControlFields = {
     ControlField{"footPlantHeight", &ControlParams::FootPlantHeight},
     ControlField{"footLockSlip", &ControlParams::FootLockSlip},
     ControlField{"footLockRelease", &ControlParams::FootLockRelease},
+    ControlField{"footSlideSpeed", &ControlParams::FootSlideSpeed},
     ControlField{"footRestepDistance", &ControlParams::FootRestepDistance},
     ControlField{"footStepLift", &ControlParams::FootStepLift},
     ControlField{"jamAngle", &ControlParams::JamAngle},
     ControlField{"jamSec", &ControlParams::JamSec},
+    ControlField{"yieldStiffness", &ControlParams::YieldStiffness},
+    ControlField{"yieldSec", &ControlParams::YieldSec},
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 15> NonNegativeFields = {
-    "closeRange",     "lyingClearance",     "wallTouchDistance", "footPlantHeight", "footLockSlip",
+constexpr std::array<std::string_view, 17> NonNegativeFields = {
+    "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight", "footLockSlip",
     "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",        "jamSec",
-    "knockdownSpin",  "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness"};
+    "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness",
+    "yieldStiffness",  "yieldSec"};
 
 /// Parameters that must be positive: they divide or set a duration.
-constexpr std::array<std::string_view, 4> PositiveFields = {"walkSpeed", "walkAcceleration", "knockdownSpeed",
-                                                            "getUpSec"};
+constexpr std::array<std::string_view, 6> PositiveFields = {"walkSpeed",      "walkAcceleration", "walkDeceleration",
+                                                            "knockdownSpeed", "getUpSec",         "footSlideSpeed"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);
@@ -77,6 +82,7 @@ JointDef parseJoint(const Json& Node);
 ControlParams parseControl(const Json& Node);
 WeaponMount parseWeapon(const Json& Node);
 std::bitset<BodyPartCount> parsePartSet(const Json& Root, const char* Key);
+void parseYieldPose(const Json& Node, RigDef& Def);
 BodyPart parseBodyPart(const Json& Node);
 Vec2 parseVec2(const Json& Node);
 void validateRig(const RigDef& Def);
@@ -94,7 +100,9 @@ RigDef parseRigDef(std::string_view JsonText) {
     bool HasWeapon = false;
     try {
         const Json Root = Json::parse(JsonText);
-        checkKeys(Root, {"root", "parts", "joints", "kinematic", "passThrough", "unjam", "weapon", "control"}, "rig");
+        checkKeys(Root,
+                  {"root", "parts", "joints", "kinematic", "passThrough", "unjam", "yieldPose", "weapon", "control"},
+                  "rig");
         if (const auto RootPart = Root.find("root"); RootPart != Root.end()) Result.Root = parseBodyPart(*RootPart);
         for (const auto& Part : Root.at("parts")) Result.Parts.push_back(parsePart(Part));
         for (const auto& Joint : Root.at("joints")) Result.Joints.push_back(parseJoint(Joint));
@@ -103,6 +111,7 @@ RigDef parseRigDef(std::string_view JsonText) {
         Result.Kinematic |= parsePartSet(Root, "kinematic");
         Result.PassThrough = parsePartSet(Root, "passThrough");
         Result.Unjam = parsePartSet(Root, "unjam");
+        if (const auto Yield = Root.find("yieldPose"); Yield != Root.end()) parseYieldPose(*Yield, Result);
         if (const auto Weapon = Root.find("weapon"); Weapon != Root.end()) {
             Result.Weapon = parseWeapon(*Weapon);
             HasWeapon = true;
@@ -225,6 +234,18 @@ std::bitset<BodyPartCount> parsePartSet(const Json& Root, const char* Key) {
     return Result;
 }
 
+/// The "yieldPose" object: body part -> joint angle in degrees.
+void parseYieldPose(const Json& Node, RigDef& Def) {
+    if (!Node.is_object()) throw std::runtime_error("yieldPose: expected a JSON object");
+    for (const auto& [Name, Angle] : Node.items()) {
+        const auto Part = findBodyPart(Name);
+        if (!Part) throw std::runtime_error(std::format("yieldPose: unknown body part '{}'", Name));
+        const auto Index = static_cast<size_t>(*Part);
+        Def.YieldAngles[Index] = Angle.get<float>() * RadiansPerDegree;
+        Def.YieldPosed.set(Index);
+    }
+}
+
 BodyPart parseBodyPart(const Json& Node) {
     const std::string Name = Node.get<std::string>();
     const auto Part = findBodyPart(Name);
@@ -268,6 +289,13 @@ void validateRig(const RigDef& Def) {
         const std::string_view Name = getBodyPartName(static_cast<BodyPart>(Index));
         if (Def.PassThrough.test(Index)) throw std::runtime_error(std::format("passThrough: {} is kinematic", Name));
         if (Def.Unjam.test(Index)) throw std::runtime_error(std::format("unjam: {} is kinematic", Name));
+    }
+    // Only a limb that yields pulls back to the yield pose.
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (Def.YieldPosed.test(Index) && !Def.Unjam.test(Index)) {
+            throw std::runtime_error(
+                std::format("yieldPose: {} is not in the unjam list", getBodyPartName(static_cast<BodyPart>(Index))));
+        }
     }
 
     // Kinematic parts are posed by forward kinematics from the root, so each

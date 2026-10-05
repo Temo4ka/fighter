@@ -31,17 +31,24 @@ namespace {
 /// A little more than the stop depth: the posed parts are put back to it
 /// exactly, the snapshot rounds nothing.
 constexpr float DepthMargin = 1e-3f;
-/// From this far (body origins, m) the body kick reaches the pelvis without
-/// touching the front thigh on the way; closer, its foot meets the thigh in
-/// the startup.
-constexpr float PelvisKickDistance = 1.03f;
+/// From this far (body origins, m) the body kick reaches the pelvis past the
+/// front thigh; closer, its foot meets the thigh (0.95 m and closer), further
+/// the torso.
+constexpr float PelvisKickDistance = 0.99f;
+/// From this close (body origins, m) the low kick meets the opponent's legs
+/// in its startup.
+constexpr float JamKickDistance = 0.75f;
+/// The striking leg touches the opponent's posed parts when it is this close
+/// to them, m: the spacing of the bodies takes a held contact out to
+/// touching.
+constexpr float TouchGap = 0.002f;
 
 /// What one kick of P1 at a P2 standing still did.
 struct KickLog {
     std::vector<StrikeLanded> Hits;
     float Deepest = 0.0f;          ///< Deepest overlap of P1's striking leg with P2's posed parts, m.
     float DeepestInStartup = 0.0f; ///< The same before the active phase, m.
-    int TouchingTicks = 0;         ///< Ticks with the striking leg touching P2's posed parts.
+    int TouchingTicks = 0;         ///< Ticks with the striking leg touching P2's posed parts (TouchGap).
     bool BackToStance = false;     ///< P1 is free again with its legs as before the kick.
     std::vector<RenderSnapshot> Snapshots;
 };
@@ -74,14 +81,16 @@ KickLog kickOnce(const std::string& Name, MoveButton Button, float Distance,
             if (const auto* Hit = std::get_if<StrikeLanded>(&Event)) Log.Hits.push_back(*Hit);
         }
         float Depth = 0.0f;
+        float Gap = 1e9f;
         for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}) {
             Depth = std::max(Depth, getPosedPenetration(Fight, 0, Part));
+            Gap = std::min(Gap, getPosedGap(Fight, 0, Part));
         }
         Log.Deepest = std::max(Log.Deepest, Depth);
         if (getLeft(Fight).Phase == AttackPhase::Startup) {
             Log.DeepestInStartup = std::max(Log.DeepestInStartup, Depth);
         }
-        Log.TouchingTicks += Depth > 0.0f ? 1 : 0;
+        Log.TouchingTicks += Gap <= TouchGap ? 1 : 0;
         Log.Snapshots.push_back(Fight.getSnapshot());
     }
 
@@ -168,19 +177,13 @@ TEST_CASE("Contact: a stopped kick is deterministic", "[combat][contact]") {
     }
 }
 
-TEST_CASE("Contact: in the startup a kick passes unless contactStopInStartup", "[combat][contact]") {
-    // At 0.95 m the foot of the body kick meets the front thigh shortly
-    // before its active phase.
-    const KickLog Passing = kickOnce("contact_passing", MoveButton::BodyKick, 0.95f);
-    CHECK(Passing.DeepestInStartup > getStopDepth() * 2.0f);
-    REQUIRE(Passing.Hits.size() == 1);   // then lands on the pelvis
-
-    // Stopped already in the startup: the kick is jammed on the thigh, a
-    // contact before the active phase is no hit.
-    const KickLog Jammed = kickOnce("contact_jammed", MoveButton::BodyKick, 0.95f,
-                                    {{"\"contactStopInStartup\": false", "\"contactStopInStartup\": true"}});
+TEST_CASE("Contact: a kick that meets the opponent in its startup is jammed there", "[combat][contact]") {
+    // So close the low kick meets P2's legs before its active phase: it stops
+    // at them like in any other phase (nothing passes through) and the
+    // attack recovers from there.
+    const KickLog Jammed = kickOnce("contact_jammed", MoveButton::LowKick, JamKickDistance);
+    CHECK(Jammed.DeepestInStartup > 0.0f);
     CHECK(Jammed.Deepest <= getStopDepth() + DepthMargin);
-    CHECK(Jammed.Hits.empty());
     CHECK(Jammed.BackToStance);
 }
 

@@ -37,19 +37,22 @@ constexpr float WallMarkHeight = 1.8f;      ///< m.
 
 /// \name Collision categories of body parts
 /// The arena keeps the default category (bit 0). A knocked-down fighter
-/// ignores the posed parts of the other fighter: a kick still moving through
-/// the falling body would fling it, as nothing stops a kinematic leg. Parts
-/// of the rig's "passThrough" list ignore each other (RigDef::PassThrough):
-/// their category is PassThroughBit alone, and their mask leaves it out. A
-/// limb that lets go of the opponent ("unjam") collides with the arena only.
+/// collides with the posed parts of the other fighter like any other body:
+/// a posed striker stops at a body it sinks into (stopAtContact), and the
+/// standing legs push a lying body out of their way instead of passing
+/// through it. Parts of the rig's "passThrough" list ignore each other
+/// (RigDef::PassThrough): their category is PassThroughBit alone, and their
+/// mask leaves it out.
 /// @{
-constexpr uint64_t ArenaBit = uint64_t{1} << 0;
 constexpr uint64_t PosedPartBit = uint64_t{1} << 1;
 constexpr uint64_t PhysicalPartBit = uint64_t{1} << 2;
 constexpr uint64_t PassThroughBit = uint64_t{1} << 3;
 constexpr uint64_t CollideWithAll = ~uint64_t{0};
 /// @}
 
+/// A yielding limb returns to the clip only when the clip's pose of it is
+/// this far clear of the opponent, m.
+constexpr float YieldClearance = 0.01f;
 /// A foot offset smaller than this needs no leg correction, m.
 constexpr float MinFootOffset = 1e-4f;
 /// Knockback slower than this lets a standing fighter step its feet back, m/s.
@@ -93,6 +96,8 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
       MotorMaxTorque(Setup.MotorMaxTorque * Def.Control.TorqueScale),
       MotorGain(Setup.MotorGain * Def.Control.GainScale),
       MoveSpeedScale(Setup.MoveSpeedScale),
+      YieldAngles(Def.YieldAngles),
+      YieldPosed(Def.YieldPosed),
       WeaponReach(std::max(0.0f, Setup.WeaponReachM)) {
     PerBodyPart<Vec2> Centers{};
     createParts(PhysWorld, Def, Setup, Centers);
@@ -107,6 +112,7 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
     findLegs();
     Controller = PelvisController(getPart(Root).Handle.getPosition().X,
                                   {.WalkAcceleration = Control.WalkAcceleration,
+                                   .WalkDeceleration = Control.WalkDeceleration,
                                    .KnockbackDecay = Control.KnockbackDecay});
 }
 
@@ -114,8 +120,21 @@ void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
     TargetAngles = Angles;
     for (auto& Joint : Joints) {
         const float Angle = Angles[static_cast<size_t>(Joint.Child)] * Facing;
-        Joint.Target = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Wish = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
     }
+    // A yielding limb that the clip asks for something new (a strike) tries
+    // again.
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto LimbPart = static_cast<BodyPart>(Index);
+        const PartState& Limb = Parts[Index];
+        if (!Limb.Unjam || Limb.Limb != LimbPart || !Limb.Yielding) continue;
+        const bool NewWish = std::ranges::any_of(Joints, [&](const JointState& Joint) {
+            const PartState& Part = getPart(Joint.Child);
+            return Part.Unjam && Part.Limb == LimbPart && std::abs(Joint.Wish - Joint.YieldWish) > Control.JamAngle;
+        });
+        if (NewWish) setLimbYielding(LimbPart, false);
+    }
+    refreshTargets();
 }
 
 void Rig::setMoveVelocity(float Velocity) { Controller.setTargetVelocity(Velocity); }
@@ -125,7 +144,7 @@ void Rig::setBaseStiffness(float Stiffness) { BaseStiffness = Stiffness; }
 void Rig::snapToTargets() {
     Controller.reset(Controller.getPositionX());
     releaseFeet();
-    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot());
+    const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot(Controller.getPositionX()));
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         Part.Handle.setTransform(Target.Position, Target.Angle);
         Part.Handle.setLinearVelocity({});
@@ -222,7 +241,7 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
                                                              : 0;
 }
 
-std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth, bool Holding) {
+std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
     StoppedAtContact = false;
     if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
     std::vector<physics::Body> Posed;
@@ -230,17 +249,52 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
         if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
     }
     if (Posed.empty()) return std::nullopt;
-    const std::optional<float> Fraction = Physics->findPosedStop(Posed, MaxDepth, Holding);
+    const physics::Body Pelvis = getPart(Root).Handle;
+    const std::optional<float> Fraction = Physics->findPosedStop(Posed, MaxDepth, Pelvis);
     if (!Fraction) return std::nullopt;
-    // The whole posed body goes back, so the leg stays on its hip.
+    // The limbs of the strikers go back along their motion relative to the
+    // pelvis (the clip's motion), whole, so a leg stays on its hip; the
+    // pelvis and the other limbs keep this step's motion.
     if (*Fraction < 1.0f) {
-        for (const auto& Part : Parts) {
-            if (Part.Kinematic) Physics->rewindBody(Part.Handle, *Fraction);
+        std::bitset<BodyPartCount> StrikingLimbs;
+        for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+            if (Strikers.test(Index)) StrikingLimbs.set(static_cast<size_t>(getLimbTop(static_cast<BodyPart>(Index))));
+        }
+        for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+            if (StrikingLimbs.test(Index)) rewindLimb(static_cast<BodyPart>(Index), *Fraction);
         }
     }
     StoppedAtContact = true;
     StoppedParts = Strikers;
     return Fraction;
+}
+
+void Rig::holdLimbsBack(float MaxDepth) {
+    HeldLimbs.reset();
+    if (CurrentPosture == Posture::KnockedDown) return;
+    const physics::Body Pelvis = getPart(Root).Handle;
+    for (const auto& Joint : Joints) {
+        const auto Top = static_cast<size_t>(Joint.Child);
+        if (Joint.Parent != Root || !isKinematic(Joint.Child)) continue;
+        std::vector<physics::Body> Limb;
+        for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+            const auto Part = static_cast<BodyPart>(Index);
+            if (Part != Root && isKinematic(Part) && getLimbTop(Part) == Joint.Child) Limb.push_back(Parts[Index].Handle);
+        }
+        // Touching the opponent is fine (1); only a limb that went too deep
+        // goes back.
+        const std::optional<float> Fraction = Physics->findPosedStop(Limb, MaxDepth, Pelvis);
+        if (!Fraction || *Fraction >= 1.0f) continue;
+        rewindLimb(Joint.Child, *Fraction);
+        HeldLimbs.set(Top);
+    }
+}
+
+void Rig::pushBody(float Delta) {
+    Controller.shift(Delta);
+    for (auto& Limb : Legs) {
+        if (Limb.Locked) Limb.LockX += Delta;
+    }
 }
 
 float Rig::getPosedPenetration(BodyPart Part) const {
@@ -251,10 +305,7 @@ bool Rig::isKinematic(BodyPart Part) const {
     return getPart(Part).Kinematic && CurrentPosture != Posture::KnockedDown;
 }
 
-bool Rig::isUnjamming(BodyPart Part) const {
-    const PartState& State = getPart(Part);
-    return State.Unjam && getPart(State.Limb).Freed;
-}
+bool Rig::isYielding(BodyPart Part) const { return getPart(Part).Yielding; }
 
 float Rig::getStiffness() const { return BaseStiffness * HitFactor * getPostureStiffness(); }
 
@@ -324,6 +375,30 @@ bool Rig::isFootLocked(BodyPart Foot) const {
     return std::ranges::any_of(Legs, [&](const Leg& Limb) { return Limb.Foot == Foot && Limb.Locked; });
 }
 
+float Rig::getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const {
+    // The joint targets of Angles as corrections to the current ones.
+    PerBodyPart<float> Corrections{};
+    for (const auto& Joint : Joints) {
+        const float Angle = std::clamp(Angles[static_cast<size_t>(Joint.Child)] * Facing, Joint.LowerAngle,
+                                       Joint.UpperAngle);
+        Corrections[static_cast<size_t>(Joint.Child)] = Angle - Joint.Target;
+    }
+    const Placement OnFloor{.Position = {}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
+    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
+    float Lowest = std::numeric_limits<float>::max();
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Lowest = std::min(Lowest, getLowestPoint(Part.Shape, Target.Position, Target.Angle));
+    }
+    const Placement& Sole = Pose[static_cast<size_t>(Foot)];
+    return getLowestPoint(getPart(Foot).Shape, Sole.Position, Sole.Angle) - Lowest;
+}
+
+void Rig::keepFeetPlanted() {
+    for (auto& Limb : Legs) {
+        if (Limb.Locked && !Limb.Stepping) Limb.KeptOffsetX = Limb.OffsetX;
+    }
+}
+
 void Rig::drawDebug() const {
     if constexpr (FIGHTER_DEBUG) {
         debug::ScopedSide Owner(FighterIndex == 0 ? debug::Side::Left : debug::Side::Right);
@@ -373,15 +448,16 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
         State.Size = getBoundsSize(Mirrored);
         State.Kinematic = Def.Kinematic.test(Index);
         State.Unjam = Def.Unjam.test(Index);
+        UnjamParts.set(Index, State.Unjam);
         const bool PassThrough = Def.PassThrough.test(Index);
         const uint64_t Category = State.Kinematic ? PosedPartBit : PassThrough ? PassThroughBit : PhysicalPartBit;
-        State.CollisionMask = PassThrough ? CollideWithAll & ~PassThroughBit : CollideWithAll;
+        const uint64_t Mask = PassThrough ? CollideWithAll & ~PassThroughBit : CollideWithAll;
         State.Handle = PhysWorld.createBody({
             .Position = Setup.Origin + Center,
             .AngularDamping = Control.AngularDamping,
             .Part = physics::PartRef{Setup.FighterIndex, Source.Part},
         });
-        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup, Category, State.CollisionMask));
+        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup, Category, Mask));
 
         // The weapon is a second capsule of the part that holds it: from the
         // fist (the far end of the part) outwards, so that its surface ends
@@ -400,7 +476,7 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
             Blade.Begin = Weapon.Grip;
             Blade.End = Weapon.Tip;
             Blade.Radius = Weapon.Radius;
-            PhysWorld.addShape(State.Handle, makeShapeDef(Blade, CollisionGroup, Category, State.CollisionMask));
+            PhysWorld.addShape(State.Handle, makeShapeDef(Blade, CollisionGroup, Category, Mask));
         }
 
         // The mass is set while the body is dynamic; the densities stay when
@@ -425,7 +501,8 @@ void Rig::createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSe
         Joint.AnchorInParent = Anchor - Centers[static_cast<size_t>(Source.Parent)];
         Joint.ChildFromAnchor = Centers[static_cast<size_t>(Source.Child)] - Anchor;
         Joint.RestDirection = getHeading(Joint.ChildFromAnchor);
-        Joint.Target = std::clamp(0.0f, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Wish = std::clamp(0.0f, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Target = Joint.Wish;
         Joint.Handle = PhysWorld.createRevoluteJoint({
             .BodyA = getPart(Source.Parent).Handle,
             .BodyB = getPart(Source.Child).Handle,
@@ -510,11 +587,11 @@ PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement,
     return Pose;
 }
 
-Rig::Placement Rig::getStandingRoot() const {
+Rig::Placement Rig::getStandingRoot(float RootX) const {
     // Pose the body with the root on the floor line, then lift it so that
     // the lowest kinematic part (a sole) just touches the floor. Bent knees
     // (a crouch) leave the feet higher, so the pelvis goes down.
-    const Placement OnFloor{.Position = {Controller.getPositionX(), 0.0f},
+    const Placement OnFloor{.Position = {RootX, 0.0f},
                             .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
     const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor);
     float Lowest = std::numeric_limits<float>::max();
@@ -548,46 +625,123 @@ void Rig::advancePosture() {
 }
 
 void Rig::moveKinematicParts(float Dt) {
-    const Placement RootPlacement = getStandingRoot();
-    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
-    if (CurrentPosture == Posture::Standing) {
-        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Dt));
-    } else {
-        releaseFeet();
-    }
-    // Getting up blends from where the parts lay to the stance.
-    const bool Blending = CurrentPosture == Posture::GettingUp;
-    const float Blend = Blending ? smoothStep(std::clamp(PostureSec / Control.GetUpSec, 0.0f, 1.0f)) : 1.0f;
-
-    for (auto&& [Part, Target, From] : std::views::zip(Parts, Pose, GetUpFrom)) {
-        if (!Part.Kinematic) continue;
-        Placement Goal = Target;
-        if (Blending) {
-            Goal.Position = lerp(From.Position, Target.Position, Blend);
-            Goal.Angle = From.Angle + wrapAngle(Target.Angle - From.Angle) * Blend;
-        }
-        Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
+    if (CurrentPosture != Posture::Standing) releaseFeet();
+    const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec);
+    SlidingFeet = false;
+    for (auto&& [Part, Goal] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
     }
 }
 
-PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) {
+PerBodyPart<Rig::Placement> Rig::computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt,
+                                                   float PostureTime) const {
+    const Placement RootPlacement = getStandingRoot(RootX);
+    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
+    if (CurrentPosture == Posture::Standing) Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt));
+    if (CurrentPosture != Posture::GettingUp) return Pose;
+    // Getting up blends from where the parts lay to the stance.
+    const float Blend = smoothStep(std::clamp(PostureTime / Control.GetUpSec, 0.0f, 1.0f));
+    for (auto&& [Goal, From] : std::views::zip(Pose, GetUpFrom)) {
+        Goal.Position = lerp(From.Position, Goal.Position, Blend);
+        Goal.Angle = From.Angle + wrapAngle(Goal.Angle - From.Angle) * Blend;
+    }
+    return Pose;
+}
+
+std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
+    std::vector<PartPlacement> Result;
+    if (CurrentPosture == Posture::KnockedDown) return Result;
+    // applyControl() advances the posture time before it poses the parts.
+    // A push away from the plan takes the planted feet along (pushBody()).
+    std::vector<Leg> Limbs = Legs;
+    const float Pushed = RootX - Controller.getPlannedX();
+    for (auto& Limb : Limbs) {
+        if (Limb.Locked) Limb.LockX += Pushed;
+    }
+    const PerBodyPart<Placement> Pose = computePosedPose(RootX, Limbs, Dt, PostureSec + Dt);
+    // The parts that are not posed now (the torso and the head, held on the
+    // pelvis) and the strikers (they stop at the opponent by themselves,
+    // stopAtContact(); the opponent must not walk into where they are) move
+    // rigidly with the pelvis.
+    const PartState& Pelvis = getPart(Root);
+    const Placement& PelvisGoal = Pose[static_cast<size_t>(Root)];
+    const float Turn = PelvisGoal.Angle - Pelvis.Handle.getAngle();
+    const auto carry = [&](const PartState& Part) {
+        const Vec2 FromPelvis = rotate(Part.Handle.getPosition() - Pelvis.Handle.getPosition(), Turn);
+        return PartPlacement{.Handle = Part.Handle,
+                             .Position = PelvisGoal.Position + FromPelvis,
+                             .Angle = Part.Handle.getAngle() + Turn};
+    };
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const PartState& Part = Parts[Index];
+        if (Part.Unjam) continue;
+        const Placement& Placed = Pose[Index];
+        if (StrikingParts.test(Index) || !Part.Kinematic) {
+            PartPlacement Carried = carry(Part);
+            if (StrikingParts.test(Index) && Part.Kinematic) {
+                Carried.Striking = true;
+                Carried.PosedPosition = Placed.Position;
+                Carried.PosedAngle = Placed.Angle;
+            }
+            Result.push_back(Carried);
+            continue;
+        }
+        Result.push_back({.Handle = Part.Handle, .Position = Placed.Position, .Angle = Placed.Angle});
+        // A lifted foot comes down where it is: the spacing keeps the floor
+        // below it clear too, so that it does not step onto the opponent's
+        // foot (in a side view the feet are in one plane). A kicking foot
+        // goes back instead.
+        const bool IsFoot = std::ranges::any_of(Legs, [&](const Leg& Limb) {
+            return static_cast<size_t>(Limb.Foot) == Index;
+        });
+        const float Lift = getLowestPoint(Part.Shape, Placed.Position, Placed.Angle);
+        if (IsFoot && Lift > 0.0f && !AttackingParts.test(Index)) {
+            Result.push_back(
+                {.Handle = Part.Handle, .Position = Placed.Position - Vec2{0.0f, Lift}, .Angle = Placed.Angle});
+        }
+    }
+    return Result;
+}
+
+float Rig::measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const {
+    float Smallest = std::numeric_limits<float>::max();
+    for (const auto& Mine : Own) {
+        for (const auto& Theirs : Other) {
+            float Gap = Physics->getGapAt(Mine.Handle, Mine.Position, Mine.Angle, Theirs.Handle, Theirs.Position,
+                                          Theirs.Angle);
+            if (Gap < 0.0f && Mine.Striking) {
+                Gap = std::max(Gap, Physics->getGapAt(Mine.Handle, Mine.PosedPosition, Mine.PosedAngle, Theirs.Handle,
+                                                      Theirs.Position, Theirs.Angle));
+            }
+            if (Gap < 0.0f && Theirs.Striking) {
+                Gap = std::max(Gap, Physics->getGapAt(Mine.Handle, Mine.Position, Mine.Angle, Theirs.Handle,
+                                                      Theirs.PosedPosition, Theirs.PosedAngle));
+            }
+            Smallest = std::min(Smallest, Gap);
+        }
+    }
+    return Smallest;
+}
+
+PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const {
     // Standing still after a push, the feet are left away from the stance:
     // the foot farthest off steps back under the body, one at a time and
     // only while all feet stand (not during a kick).
     const bool Idle = Controller.getWalkVelocity() == 0.0f && std::abs(Controller.getKnockback()) < MinRestepKnockback;
-    const bool AllPlanted = std::ranges::all_of(Legs, &Leg::Locked);
+    const bool AllPlanted = std::ranges::all_of(Limbs, &Leg::Locked);
     Leg* Farthest = nullptr;
-    for (auto& Limb : Legs) {
-        if (Limb.Locked && (!Farthest || std::abs(Limb.OffsetX) > std::abs(Farthest->OffsetX))) Farthest = &Limb;
+    for (auto& Limb : Limbs) {
+        if (Limb.Locked && (!Farthest || getRestepDistance(Limb) > getRestepDistance(*Farthest))) Farthest = &Limb;
     }
     if (Idle && AllPlanted && Farthest && Control.FootRestepDistance > 0.0f &&
-        std::abs(Farthest->OffsetX) > Control.FootRestepDistance) {
+        getRestepDistance(*Farthest) > Control.FootRestepDistance) {
         Farthest->Stepping = true;
         Farthest->Locked = false;
+        Farthest->KeptOffsetX = 0.0f;
     }
 
     PerBodyPart<float> Corrections{};
-    for (auto& Limb : Legs) {
+    for (auto& Limb : Limbs) {
         const JointState& Ankle = Joints[Limb.Ankle];
         const Placement& Shin = Pose[static_cast<size_t>(Ankle.Parent)];
         const Vec2 ClipAnkle = Shin.Position + rotate(Ankle.AnchorInParent, Shin.Angle);
@@ -597,12 +751,17 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
         // stepping back plants when it is there.
         const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
         if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
+        if (SlidingFeet && Limb.Locked) {
+            Limb.Locked = false;   // slides from where it stood (slideFeet())
+            Limb.KeptOffsetX = 0.0f;
+        }
 
-        if (Planted && !Limb.Locked && !Limb.Stepping) {
+        if (Planted && !Limb.Locked && !Limb.Stepping && !SlidingFeet) {
             Limb.Locked = true;
             Limb.LockX = ClipAnkle.X + Limb.OffsetX;
         } else if (!Planted && Limb.Locked) {
             Limb.Locked = false;   // lifted: it returns to the clip from where it stood
+            Limb.KeptOffsetX = 0.0f;
         }
         float Lift = 0.0f;
         if (Limb.Locked) {
@@ -619,7 +778,12 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, float Dt) 
                                     std::min(ClipAnkle.X + Slip, std::max(HipPoint.X + Span, ClipAnkle.X)));
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
-            Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
+            if (SlidingFeet) {
+                const float MaxSlide = Control.FootSlideSpeed * Dt;
+                Limb.OffsetX -= std::clamp(Limb.OffsetX, -MaxSlide, MaxSlide);
+            } else {
+                Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
+            }
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
@@ -674,11 +838,31 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     setCorrection(AnkleJoint, Foot.Angle - ShinAngle);   // the foot keeps its angle to the floor
 }
 
+float Rig::getRestepDistance(const Leg& Limb) { return std::abs(Limb.OffsetX - Limb.KeptOffsetX); }
+
+BodyPart Rig::getLimbTop(BodyPart Part) const {
+    for (const JointState* Joint = findJoint(Part); Joint && Joint->Parent != Root; Joint = findJoint(Joint->Parent)) {
+        Part = Joint->Parent;
+    }
+    return Part;
+}
+
+void Rig::rewindLimb(BodyPart Top, float Fraction) {
+    const physics::Body Pelvis = getPart(Root).Handle;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto Part = static_cast<BodyPart>(Index);
+        if (Part != Root && Parts[Index].Kinematic && getLimbTop(Part) == Top) {
+            Physics->rewindBody(Parts[Index].Handle, Fraction, Pelvis);
+        }
+    }
+}
+
 void Rig::releaseFeet() {
     for (auto& Limb : Legs) {
         Limb.Locked = false;
         Limb.Stepping = false;
         Limb.OffsetX = 0.0f;
+        Limb.KeptOffsetX = 0.0f;
     }
 }
 
@@ -694,18 +878,24 @@ void Rig::driveMotors() {
             continue;
         }
         // Stiffness scales both the response speed and the torque limit: a
-        // stiff joint snaps to its target, a weak one lags and gives way.
-        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * Stiffness;
+        // stiff joint snaps to its target, a weak one lags and gives way. A
+        // yielding limb is softer still.
+        const float JointStiffness = getPart(Joint.Child).Yielding ? Stiffness * Control.YieldStiffness : Stiffness;
+        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * JointStiffness;
         Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
-        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * Stiffness);
+        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * JointStiffness);
     }
 }
 
 void Rig::updateJams(float Dt) {
     // Two motors pushing limbs into each other hold a deadlock forever: each
     // is at its torque limit, and nothing in the pose changes. A limb that
-    // touches the opponent and stays far from its target for JamSec lets go:
-    // it passes through the opponent until it no longer overlaps it.
+    // touches the opponent and stays far from its target for JamSec yields:
+    // its motors soften and it pulls back to the yield pose. It still
+    // collides, so nothing passes through; the solver pushes it out of the
+    // way. It yields at least YieldSec, then until the clip's pose of it is
+    // clear of the opponent: a guard that does not fit at close range stays
+    // tucked instead of jamming again and again.
     if (CurrentPosture == Posture::KnockedDown) return;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         PartState& Limb = Parts[Index];
@@ -713,45 +903,74 @@ void Rig::updateJams(float Dt) {
         if (!Limb.Unjam || Limb.Limb != LimbPart) continue;
 
         bool Touching = false;
-        bool Overlapping = false;
         float Error = 0.0f;
         for (const auto& Joint : Joints) {
             const PartState& Part = getPart(Joint.Child);
             if (!Part.Unjam || Part.Limb != LimbPart) continue;
-            if (Limb.Freed) {
-                Overlapping = Overlapping || Physics->isOverlappingOtherFighter(Part.Handle);
-            } else {
-                Touching = Touching || Physics->isTouchingOtherFighter(Part.Handle);
-                Error = std::max(Error, std::abs(Joint.Target - Joint.Handle.getAngle()));
-            }
+            Touching = Touching || Physics->isTouchingOtherFighter(Part.Handle);
+            Error = std::max(Error, std::abs(Joint.Wish - Joint.Handle.getAngle()));
         }
-        if (Limb.Freed) {
-            if (!Overlapping) setLimbFreed(LimbPart, false);
+        if (Limb.Yielding) {
+            Limb.YieldSec += Dt;
+            if (Limb.YieldSec >= Control.YieldSec && !isWishBlocked(LimbPart)) setLimbYielding(LimbPart, false);
             continue;
         }
         Limb.StuckSec = Touching && Error > Control.JamAngle ? Limb.StuckSec + Dt : 0.0f;
-        if (Limb.StuckSec >= Control.JamSec) setLimbFreed(LimbPart, true);
+        if (Limb.StuckSec >= Control.JamSec) setLimbYielding(LimbPart, true);
     }
 }
 
-void Rig::setLimbFreed(BodyPart Limb, bool Freed) {
+void Rig::setLimbYielding(BodyPart Limb, bool Yielding) {
     getPart(Limb).StuckSec = 0.0f;
+    getPart(Limb).YieldSec = 0.0f;
     for (auto& Part : Parts) {
-        if (!Part.Unjam || Part.Limb != Limb) continue;
-        Part.Freed = Freed;
-        refreshCollisionMask(Part);
+        if (Part.Unjam && Part.Limb == Limb) Part.Yielding = Yielding;
     }
+    for (auto& Joint : Joints) {
+        const PartState& Part = getPart(Joint.Child);
+        if (Part.Unjam && Part.Limb == Limb) Joint.YieldWish = Joint.Wish;
+    }
+    refreshTargets();
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} {} {}", FighterIndex + 1, getBodyPartName(Limb),
-                                    Freed ? "stuck in the opponent: lets go" : "is free again"));
+                                    Yielding ? "stuck in the opponent: yields" : "stops yielding"));
     }
 }
 
-void Rig::refreshCollisionMask(PartState& Part) const {
-    uint64_t Mask = Part.CollisionMask;
-    if (Part.Unjam && getPart(Part.Limb).Freed) Mask = ArenaBit;
-    if (CurrentPosture == Posture::KnockedDown) Mask &= ~PosedPartBit;
-    Part.Handle.setCollisionMask(Mask);
+bool Rig::isWishBlocked(BodyPart Limb) const {
+    // Forward kinematics of the limb at the clip's angles; the parent of
+    // its topmost part stays where it is.
+    PerBodyPart<Placement> Pose{};
+    std::bitset<BodyPartCount> Placed;
+    for (const auto& Joint : Joints) {
+        const PartState& Child = getPart(Joint.Child);
+        if (!Child.Unjam || Child.Limb != Limb) continue;
+        const auto ParentIndex = static_cast<size_t>(Joint.Parent);
+        const PartState& Parent = Parts[ParentIndex];
+        const Placement From = Placed.test(ParentIndex) ? Pose[ParentIndex]
+                                                        : Placement{.Position = Parent.Handle.getPosition(),
+                                                                    .Angle = Parent.Handle.getAngle()};
+        const float Angle = From.Angle + Joint.Wish;
+        const Vec2 Anchor = From.Position + rotate(Joint.AnchorInParent, From.Angle);
+        const auto ChildIndex = static_cast<size_t>(Joint.Child);
+        Pose[ChildIndex] = {.Position = Anchor + rotate(Joint.ChildFromAnchor, Angle), .Angle = Angle};
+        Placed.set(ChildIndex);
+        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, YieldClearance,
+                                                 UnjamParts)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Rig::refreshTargets() {
+    for (auto& Joint : Joints) {
+        const auto Child = static_cast<size_t>(Joint.Child);
+        Joint.Target = Joint.Wish;
+        if (Parts[Child].Yielding && YieldPosed.test(Child)) {
+            Joint.Target = std::clamp(YieldAngles[Child] * Facing, Joint.LowerAngle, Joint.UpperAngle);
+        }
+    }
 }
 
 void Rig::knockDown(Vec2 Velocity, float Spin) {
@@ -765,16 +984,16 @@ void Rig::knockDown(Vec2 Velocity, float Spin) {
 
     for (auto& Part : Parts) {
         if (Part.Kinematic) Physics->setBodyType(Part.Handle, physics::BodyType::Dynamic);
-        Part.Freed = false;
+        Part.Yielding = false;
         Part.StuckSec = 0.0f;
     }
+    refreshTargets();
     // The whole body takes the momentum of the hit as one rigid body: every
     // part moves with the push plus the spin about the center of mass. The
     // motion the parts had is dropped: a physical part hit by a kinematic leg
     // moves as fast as the leg, which says nothing about the whole body.
     const Vec2 Center = getCenterOfMass();
     for (auto& Part : Parts) {
-        refreshCollisionMask(Part);
         Part.Handle.setLinearVelocity(Velocity + perp(Part.Handle.getWorldCenterOfMass() - Center) * Spin);
         Part.Handle.setAngularVelocity(Spin);
     }
@@ -785,7 +1004,6 @@ void Rig::startGettingUp() {
     CurrentPosture = Posture::GettingUp;
     PostureSec = 0.0f;
     for (auto&& [Part, From] : std::views::zip(Parts, GetUpFrom)) {
-        refreshCollisionMask(Part);
         if (!Part.Kinematic) continue;
         From = {.Position = Part.Handle.getPosition(), .Angle = Part.Handle.getAngle()};
         Physics->setBodyType(Part.Handle, physics::BodyType::Kinematic);
@@ -825,7 +1043,7 @@ void Rig::turnAround() {
     releaseFeet();
 
     // The arms now reach to the other side, maybe into the opponent behind:
-    // a limb that overlaps it passes through until it is out.
+    // a limb that overlaps it yields, and the solver pushes it out.
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         const auto LimbPart = static_cast<BodyPart>(Index);
         const PartState& Limb = Parts[Index];
@@ -833,7 +1051,7 @@ void Rig::turnAround() {
         const bool Overlapping = std::ranges::any_of(Parts, [&](const PartState& Part) {
             return Part.Unjam && Part.Limb == LimbPart && Physics->isOverlappingOtherFighter(Part.Handle);
         });
-        if (Overlapping) setLimbFreed(LimbPart, true);
+        if (Overlapping) setLimbYielding(LimbPart, true);
     }
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} turns to face {}", FighterIndex + 1, Facing > 0.0f ? "right" : "left"));
@@ -898,11 +1116,11 @@ void Rig::drawFeetAndLimbs() const {
         if (!Limb.Locked) continue;
         debug::drawCross(debug::Cat::Contacts, {Limb.LockX, 0.0f}, FootLockMarkSize);
     }
-    // Limbs that let go of the opponent.
+    // Limbs that yield to the opponent.
     for (const auto& Part : Parts) {
-        if (!Part.Unjam || !getPart(Part.Limb).Freed) continue;
+        if (!Part.Yielding) continue;
         drawShape(debug::Cat::Contacts, Part.Shape, Part.Handle.getPosition(), Part.Handle.getAngle());
-        debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "free");
+        debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "yields");
     }
     // Posed strikers held at the opponent's posed parts in the last step.
     if (StoppedAtContact) {
@@ -912,6 +1130,14 @@ void Rig::drawFeetAndLimbs() const {
             drawShape(debug::Cat::Contacts, Part.Shape, Part.Handle.getPosition(), Part.Handle.getAngle());
             debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "stopped");
         }
+    }
+    // Posed limbs held back from the opponent in the last step.
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto Part = static_cast<BodyPart>(Index);
+        if (!isKinematic(Part) || Part == Root || !HeldLimbs.test(static_cast<size_t>(getLimbTop(Part)))) continue;
+        const PartState& Held = Parts[Index];
+        drawShape(debug::Cat::Contacts, Held.Shape, Held.Handle.getPosition(), Held.Handle.getAngle());
+        if (HeldLimbs.test(Index)) debug::drawText(debug::Cat::Contacts, Held.Handle.getPosition(), "held back");
     }
     // The wall the fighter touches.
     if (WallSide != 0) {
@@ -947,6 +1173,7 @@ void Rig::fillPanel() const {
         Feet += std::format("{} {} {:+.2f}", getBodyPartName(Limb.Foot),
                             Limb.Locked ? "planted" : Limb.Stepping ? "steps back" : "free",
                             Limb.OffsetX);
+        if (Limb.KeptOffsetX != 0.0f) Feet += std::format(" (kept {:+.2f})", Limb.KeptOffsetX);
     }
     debug::setPanel(Name + " feet", Feet);
 
@@ -956,8 +1183,9 @@ void Rig::fillPanel() const {
         if (!Limb.Unjam || Limb.Limb != static_cast<BodyPart>(Index)) continue;
         if (!Limbs.empty()) Limbs += ", ";
         Limbs += std::format("{} {}", getBodyPartName(static_cast<BodyPart>(Index)),
-                             Limb.Freed ? "free" : Limb.StuckSec > 0.0f ? std::format("stuck {:.2f} s", Limb.StuckSec)
-                                                                        : "ok");
+                             Limb.Yielding        ? std::format("yields {:.2f} s", Limb.YieldSec)
+                             : Limb.StuckSec > 0.0f ? std::format("stuck {:.2f} s", Limb.StuckSec)
+                                                    : "ok");
     }
     if (StayDown) Limbs += Limbs.empty() ? "stays down" : ", stays down";
     debug::setPanel(Name + " limbs", Limbs);
@@ -973,9 +1201,14 @@ void Rig::fillPanel() const {
         Overlap = Depth;
         Deepest = Part;
     }
-    debug::setPanel(Name + " posed overlap", Overlap > 0.0f ? std::format("{} {:.3f} m{}", getBodyPartName(Deepest),
-                                                                          Overlap, StoppedAtContact ? ", stopped" : "")
-                                                            : "-");
+    std::string Held;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (HeldLimbs.test(Index)) Held += std::format(", {} held back", getBodyPartName(static_cast<BodyPart>(Index)));
+    }
+    debug::setPanel(Name + " posed overlap", Overlap > 0.0f ? std::format("{} {:.3f} m{}{}", getBodyPartName(Deepest),
+                                                                          Overlap, StoppedAtContact ? ", stopped" : "",
+                                                                          Held)
+                                                            : Held.empty() ? "-" : Held.substr(2));
 }
 
 namespace {

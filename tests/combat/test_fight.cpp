@@ -51,6 +51,8 @@ struct Attack {
     /// otherwise strike whenever P1 is free.
     bool WaitForVictim = true;
     PlayerCommands VictimCmd;
+    /// Stop after this many landed strikes; 0: no limit.
+    size_t MaxLanded = 0;
     /// Called after every update.
     std::function<void(const Battle&)> OnTick;
 };
@@ -77,6 +79,7 @@ std::vector<StrikeLanded> strike(Battle& Fight, const Attack& How, int Ticks) {
             if (Hit && Hit->Contact.Attacker.Fighter == 0) Landed.push_back(*Hit);
         }
         if (How.OnTick) How.OnTick(Fight);
+        if (How.MaxLanded > 0 && Landed.size() >= How.MaxLanded) break;
     }
     return Landed;
 }
@@ -258,13 +261,15 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
 }
 
 TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][data]") {
-    // Kicks at the torso: from close range, where the shin lands on it (from
-    // kicking range the foot meets the pelvis, which a low block covers).
+    // A kick at the torso: from a little further than kicking range, where
+    // the foot lands on it (from kicking range it meets the pelvis, which a
+    // low block covers). One kick: the knockback of the first one changes
+    // where the next ones land.
     const auto kickAt = [](const PlayerCommands& Guard) {
         Battle Fight(makeConfig());
         run(Fight, {}, Guard, 1);
         const std::vector<StrikeLanded> Hits =
-            strike(Fight, {.Range = CloseKickRange, .VictimCmd = Guard}, 4 * TicksPerSecond);
+            strike(Fight, {.Range = TorsoKickRange, .VictimCmd = Guard, .MaxLanded = 1}, 4 * TicksPerSecond);
         REQUIRE_FALSE(Hits.empty());
         return std::pair(Hits, getRight(Fight));
     };
@@ -428,8 +433,11 @@ TEST_CASE("Fight: a hit may be chained into the next strike", "[combat][fight]")
     };
 
     SECTION("a jab that hits is cancelled into the next one") {
+        // From GuardJabRange the first jab lands on the guard before the
+        // second press. (Released at JabRange, the walk ends its step and
+        // the guards end up pressed into each other: no jab lands there.)
         Battle Fight(makeConfig());
-        while (getRight(Fight).Position.X - getLeft(Fight).Position.X > JabRange) {
+        while (getRight(Fight).Position.X - getLeft(Fight).Position.X > GuardJabRange) {
             Fight.update({.MoveX = 1.0f}, {}, Dt);
         }
         run(Fight, {}, {}, TicksPerSecond / 2);

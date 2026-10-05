@@ -12,7 +12,9 @@ constexpr float KnockbackRest = 1e-3f;
 } // namespace
 
 void PelvisController::plan(float Dt) {
-    const float MaxChange = Config.WalkAcceleration * Dt;
+    // Slowing down (the key released, or the other way) uses its own rate.
+    const bool Braking = std::abs(TargetVelocity) < std::abs(WalkVelocity) || TargetVelocity * WalkVelocity < 0.0f;
+    const float MaxChange = (Braking ? Config.WalkDeceleration : Config.WalkAcceleration) * Dt;
     WalkVelocity += std::clamp(TargetVelocity - WalkVelocity, -MaxChange, MaxChange);
     PlannedX = PositionX + (WalkVelocity + Knockback) * Dt;
 

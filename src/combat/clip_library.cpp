@@ -8,10 +8,12 @@ namespace fighter::combat {
 
 ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves) {
     ClipLibrary Library;
-    for (const std::string_view Name : {clips::Stance, clips::Walk, clips::Crouch, clips::BlockHigh, clips::BlockMid,
-                                        clips::BlockLow, clips::Flinch, clips::Stagger, clips::Knockback}) {
+    for (const std::string_view Name : {clips::Stance, clips::Walk, clips::Crouch, clips::CrouchWalk, clips::BlockHigh,
+                                        clips::BlockMid, clips::BlockLow, clips::Flinch, clips::Stagger,
+                                        clips::Knockback}) {
         Library.add(PosesDir, Name);
     }
+    Library.addOptional(PosesDir, clips::StanceSwitched);
     for (const MoveDef& Move : Moves) {
         Library.add(PosesDir, Move.Clip);
         if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip);
@@ -23,6 +25,11 @@ const anim::Clip& ClipLibrary::get(std::string_view Name) const {
     const auto Found = Clips.find(Name);
     if (Found == Clips.end()) throw std::out_of_range(std::format("clip '{}' is not loaded", Name));
     return Found->second;
+}
+
+const anim::Clip* ClipLibrary::find(std::string_view Name) const {
+    const auto Found = Clips.find(Name);
+    return Found == Clips.end() ? nullptr : &Found->second;
 }
 
 const anim::Clip& ClipLibrary::getBlock(BlockZone Zone) const {
@@ -51,6 +58,11 @@ void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Na
         throw std::runtime_error(std::format("{}: missing clip file", File.string()));
     }
     Clips.emplace(std::string(Name), anim::loadClip(File));
+}
+
+void ClipLibrary::addOptional(const std::filesystem::path& PosesDir, std::string_view Name) {
+    std::error_code Error;
+    if (std::filesystem::exists(PosesDir / (std::string(Name) + ".json"), Error)) add(PosesDir, Name);
 }
 
 } // namespace fighter::combat
