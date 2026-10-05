@@ -51,7 +51,7 @@ private:
 /// towards the opponent.
 class Script {
 public:
-    Script(uint32_t Seed, bool Pushy) : Roll(Seed), Pushy(Pushy) {}
+    Script(uint32_t Seed, bool IsPushy) : Roll(Seed), Pushy(IsPushy) {}
 
     PlayerCommands next(const FighterView& Self, const FighterView& Other) {
         if (LeftTicks <= 0) {
