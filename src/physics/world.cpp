@@ -47,6 +47,9 @@ constexpr float CoreTouchDistance = 1e-5f;
 /// Bisection steps of findPosedStop(): the share of the step is found to
 /// 2^-20, far below a millimetre for any limb speed.
 constexpr int StopSearchSteps = 20;
+/// When no share of the step keeps a striker shallow enough, findPosedStop()
+/// tries this many evenly spaced shares for the least deep one.
+constexpr int StopSearchSamples = 16;
 /// A posed striker whose motion in a step takes it less than this deeper
 /// into another part does not run into it (findPosedStop()): it slides
 /// along it or leaves it, m.
@@ -317,7 +320,7 @@ float World::getPosedPenetration(Body Target) const {
     return measurePosedPenetration(Entry, getPlacementDuringStep(Entry, 1.0f));
 }
 
-std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth) const {
+std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float MaxDepth, Body Carrier) const {
     // The pairs of a striker and a part of another fighter that it runs
     // into. A striker sinks no deeper into a part than MaxDepth, or than it
     // already was before the step (held at a contact, or pressed in by the
@@ -328,6 +331,9 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
         float Limit = 0.0f;   ///< How deep the mover may be, m.
     };
     std::vector<Pair> Pairs;
+    std::vector<Pair> Kept;
+    const std::optional<uint32_t> CarrierSlot = Carrier.isValid() ? findSlot(Carrier) : std::nullopt;
+    const PartBody* Carrying = CarrierSlot ? &PartBodies[*CarrierSlot] : nullptr;
     for (const auto& Striker : Strikers) {
         const auto Slot = findSlot(Striker);
         if (!Slot || Striker.getType() != BodyType::Kinematic) continue;
@@ -346,14 +352,20 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
             // (as for posed hits); a dynamic one only when the solver did
             // not keep the striker out of it.
             const bool Posed = Other.Handle.getType() == BodyType::Kinematic;
-            if (Posed ? Now < -TouchTolerance : Now <= Limit) continue;
             // Closing: the striker's own motion in the step took it deeper
             // into the other part (where that part is now). A contact it
             // slides along or leaves, or one the other part pressed into it,
             // is no stop.
-            const float NowFromStart = measurePairPenetration(Mover, MoverBefore, Other, getPlacementDuringStep(Other, 1.0f));
-            if (Now - NowFromStart < MinClosingDepth) continue;
-            Pairs.push_back({.Mover = &Mover, .Other = &Other, .Limit = Limit});
+            const Placement Unmoved = getMotionPlacement(Mover, Carrying, 0.0f);
+            const float NowUnmoved = measurePairPenetration(Mover, Unmoved, Other, getPlacementDuringStep(Other, 1.0f));
+            const bool Contact = Posed ? Now >= -TouchTolerance : Now > Limit;
+            if (Contact && Now - NowUnmoved >= MinClosingDepth) {
+                Pairs.push_back({.Mover = &Mover, .Other = &Other, .Limit = Limit});
+            } else {
+                // Going back must not take the striker deeper into another
+                // part than it is now.
+                Kept.push_back({.Mover = &Mover, .Other = &Other, .Limit = std::max(MaxDepth, Now)});
+            }
         }
     }
     if (Pairs.empty()) return std::nullopt;
@@ -361,15 +373,33 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
     // motion; the opponent's parts stay where they are now.
     const auto getExcess = [&](float Fraction) {
         float Excess = std::numeric_limits<float>::lowest();
-        for (const auto& Entry : Pairs) {
-            const float Depth = measurePairPenetration(*Entry.Mover, getPlacementDuringStep(*Entry.Mover, Fraction),
-                                                       *Entry.Other, getPlacementDuringStep(*Entry.Other, 1.0f));
-            Excess = std::max(Excess, Depth - Entry.Limit);
+        for (const auto* List : {&Pairs, &Kept}) {
+            for (const auto& Entry : *List) {
+                const float Depth =
+                    measurePairPenetration(*Entry.Mover, getMotionPlacement(*Entry.Mover, Carrying, Fraction),
+                                           *Entry.Other, getPlacementDuringStep(*Entry.Other, 1.0f));
+                Excess = std::max(Excess, Depth - Entry.Limit);
+            }
         }
         return Excess;
     };
     if (getExcess(1.0f) <= 0.0f) return 1.0f;   // touching, not too deep
-    if (getExcess(0.0f) > 0.0f) return 0.0f;    // the opponent moved into it
+    if (getExcess(0.0f) > 0.0f) {
+        // No share keeps every part shallow enough (the opponent moved into
+        // the striker): the share that is least too deep, the later one of
+        // equals.
+        float Best = 1.0f;
+        float BestExcess = getExcess(1.0f);
+        for (int Sample = StopSearchSamples - 1; Sample >= 0; --Sample) {
+            const float Fraction = static_cast<float>(Sample) / static_cast<float>(StopSearchSamples);
+            const float Excess = getExcess(Fraction);
+            if (Excess < BestExcess) {
+                Best = Fraction;
+                BestExcess = Excess;
+            }
+        }
+        return Best;
+    }
     // The largest share that is not too deep: Low is fine, High is not.
     float Low = 0.0f;
     float High = 1.0f;
@@ -387,10 +417,12 @@ float World::getGapAt(Body First, Vec2 FirstPosition, float FirstAngle, Body Sec
         .Distance;
 }
 
-void World::rewindBody(Body Target, float Fraction) {
+void World::rewindBody(Body Target, float Fraction, Body Carrier) {
     const auto Slot = findSlot(Target);
     if (!Slot) return;
-    const Placement Placed = getPlacementDuringStep(PartBodies[*Slot], Fraction);
+    const std::optional<uint32_t> CarrierSlot = Carrier.isValid() ? findSlot(Carrier) : std::nullopt;
+    const Placement Placed =
+        getMotionPlacement(PartBodies[*Slot], CarrierSlot ? &PartBodies[*CarrierSlot] : nullptr, Fraction);
     b2Body_SetTransform(loadBody(Target.Id), toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y});
 }
 
@@ -651,6 +683,21 @@ float World::measurePairPenetration(const PartBody& Entry, const Placement& Plac
     return -measureBodyGap(loadBody(Entry.Handle.Id), makeTransform(Placed.Position, Placed.Rotation), loadBody(Other.Handle.Id),
                            makeTransform(OtherPlaced.Position, OtherPlaced.Rotation))
                 .Distance;
+}
+
+World::Placement World::getMotionPlacement(const PartBody& Entry, const PartBody* Carrier, float Fraction) const {
+    if (!Carrier || Fraction >= 1.0f) return getPlacementDuringStep(Entry, Fraction);
+    // The entry relative to the carrier before the step and now; the share
+    // of that motion is placed on the carrier as it is now.
+    const b2Transform CarrierNow = b2Body_GetTransform(loadBody(Carrier->Handle.Id));
+    const b2Transform RelativeBefore =
+        b2InvMulTransforms(makeTransform(Carrier->PositionBeforeStep, Carrier->RotationBeforeStep),
+                           makeTransform(Entry.PositionBeforeStep, Entry.RotationBeforeStep));
+    const b2Transform RelativeNow = b2InvMulTransforms(CarrierNow, b2Body_GetTransform(loadBody(Entry.Handle.Id)));
+    const b2Transform Relative{b2Lerp(RelativeBefore.p, RelativeNow.p, Fraction),
+                               b2NLerp(RelativeBefore.q, RelativeNow.q, Fraction)};
+    const b2Transform Placed = b2MulTransforms(CarrierNow, Relative);
+    return {.Position = fromBox2D(Placed.p), .Rotation = {Placed.q.c, Placed.q.s}};
 }
 
 World::Placement World::getPlacementDuringStep(const PartBody& Entry, float Fraction) const {

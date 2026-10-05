@@ -140,24 +140,31 @@ public:
     /// it, or than it was before the step (it stays where it is now)?
     /// Nullopt: no contact; 1: a contact that needs no stop; 0: the other
     /// part moved into them.
-    /// Only closing contacts count: the striker moved towards the other part
-    /// before the step (a contact it slides along or leaves is no stop). A
+    /// Only closing contacts count: the striker's own motion in the step
+    /// took it deeper into the other part (a contact it slides along or
+    /// leaves, or one the other part moved into, is no stop). With a valid
+    /// \p Carrier (the body the strikers hang on, a pelvis) the striker's own
+    /// motion is the one relative to the carrier: a strike carried into the
+    /// opponent by the whole body is kept apart by the code that moves the
+    /// body (rig::keepApart), not stopped here; the share returned is then
+    /// the share of that relative motion, the carrier staying where it is. A
     /// posed part of the opponent counts when the striker touches it, a
     /// dynamic one only when the striker sank too deep into it: the solver
     /// did not push it out of the way (it is held by its joints, or it
     /// ignores posed parts, as a knocked-down body does). A kinematic body
     /// moves at a constant velocity during a step, so the share is found by
     /// bisection along that straight motion.
-    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth) const;
+    std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, Body Carrier = {}) const;
     /// The smallest gap between the shapes of \p First and \p Second, their
     /// bodies placed at the given origins and angles, m; negative: how deep
     /// they overlap. Nothing moves.
     float getGapAt(Body First, Vec2 FirstPosition, float FirstAngle, Body Second, Vec2 SecondPosition,
                    float SecondAngle) const;
     /// Puts \p Target back along its motion of the last step: \p Fraction 0
-    /// is where it was before the step, 1 is where it is now. Velocities do
-    /// not change.
-    void rewindBody(Body Target, float Fraction);
+    /// is where it was before the step, 1 is where it is now. With a valid
+    /// \p Carrier only the motion relative to the carrier goes back (as in
+    /// findPosedStop()). Velocities do not change.
+    void rewindBody(Body Target, float Fraction, Body Carrier = {});
     /// @}
 
     /// \name Mirroring (turning a fighter around)
@@ -237,6 +244,11 @@ private:
     /// m; negative: how far apart they are.
     float measurePairPenetration(const PartBody& Entry, const Placement& Placed, const PartBody& Other,
                                  const Placement& OtherPlaced) const;
+    /// Where \p Entry is at \p Fraction of its motion in the last step (1 is
+    /// now). With a \p Carrier only its motion relative to the carrier is
+    /// cut short: the carrier stays where it is now, so 0 is where the entry
+    /// would be had it moved rigidly with the carrier.
+    Placement getMotionPlacement(const PartBody& Entry, const PartBody* Carrier, float Fraction) const;
     /// Where \p Entry was at \p Fraction of the last step (1 is now).
     Placement getPlacementDuringStep(const PartBody& Entry, float Fraction) const;
     /// Mass of a part for the impulse of a hit: its strike mass if it is

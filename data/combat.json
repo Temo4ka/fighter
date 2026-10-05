@@ -19,9 +19,9 @@
   "contactStopDepth": 0.01,
   "contactHoldSec": 0.08,
   "contactRecoveryBlendSec": 0.15,
-  "physicsSteps": 4,
-  "physicsSubSteps": 2,
-  "contactHertz": 60.0,
+  "physicsSteps": 8,
+  "physicsSubSteps": 4,
+  "contactHertz": 240.0,
   "armOverlapTolerance": 0.02,
-  "overlapTolerance": 0.01
+  "overlapTolerance": 0.012
 }

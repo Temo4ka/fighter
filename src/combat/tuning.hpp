@@ -32,13 +32,13 @@ struct CombatTuning {
     /// pushes it out (nothing passes through the opponent); the cost grows
     /// with PhysicsSteps * PhysicsSubSteps.
     /// @{
-    int PhysicsSteps = 4;
-    int PhysicsSubSteps = 1;
+    int PhysicsSteps = 8;
+    int PhysicsSubSteps = 4;
     /// Stiffness of the contacts between body parts, Hz: an arm pressed into
     /// the opponent by its motors sinks in less the stiffer they are. Box2D
     /// caps it at 1/8 of the substep rate (60 Hz * PhysicsSteps *
     /// PhysicsSubSteps / 8).
-    float ContactHertz = 30.0f;
+    float ContactHertz = 240.0f;
     /// @}
     /// \name Allowed overlap of the fighters
     /// How deep a part of one fighter may overlap a part of the other one
@@ -47,7 +47,7 @@ struct CombatTuning {
     /// little more than anything else.
     /// @{
     float ArmOverlapTolerance = 0.02f;
-    float OverlapTolerance = 0.01f;
+    float OverlapTolerance = 0.012f;
     /// @}
     /// Closing speed above which a contact between body parts of different
     /// fighters is reported by physics, m/s. Combat then keeps only the

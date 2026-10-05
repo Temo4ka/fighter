@@ -129,6 +129,8 @@ public:
     /// world's, as for any strike. A first stop in the startup jams the
     /// attack (isJammed): the leg did hit, so that contact is a strike too,
     /// with its real speed, but not a clean one (no min_reaction, no chain).
+    /// The other posed limbs (the legs) are held back at the opponent too,
+    /// attacking or not (rig::Rig::holdLimbsBack).
     void stopAtContact();
     /// Did the current attack run into the opponent in its startup
     /// (stopAtContact)?
@@ -189,6 +191,8 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
+    /// The strikers' part of stopAtContact().
+    void stopStrikeAtContact();
     /// What a posed strike stopped at the opponent does (stopAtContact).
     enum class ContactStage : uint8_t {
         None,        ///< Not stopped in this attack.

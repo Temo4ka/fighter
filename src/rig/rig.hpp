@@ -109,6 +109,14 @@ struct PartPlacement {
     physics::Body Handle;
     Vec2 Position;            ///< Body origin, m.
     float Angle = 0.0f;       ///< rad.
+    /// A striker of an attack (Rig::setStrikingParts) is in two places: where
+    /// it is now, carried with the pelvis (Position, Angle), and where the
+    /// clip poses it (these). It overlaps only if it overlaps in both: its
+    /// own motion into the opponent is stopped by Rig::stopAtContact, the
+    /// opponent's into it is the spacing's to prevent.
+    bool Striking = false;
+    Vec2 PosedPosition;
+    float PosedAngle = 0.0f;
 };
 
 /// The physics world owns the bodies and joints: a rig must not outlive it.
@@ -208,13 +216,26 @@ public:
     void updateWallContact(float MinX, float MaxX, float WallX);
     /// Call after the physics step. Did the posed parts of \p Strikers run
     /// into the opponent (its posed parts, or a part the solver could not
-    /// push away)? If one sank deeper than \p MaxDepth (m) during the step,
-    /// every posed part goes back along its motion of the step to where the
-    /// strikers were MaxDepth deep (the leg stays at the contact); see
+    /// push away) by their own motion, relative to the pelvis? If one sank
+    /// deeper than \p MaxDepth (m) during the step, the posed limbs of the
+    /// strikers go back along that relative motion to where the strikers
+    /// were MaxDepth deep (the leg stays at the contact and on its hip); the
+    /// pelvis and the other limbs keep the step's motion. See
     /// physics::World::findPosedStop. Returns the share of the step's motion
     /// kept (1 for a contact that needed no stop), or nullopt if there is no
     /// contact. Parts that are not posed now are ignored.
     std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
+
+    /// Call after the physics step and stopAtContact(). A posed limb (a leg)
+    /// that is not one of \p Except (the strikers of an attack, stopped by
+    /// stopAtContact) and whose own motion in the step, relative to the
+    /// pelvis, took it deeper than \p MaxDepth (m) into the opponent goes
+    /// back along that motion to MaxDepth deep (it stays on its hip; the
+    /// pelvis keeps its motion). Nothing in physics stops a posed limb, and
+    /// the spacing of the fighters (rig/spacing.hpp) can push the bodies
+    /// apart only so fast: a foot swung through the opponent's in one step
+    /// stops at it instead. Touching is fine.
+    void holdLimbsBack(const std::bitset<BodyPartCount>& Except, float MaxDepth);
 
     /// \name State
     /// @{
@@ -281,14 +302,16 @@ public:
     /// pelvis) moved along with the pelvis. A pelvis away from the planned
     /// one takes the planted feet along (pushBody()). The parts of
     /// setStrikingParts() stop at the opponent by themselves: they are
-    /// where they are now, moved along with the pelvis, so the opponent does
-    /// not walk into them. The arms are left out (the solver keeps them off
+    /// both where they are now, moved along with the pelvis, and where the
+    /// clip poses them (PartPlacement::Striking), so the opponent does not
+    /// walk into them. The arms are left out (the solver keeps them off
     /// the opponent, and they yield); none while the fighter is knocked down. The
     /// spacing tries pelvis positions with it before it corrects the plan
     /// (rig/spacing.hpp). Nothing moves.
     std::vector<PartPlacement> predictBody(float RootX, float Dt) const;
     /// The smallest gap between the shapes of \p Own and \p Other, m;
-    /// negative: how deep they overlap. Nothing moves.
+    /// negative: how deep they overlap (a striker: the larger of its gaps
+    /// at its two places, PartPlacement::Striking). Nothing moves.
     float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
@@ -393,6 +416,13 @@ private:
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
                     PerBodyPart<float>& Corrections) const;
     void releaseFeet();
+    /// The topmost part of the limb of \p Part below the root (a thigh for
+    /// a foot); the part itself if its parent is the root.
+    BodyPart getLimbTop(BodyPart Part) const;
+    /// Puts the posed parts of the limb whose topmost part is \p Top back
+    /// along their motion of the last step relative to the pelvis
+    /// (physics::World::rewindBody).
+    void rewindLimb(BodyPart Top, float Fraction);
     /// How far a planted foot is from where it should stand still.
     static float getRestepDistance(const Leg& Limb);
     void driveMotors();
@@ -449,6 +479,8 @@ private:
     /// in the last step; for the debug draw.
     std::bitset<BodyPartCount> StoppedParts;
     bool StoppedAtContact = false;
+    /// The limbs (topmost parts) holdLimbsBack() held back in the last step.
+    std::bitset<BodyPartCount> HeldLimbs;
     /// The last knockdown push, for the debug draw: where and how hard.
     Vec2 KnockdownPoint;
     Vec2 KnockdownVelocity;
