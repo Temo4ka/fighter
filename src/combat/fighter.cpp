@@ -87,14 +87,9 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     // the walk and the stance it held: the legs come back to the normal one.
     if (Top && coversLegs(*Top)) Walk.settle();
     const TargetPoses Target = buildTargetPose(Top, Dt);
-    // A clip that starts fades in, one that ends fades out (its own times).
-    if (Top != ShownTop || TopRestarted) {
-        if (Top) {
-            Fade.begin(Shown, Top->BlendInSec);
-        } else {
-            Fade.begin(Shown, ShownTop->BlendOutSec);
-        }
-    }
+    // A clip that starts fades in, one that ends fades out: the clip's own
+    // time or the blend table's for the change.
+    if (Top != ShownTop || TopRestarted) beginTopFade(Top);
     ShownTop = Top;
     TopRestarted = false;
     Shown = Fade.step(Target.Moving, Dt);
@@ -286,6 +281,7 @@ void Fighter::drawDebug(std::string_view Name) const {
         if (Body.isStoppedAtContact()) ContactText += " (stopped this step)";
         debug::setPanel(std::format("{} contact", Name), ContactText);
         debug::setPanel(std::format("{} legs", Name), describeLegs());
+        debug::setPanel(std::format("{} blend", Name), describeBlends());
         // "P1 facing" (and a pending turn) is the rig's panel line.
     }
 }
@@ -583,7 +579,10 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
         case LegSource::Stance: Legs = getMasked(Target, WalkClip.Keys.front().Target); break;
     }
     if (Source != LegSource::Walk) LegsStill = Legs;
-    if (Source != ShownSource) LegFade.begin(ShownLegs, Rules->Tuning.StanceSettleSec);
+    if (Source != ShownSource) {
+        const auto getKind = [](LegSource Legs) { return Legs == LegSource::Walk ? PoseKind::Walk : PoseKind::Stance; };
+        beginBlend(LegFade, ShownLegs, LegBlend, getKind(ShownSource), getKind(Source));
+    }
     ShownSource = Source;
     ShownLegs = LegFade.step(Legs, Dt);
     ShownLegsStill = LegFade.peek(LegsStill);
@@ -609,7 +608,8 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
     TargetPoses Result{.Moving = compose(ShownLegs, CrouchWalk.getTime()),
                        .Still = compose(ShownLegsStill, CrouchWalk.getStepFromTime())};
     if (State == FighterState::Crouching && WithCrouchWalk != ShowsCrouchWalk) {
-        Fade.begin(Shown, Rules->Tuning.StanceSettleSec);
+        beginBlend(Fade, Shown, TopBlend, WithCrouchWalk ? PoseKind::Crouch : PoseKind::CrouchWalk,
+                   WithCrouchWalk ? PoseKind::CrouchWalk : PoseKind::Crouch);
     }
     ShowsCrouchWalk = WithCrouchWalk;
     return Result;
@@ -645,13 +645,67 @@ std::string Fighter::describeLegs() const {
     if (SwitchStep) return std::format("step -> normal stance, blend {:.2f}", LegFade.getWeight());
     const StanceVariant Variant = Walk.getVariant();
     switch (Walk.getMode()) {
-        case LegCycle::Mode::Walking: return std::format("walk {:.2f}", Walk.getTime());
+        case LegCycle::Mode::Walking:
+            return std::format("walk {:.2f}{}", Walk.getTime(),
+                               Stride.Held     ? ", held by the opponent"
+                               : Stride.Pushed ? ", pushed back"
+                                               : "");
         case LegCycle::Mode::Stopping:
             return std::format("stopping {:.2f} -> {:.2f} ({})", Walk.getTime(), Walk.getStopTarget(),
                                getStanceVariantName(Variant));
         case LegCycle::Mode::Still: break;
     }
     return std::format("stance {} at {:.2f}", getStanceVariantName(Variant), Walk.getTime());
+}
+
+void Fighter::beginTopFade(const anim::Clip* Top) {
+    const BlendTable& Blends = Rules->Tuning.Blends;
+    const PoseKind LegKind = Walk.isPlaying() ? PoseKind::Walk : PoseKind::Stance;
+    const PoseKind From = ShownTop ? getClipKind(*ShownTop) : LegKind;
+    const PoseKind To = Top ? getClipKind(*Top) : LegKind;
+    float Sec = Blends.getSec(From, To);
+    // The clip's own time wins: into it, or out of it.
+    if (Top && Top->BlendInSec) {
+        Sec = *Top->BlendInSec;
+    } else if (!Top && ShownTop && ShownTop->BlendOutSec) {
+        Sec = *ShownTop->BlendOutSec;
+    }
+    // A strike shows its own pose by the share of its startup: the blend
+    // does not delay it.
+    if (Top && State == FighterState::Attacking && To == PoseKind::Strike) {
+        Sec = std::min(Sec, anim::getStartupAtRate(*Top, AttackRate) * Blends.StrikeStartupShare);
+    }
+    Fade.begin(Shown, Sec);
+    TopBlend = {.From = From, .To = To, .Sec = Sec};
+}
+
+void Fighter::beginBlend(anim::PoseTransition& Transition, const anim::Pose& From, BlendInfo& Info,
+                         PoseKind FromKind, PoseKind ToKind) {
+    const float Sec = Rules->Tuning.Blends.getSec(FromKind, ToKind);
+    Transition.begin(From, Sec);
+    Info = {.From = FromKind, .To = ToKind, .Sec = Sec};
+}
+
+PoseKind Fighter::getClipKind(const anim::Clip& Source) const {
+    const ClipLibrary& Clips = Rules->Clips;
+    if (&Source == &Clips.get(clips::Crouch)) return PoseKind::Crouch;
+    if (&Source == &Clips.get(clips::CrouchWalk)) return PoseKind::CrouchWalk;
+    for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
+        if (&Source == &Clips.getBlock(Zone)) return PoseKind::Block;
+    }
+    for (const ReactionLevel Level : {ReactionLevel::Flinch, ReactionLevel::Stagger, ReactionLevel::Knockback}) {
+        if (&Source == Clips.findReaction(Level)) return PoseKind::Reaction;
+    }
+    return PoseKind::Strike;
+}
+
+std::string Fighter::describeBlends() const {
+    const auto describe = [](const anim::PoseTransition& Transition, const BlendInfo& Info) {
+        if (!Transition.isActive()) return std::string("-");
+        return std::format("{} -> {} {:.2f} s, {:.2f}", getPoseKindName(Info.From), getPoseKindName(Info.To),
+                           Info.Sec, Transition.getWeight());
+    };
+    return std::format("pose {}; legs {}", describe(Fade, TopBlend), describe(LegFade, LegBlend));
 }
 
 const anim::Clip* Fighter::getTopClip() const {

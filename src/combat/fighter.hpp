@@ -231,6 +231,22 @@ private:
     };
     TargetPoses buildTargetPose(const anim::Clip* Top, float Dt);
     std::string describeLegs() const;
+    /// "pose walk -> strike 0.04 s, 0.40; legs -": the blends in progress.
+    std::string describeBlends() const;
+    /// A blend in progress, for the debug panel.
+    struct BlendInfo {
+        PoseKind From = PoseKind::Stance;
+        PoseKind To = PoseKind::Stance;
+        float Sec = 0.0f;
+    };
+    /// Starts the fade of the pose for the clip on top changing to \p Top
+    /// (the clip's own blend time or the blend table's).
+    void beginTopFade(const anim::Clip* Top);
+    /// Starts \p Transition from \p From for the change \p FromKind ->
+    /// \p ToKind (the blend table's time) and records it in \p Info.
+    void beginBlend(anim::PoseTransition& Transition, const anim::Pose& From, BlendInfo& Info, PoseKind FromKind,
+                    PoseKind ToKind);
+    PoseKind getClipKind(const anim::Clip& Source) const;
     /// The legs of the switched stance: the stance_switched clip, or the
     /// stance's legs mirrored.
     anim::Pose getSwitchedStanceLegs() const;
@@ -305,6 +321,8 @@ private:
 
     /// The pose fades over when the clip on top changes (anim::PoseTransition).
     anim::PoseTransition Fade;
+    BlendInfo TopBlend;                    ///< The last fade of Fade.
+    BlendInfo LegBlend;                    ///< The last fade of LegFade (not the switch-step).
     anim::Pose Shown;                      ///< The pose the motors got last step.
     anim::Pose ShownStill;                 ///< Shown without the step's travel (rig::Rig::setTravelPose).
     const anim::Clip* ShownTop = nullptr;  ///< The clip on top in the last step.

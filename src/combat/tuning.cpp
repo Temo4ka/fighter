@@ -4,6 +4,7 @@
 #include <array>
 #include <format>
 #include <stdexcept>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -34,7 +35,6 @@ constexpr std::array TuningFields = {
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
     TuningField{"blockBackSpeedScale", &CombatTuning::BlockBackSpeedScale},
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
-    TuningField{"stanceSettleSec", &CombatTuning::StanceSettleSec},
     TuningField{"switchStepShare", &CombatTuning::SwitchStepShare},
     TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
@@ -62,8 +62,36 @@ constexpr std::array CountFields = {
 };
 /// The yes/no parameters.
 constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
+constexpr std::string_view BlendsKey = "blends";
+
+constexpr std::array PoseKindNames = {"stance", "walk", "crouch", "crouchWalk", "block", "strike", "reaction"};
+static_assert(PoseKindNames.size() == static_cast<size_t>(PoseKind::Count));
+
+BlendTable parseBlends(const Json& Value);
 
 } // namespace
+
+std::string_view getPoseKindName(PoseKind Kind) {
+    const auto Index = static_cast<size_t>(Kind);
+    return Index < PoseKindNames.size() ? PoseKindNames[Index] : "?";
+}
+
+float BlendTable::getSec(PoseKind From, PoseKind To) const {
+    // The most specific rule wins: both kinds, then the kind blended into,
+    // then the kind blended from.
+    std::optional<float> ToOnly;
+    std::optional<float> FromOnly;
+    std::optional<float> AnyToAny;
+    for (const Rule& Each : Rules) {
+        const bool FromMatches = !Each.From || *Each.From == From;
+        const bool ToMatches = !Each.To || *Each.To == To;
+        if (!FromMatches || !ToMatches) continue;
+        if (Each.From && Each.To) return Each.Sec;
+        std::optional<float>& Slot = Each.To ? ToOnly : Each.From ? FromOnly : AnyToAny;
+        if (!Slot) Slot = Each.Sec;
+    }
+    return ToOnly.value_or(FromOnly.value_or(AnyToAny.value_or(DefaultSec)));
+}
 
 CombatTuning parseCombatTuning(std::string_view JsonText) {
     CombatTuning Tuning;
@@ -76,6 +104,10 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
                     throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
                 }
                 Tuning.*(Count->Member) = Value.get<int>();
+                continue;
+            }
+            if (Key == BlendsKey) {
+                Tuning.Blends = parseBlends(Value);
                 continue;
             }
             if (Key == StopSlidesFeetKey) {
@@ -111,7 +143,6 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         throw std::runtime_error("blockBackSpeedScale must be in [0, 1]");
     }
     if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
-    if (Tuning.StanceSettleSec < 0.0f) throw std::runtime_error("stanceSettleSec must not be negative");
     if (Tuning.SwitchStepShare <= 0.0f || Tuning.SwitchStepShare > 1.0f) {
         throw std::runtime_error("switchStepShare must be in (0, 1]");
     }
@@ -134,6 +165,55 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.OverlapTolerance < 0.0f) throw std::runtime_error("overlapTolerance must not be negative");
     return Tuning;
 }
+
+namespace {
+
+/// "blends": { "default": s, "strikeStartupShare": share, "rules": [{ "from": kind, "to": kind, "sec": s }] },
+/// a kind is a PoseKind name or "any".
+BlendTable parseBlends(const Json& Value) {
+    if (!Value.is_object()) throw std::runtime_error("blends must be an object");
+    BlendTable Table;
+    const auto getKind = [](const Json& Rule, std::string_view Key, size_t Index) -> std::optional<PoseKind> {
+        const std::string Name = Rule.at(std::string(Key)).get<std::string>();
+        if (Name == "any") return std::nullopt;
+        const auto Found = std::ranges::find(PoseKindNames, Name);
+        if (Found == PoseKindNames.end()) {
+            throw std::runtime_error(std::format("blends.rules[{}].{}: unknown pose kind '{}'", Index, Key, Name));
+        }
+        return static_cast<PoseKind>(Found - PoseKindNames.begin());
+    };
+    for (const auto& [Key, Item] : Value.items()) {
+        if (Key == "default") {
+            Table.DefaultSec = Item.get<float>();
+        } else if (Key == "strikeStartupShare") {
+            Table.StrikeStartupShare = Item.get<float>();
+        } else if (Key == "rules") {
+            if (!Item.is_array()) throw std::runtime_error("blends.rules must be an array");
+            for (size_t Index = 0; Index < Item.size(); ++Index) {
+                const Json& Rule = Item[Index];
+                for (const auto& [RuleKey, Unused] : Rule.items()) {
+                    if (RuleKey != "from" && RuleKey != "to" && RuleKey != "sec") {
+                        throw std::runtime_error(std::format("blends.rules[{}]: unknown key '{}'", Index, RuleKey));
+                    }
+                }
+                const float Sec = Rule.at("sec").get<float>();
+                if (Sec < 0.0f) {
+                    throw std::runtime_error(std::format("blends.rules[{}].sec must not be negative, not {}", Index, Sec));
+                }
+                Table.Rules.push_back({.From = getKind(Rule, "from", Index), .To = getKind(Rule, "to", Index), .Sec = Sec});
+            }
+        } else {
+            throw std::runtime_error(std::format("blends: unknown key '{}'", Key));
+        }
+    }
+    if (Table.DefaultSec < 0.0f) throw std::runtime_error("blends.default must not be negative");
+    if (Table.StrikeStartupShare < 0.0f || Table.StrikeStartupShare > 1.0f) {
+        throw std::runtime_error("blends.strikeStartupShare must be in [0, 1]");
+    }
+    return Table;
+}
+
+} // namespace
 
 CombatTuning loadCombatTuning(const std::filesystem::path& Path) {
     try {

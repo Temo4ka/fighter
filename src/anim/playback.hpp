@@ -18,10 +18,10 @@
 ///
 ///   // 2. When a clip starts or ends (attack begins, block released,
 ///   //    reaction over), start a fade from what was shown last tick. The
-///   //    fade time is the clip's own: BlendInSec for the clip that starts,
-///   //    BlendOutSec for the one that ended.
-///   if (AttackJustStarted) Fade.begin(Shown, Attack->BlendInSec);
-///   if (AttackJustEnded) Fade.begin(Shown, Finished->BlendOutSec);
+///   //    fade time is the clip's own (BlendInSec for the clip that starts,
+///   //    BlendOutSec for the one that ended) or the blend table's.
+///   if (AttackJustStarted) Fade.begin(Shown, Attack->BlendInSec.value_or(TableSec));
+///   if (AttackJustEnded) Fade.begin(Shown, Finished->BlendOutSec.value_or(TableSec));
 ///
 ///   // 3. Always: advance the fade and give the result to the rig.
 ///   Shown = Fade.step(Target, Dt);

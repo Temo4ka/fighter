@@ -14,7 +14,6 @@
   "maxChainLength": 3,
   "blockBackSpeedScale": 0.3,
   "walkStopRate": 3.0,
-  "stanceSettleSec": 0.15,
   "stopSlidesFeet": true,
   "switchStepShare": 0.8,
   "crouchWalkSpeedScale": 0.5,
@@ -28,5 +27,23 @@
   "contactHertz": 240.0,
   "fighterFriction": 0.6,
   "armOverlapTolerance": 0.02,
-  "overlapTolerance": 0.012
+  "overlapTolerance": 0.012,
+  "blends": {
+    "default": 0.1,
+    "strikeStartupShare": 0.5,
+    "rules": [
+      { "from": "stance", "to": "walk", "sec": 0.15 },
+      { "from": "walk", "to": "stance", "sec": 0.15 },
+      { "from": "crouch", "to": "crouchWalk", "sec": 0.15 },
+      { "from": "crouchWalk", "to": "crouch", "sec": 0.15 },
+      { "from": "any", "to": "crouch", "sec": 0.1 },
+      { "from": "crouch", "to": "any", "sec": 0.12 },
+      { "from": "any", "to": "block", "sec": 0.08 },
+      { "from": "block", "to": "any", "sec": 0.1 },
+      { "from": "any", "to": "strike", "sec": 0.05 },
+      { "from": "strike", "to": "any", "sec": 0.12 },
+      { "from": "any", "to": "reaction", "sec": 0.04 },
+      { "from": "reaction", "to": "any", "sec": 0.15 }
+    ]
+  }
 }

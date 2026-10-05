@@ -193,6 +193,9 @@ TEST_CASE("PoseTransition: switching clips has no jumps with a fade", "[anim][pl
         return Target;
     };
 
+    // A clip without its own fade time gets the blend table's (combat); this
+    // one is the table's default.
+    constexpr float SwitchFadeSec = 0.1f;
     // The step the shown pose makes on the first tick after each of the two
     // switches, the largest of them, rad.
     const auto Play = [&](bool UseFade) {
@@ -208,13 +211,13 @@ TEST_CASE("PoseTransition: switching clips has no jumps with a fade", "[anim][pl
         // 0.2 s of walking.
         for (int Tick = 0; Tick < 12; ++Tick) Show(Layered(0.25f + Dt * static_cast<float>(Tick), nullptr, 0.0f));
         // The kick starts.
-        if (UseFade) Fade.begin(Shown, Kick.BlendInSec);
+        if (UseFade) Fade.begin(Shown, Kick.BlendInSec.value_or(SwitchFadeSec));
         for (int Tick = 0; Tick < 12; ++Tick) {
             const float Step = Show(Layered(0.45f, &Kick, 0.001f + Dt * static_cast<float>(Tick)));
             if (Tick == 0) Largest = std::max(Largest, Step);
         }
         // The block starts while the kick is still playing (a reaction cuts in).
-        if (UseFade) Fade.begin(Shown, Block.BlendInSec);
+        if (UseFade) Fade.begin(Shown, Block.BlendInSec.value_or(SwitchFadeSec));
         for (int Tick = 0; Tick < 12; ++Tick) {
             Pose Target = Layered(0.45f, &Kick, 0.2f);
             layerPose(Target, sampleClip(Block, 0.0f));
@@ -307,13 +310,14 @@ TEST_CASE("describePlayback: the line for the panel", "[anim][playback]") {
 
 TEST_CASE("parseClip: fade times and the active window are read and checked", "[anim][clips]") {
     const Clip Defaults = parseClip(AttackJson, "attack");
-    CHECK(Defaults.BlendInSec == DefaultBlendInSec);
-    CHECK(Defaults.BlendOutSec == DefaultBlendOutSec);
+    // Without its own times the clip leaves them to the blend table.
+    CHECK_FALSE(Defaults.BlendInSec);
+    CHECK_FALSE(Defaults.BlendOutSec);
 
     const Clip Own = parseClip(R"({ "duration": 1, "blendIn": 0.02, "blendOut": 0.3,
                                     "keys": [{ "t": 0, "pose": { "Head": 1 } }] })", "own");
-    CHECK(Own.BlendInSec == Approx(0.02f));
-    CHECK(Own.BlendOutSec == Approx(0.3f));
+    CHECK(Own.BlendInSec.value_or(-1.0f) == Approx(0.02f));
+    CHECK(Own.BlendOutSec.value_or(-1.0f) == Approx(0.3f));
 
     CHECK_THROWS_AS(parseClip(R"({ "duration": 1, "blendIn": -0.1, "keys": [{ "t": 0, "pose": { "Head": 1 } }] })", "x"),
                     std::runtime_error);
