@@ -65,6 +65,30 @@ struct ControlParams {
     float AngularDamping = 0.5f;       ///< Of every body part, 1/s.
     /// @}
 
+    /// \name Smooth body: the physical parts follow the clip while standing
+    /// @{
+    /// Share of the pelvis's change of motion in a step that the physical
+    /// parts take over at once (carrier transfer): walking, stopping, turning
+    /// and the lean do not swing the upper body. 0 leaves it to the joints.
+    float CarrierTransfer = 1.0f;
+    /// The same for the knockback part of the pelvis motion: 0 lets the
+    /// upper body lag behind a knockback (it shows the hit), 1 carries it.
+    float KnockbackTransfer = 0.0f;
+    /// Share of the clip's own joint speed the motors add to the error
+    /// correction (feed-forward): 1 follows a moving pose without lag.
+    float FeedForward = 1.0f;
+    /// Share of gravity taken off the physical parts while standing: the
+    /// motors need not hold their weight. Knocked down they fall fully.
+    float GravityCompensation = 1.0f;
+    /// The motors hold this many times the weight of a limb held out
+    /// sideways (the gravity left by GravityCompensation), ×.
+    float HoldGravityMargin = 1.5f;
+    /// A motor brings a limb back from this error without overshoot,
+    /// whatever its mass: its torque covers the limb's inertia times
+    /// (gain × stiffness)^2 × this angle, rad.
+    float DampedErrorAngle = 0.3f;
+    /// @}
+
     /// \name Pelvis controller
     /// @{
     float WalkSpeed = 1.2f;            ///< m/s; the profile's MoveSpeedScale (DEX) multiplies it.
@@ -143,9 +167,14 @@ struct ControlParams {
     float JamSec = 0.3f;               ///< s.
     /// Multiplies the motor stiffness of a yielding limb.
     float YieldStiffness = 0.3f;
-    /// A limb yields at least this long, and then until it no longer touches
-    /// the opponent (or the clip asks it for something new), s.
+    /// A limb yields at least this long, and then until the clip's pose of it
+    /// is YieldReturnClearance clear of the opponent (or an attack asks it
+    /// for something new), s.
     float YieldSec = 0.25f;
+    /// How far the clip's pose of a yielding limb must be from every part of
+    /// the opponent before it returns, m: larger than a touch, so that a
+    /// guard does not come back and jam again while the opponent is close.
+    float YieldReturnClearance = 0.05f;
     /// @}
 };
 

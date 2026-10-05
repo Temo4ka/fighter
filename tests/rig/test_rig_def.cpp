@@ -192,3 +192,31 @@ TEST_CASE("parseRigDef: distances of the body of task 2.1 must not be negative",
     }
     CHECK(parseRigDef(makeRigJson(R"(, "control": { "closeRange": 0.9 })")).Control.CloseRange == 0.9f);
 }
+
+TEST_CASE("parseRigDef: the smooth body parameters are read and checked", "[rig]") {
+    const RigDef Rig = parseRigDef(makeRigJson(
+        R"(, "control": { "carrierTransfer": 0.8, "knockbackTransfer": 0.2, "feedForward": 0.5,)"
+        R"( "gravityCompensation": 0.7, "holdGravityMargin": 2, "dampedErrorAngle": 0.4,)"
+        R"( "yieldReturnClearance": 0.06 })"));
+    CHECK(Rig.Control.CarrierTransfer == 0.8f);
+    CHECK(Rig.Control.KnockbackTransfer == 0.2f);
+    CHECK(Rig.Control.FeedForward == 0.5f);
+    CHECK(Rig.Control.GravityCompensation == 0.7f);
+    CHECK(Rig.Control.HoldGravityMargin == 2.0f);
+    CHECK(Rig.Control.DampedErrorAngle == 0.4f);
+    CHECK(Rig.Control.YieldReturnClearance == 0.06f);
+
+    // Shares lie in [0, 1]; margins and distances are not negative.
+    for (const auto* Key : {"carrierTransfer", "knockbackTransfer", "feedForward", "gravityCompensation"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": 1.5 })")),
+                        std::runtime_error);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
+                        std::runtime_error);
+    }
+    for (const auto* Key : {"holdGravityMargin", "dampedErrorAngle", "yieldReturnClearance"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
+                        std::runtime_error);
+    }
+}
