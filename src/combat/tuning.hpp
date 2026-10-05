@@ -34,6 +34,11 @@ struct CombatTuning {
     /// @{
     int PhysicsSteps = 4;
     int PhysicsSubSteps = 1;
+    /// Stiffness of the contacts between body parts, Hz: an arm pressed into
+    /// the opponent by its motors sinks in less the stiffer they are. Box2D
+    /// caps it at 1/8 of the substep rate (60 Hz * PhysicsSteps *
+    /// PhysicsSubSteps / 8).
+    float ContactHertz = 30.0f;
     /// @}
     /// \name Allowed overlap of the fighters
     /// How deep a part of one fighter may overlap a part of the other one

@@ -39,6 +39,7 @@ constexpr std::array TuningFields = {
     TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
     TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
     TuningField{"contactRecoveryBlendSec", &CombatTuning::ContactRecoveryBlendSec},
+    TuningField{"contactHertz", &CombatTuning::ContactHertz},
     TuningField{"armOverlapTolerance", &CombatTuning::ArmOverlapTolerance},
     TuningField{"overlapTolerance", &CombatTuning::OverlapTolerance},
 };
@@ -118,6 +119,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     }
     if (Tuning.PhysicsSteps < 1) throw std::runtime_error("physicsSteps must be at least 1");
     if (Tuning.PhysicsSubSteps < 1) throw std::runtime_error("physicsSubSteps must be at least 1");
+    if (Tuning.ContactHertz <= 0.0f) throw std::runtime_error("contactHertz must be positive");
     if (Tuning.ArmOverlapTolerance < 0.0f) throw std::runtime_error("armOverlapTolerance must not be negative");
     if (Tuning.OverlapTolerance < 0.0f) throw std::runtime_error("overlapTolerance must not be negative");
     return Tuning;

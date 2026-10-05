@@ -140,8 +140,8 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     }
     if (Shift <= 0.0f) return;
     const auto [LeftX, RightX] = place(Shift);
-    LeftMotion.shift(LeftX - LeftPlanned);
-    RightMotion.shift(RightX - RightPlanned);
+    Left.pushBody(LeftX - LeftPlanned);
+    Right.pushBody(RightX - RightPlanned);
     LeftMotion.limit(-MaxX, MaxX);
     RightMotion.limit(-MaxX, MaxX);
 }

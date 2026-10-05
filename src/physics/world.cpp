@@ -79,6 +79,7 @@ World::World(Config Settings)
     b2WorldDef Def = b2DefaultWorldDef();
     Def.gravity = toBox2D(Settings.Gravity);
     Def.hitEventThreshold = Settings.HitSpeedThreshold;
+    Def.contactHertz = Settings.ContactHertz;
     // Fighters must never fall asleep: their motors work every step.
     Def.enableSleep = false;
     Id = b2StoreWorldId(b2CreateWorld(&Def));

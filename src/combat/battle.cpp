@@ -90,6 +90,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity,
                                      .StepPasses = Tuning.PhysicsSteps,
                                      .SubSteps = Tuning.PhysicsSubSteps,
+                                     .ContactHertz = Tuning.ContactHertz,
                                      .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
         .Rules = {.Moves = std::move(Moves),
                   .Clips = std::move(Clips),
@@ -279,6 +280,7 @@ void Battle::settle(float Dt) {
 }
 
 std::optional<physics::PartOverlap> Battle::findDeepestOverlap() const { return Sim->PhysWorld.findDeepestOverlap(); }
+
 
 std::optional<physics::PartOverlap> Battle::findWorstOverlap() const {
     std::optional<physics::PartOverlap> Worst;

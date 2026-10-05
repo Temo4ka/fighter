@@ -133,10 +133,12 @@ public:
     /// off the clip by the walk do not take an extra step. Lifting a foot
     /// forgets it.
     void keepFeetPlanted();
-    /// For this step the feet follow the clip: a planted foot slides along
-    /// the floor instead of holding its place. Combat calls it while a walk
-    /// plays on quickly to a stop, so that the stop ends in the clip's pose.
-    void slideFeet() { releaseFeet(); }
+    /// For this step the feet slide towards the clip's pose along the floor
+    /// instead of holding their place: a planted foot lets go and closes on
+    /// the clip as a lifted one does (ControlParams::FootLockRelease), with
+    /// no jump. Combat calls it while a walk plays on quickly to a stop, so
+    /// that the stop ends in the clip's pose.
+    void slideFeet() { SlidingFeet = true; }
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -162,6 +164,12 @@ public:
     /// through getController() before applyControl().
     void planMotion(float Dt);
     PelvisController& getController() { return Controller; }
+    /// Pushes the whole body by \p Delta (m, along X) in this step: the
+    /// planned pelvis position and the planted feet move together, so a
+    /// foot pressed into the opponent's leaves with the body. The spacing
+    /// of the fighters calls it (rig/spacing.hpp) between planMotion() and
+    /// applyControl().
+    void pushBody(float Delta);
     const PelvisController& getController() const { return Controller; }
 
     /// Moves the kinematic parts, drives the motors of the physical ones and
@@ -270,9 +278,12 @@ public:
     /// controller ends the step at \p RootX: the posed parts exactly (the
     /// pose of the target angles with the planted feet held, or the blend of
     /// getting up), the torso and the head (physical, but held on the
-    /// pelvis) moved along with the pelvis. The arms are left out (the solver
-    /// keeps them off the opponent, and they yield), and so are the parts of
-    /// setStrikingParts(); none while the fighter is knocked down. The
+    /// pelvis) moved along with the pelvis. A pelvis away from the planned
+    /// one takes the planted feet along (pushBody()). The parts of
+    /// setStrikingParts() stop at the opponent by themselves: they are
+    /// where they are now, moved along with the pelvis, so the opponent does
+    /// not walk into them. The arms are left out (the solver keeps them off
+    /// the opponent, and they yield); none while the fighter is knocked down. The
     /// spacing tries pelvis positions with it before it corrects the plan
     /// (rig/spacing.hpp). Nothing moves.
     std::vector<PartPlacement> predictBody(float RootX, float Dt) const;
@@ -298,7 +309,6 @@ private:
         Vec2 Size;                ///< Bounds of the shape in the body frame.
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
-        uint64_t CollisionMask = 0; ///< While standing; a knockdown also drops the posed parts.
         bool Unjam = false;       ///< May yield when stuck in the opponent (RigDef::Unjam).
         BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
         float StuckSec = 0.0f;    ///< Limb only: how long it has been stuck in the opponent.
@@ -393,7 +403,6 @@ private:
     bool isWishBlocked(BodyPart Limb) const;
     /// Joint targets from the wishes and the yielding limbs.
     void refreshTargets();
-    void refreshCollisionMask(PartState& Part) const;
     void knockDown(Vec2 Velocity, float Spin);
     void startGettingUp();
     void turnAround();
@@ -418,6 +427,7 @@ private:
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.
     std::vector<Leg> Legs;
+    bool SlidingFeet = false;         ///< slideFeet() for the next applyControl().
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
     PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
     std::bitset<BodyPartCount> YieldPosed;

@@ -65,6 +65,10 @@ public:
         /// what it hits before the solver sees the contact.
         int StepPasses = 1;
         int SubSteps = 4;             ///< Box2D solver substeps per Box2D step.
+        /// Stiffness of the contacts between bodies, Hz: a body pressed into
+        /// another one (an arm pushed by its motors) sinks in less the
+        /// stiffer they are. Box2D caps it at 1/8 of the substep rate.
+        float ContactHertz = 30.0f;
         /// Closing speed above which a contact between body parts of
         /// different fighters is reported as a hit, m/s.
         float HitSpeedThreshold = 1.0f;

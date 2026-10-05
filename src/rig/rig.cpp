@@ -37,10 +37,12 @@ constexpr float WallMarkHeight = 1.8f;      ///< m.
 
 /// \name Collision categories of body parts
 /// The arena keeps the default category (bit 0). A knocked-down fighter
-/// ignores the posed parts of the other fighter: a kick still moving through
-/// the falling body would fling it, as nothing stops a kinematic leg. Parts
-/// of the rig's "passThrough" list ignore each other (RigDef::PassThrough):
-/// their category is PassThroughBit alone, and their mask leaves it out.
+/// collides with the posed parts of the other fighter like any other body:
+/// a posed striker stops at a body it sinks into (stopAtContact), and the
+/// standing legs push a lying body out of their way instead of passing
+/// through it. Parts of the rig's "passThrough" list ignore each other
+/// (RigDef::PassThrough): their category is PassThroughBit alone, and their
+/// mask leaves it out.
 /// @{
 constexpr uint64_t PosedPartBit = uint64_t{1} << 1;
 constexpr uint64_t PhysicalPartBit = uint64_t{1} << 2;
@@ -260,6 +262,13 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
     return Fraction;
 }
 
+void Rig::pushBody(float Delta) {
+    Controller.shift(Delta);
+    for (auto& Limb : Legs) {
+        if (Limb.Locked) Limb.LockX += Delta;
+    }
+}
+
 float Rig::getPosedPenetration(BodyPart Part) const {
     return isKinematic(Part) ? Physics->getPosedPenetration(getPart(Part).Handle) : 0.0f;
 }
@@ -413,13 +422,13 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
         State.Unjam = Def.Unjam.test(Index);
         const bool PassThrough = Def.PassThrough.test(Index);
         const uint64_t Category = State.Kinematic ? PosedPartBit : PassThrough ? PassThroughBit : PhysicalPartBit;
-        State.CollisionMask = PassThrough ? CollideWithAll & ~PassThroughBit : CollideWithAll;
+        const uint64_t Mask = PassThrough ? CollideWithAll & ~PassThroughBit : CollideWithAll;
         State.Handle = PhysWorld.createBody({
             .Position = Setup.Origin + Center,
             .AngularDamping = Control.AngularDamping,
             .Part = physics::PartRef{Setup.FighterIndex, Source.Part},
         });
-        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup, Category, State.CollisionMask));
+        PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup, Category, Mask));
 
         // The weapon is a second capsule of the part that holds it: from the
         // fist (the far end of the part) outwards, so that its surface ends
@@ -438,7 +447,7 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
             Blade.Begin = Weapon.Grip;
             Blade.End = Weapon.Tip;
             Blade.Radius = Weapon.Radius;
-            PhysWorld.addShape(State.Handle, makeShapeDef(Blade, CollisionGroup, Category, State.CollisionMask));
+            PhysWorld.addShape(State.Handle, makeShapeDef(Blade, CollisionGroup, Category, Mask));
         }
 
         // The mass is set while the body is dynamic; the densities stay when
@@ -589,6 +598,7 @@ void Rig::advancePosture() {
 void Rig::moveKinematicParts(float Dt) {
     if (CurrentPosture != Posture::Standing) releaseFeet();
     const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec);
+    SlidingFeet = false;
     for (auto&& [Part, Goal] : std::views::zip(Parts, Pose)) {
         if (Part.Kinematic) Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
     }
@@ -613,29 +623,45 @@ std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
     std::vector<PartPlacement> Result;
     if (CurrentPosture == Posture::KnockedDown) return Result;
     // applyControl() advances the posture time before it poses the parts.
+    // A push away from the plan takes the planted feet along (pushBody()).
     std::vector<Leg> Limbs = Legs;
+    const float Pushed = RootX - Controller.getPlannedX();
+    for (auto& Limb : Limbs) {
+        if (Limb.Locked) Limb.LockX += Pushed;
+    }
     const PerBodyPart<Placement> Pose = computePosedPose(RootX, Limbs, Dt, PostureSec + Dt);
-    const Vec2 Shift{RootX - getPart(Root).Handle.getPosition().X, 0.0f};
+    // The parts that are not posed now (the torso and the head, held on the
+    // pelvis) and the strikers (they stop at the opponent by themselves,
+    // stopAtContact(); the opponent must not walk into where they are) move
+    // rigidly with the pelvis.
+    const PartState& Pelvis = getPart(Root);
+    const Placement& PelvisGoal = Pose[static_cast<size_t>(Root)];
+    const float Turn = PelvisGoal.Angle - Pelvis.Handle.getAngle();
+    const auto carry = [&](const PartState& Part) {
+        const Vec2 FromPelvis = rotate(Part.Handle.getPosition() - Pelvis.Handle.getPosition(), Turn);
+        return PartPlacement{.Handle = Part.Handle,
+                             .Position = PelvisGoal.Position + FromPelvis,
+                             .Angle = Part.Handle.getAngle() + Turn};
+    };
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         const PartState& Part = Parts[Index];
-        if (StrikingParts.test(Index) || Part.Unjam) continue;
-        if (Part.Kinematic) {
-            const Placement& Placed = Pose[Index];
-            Result.push_back({.Handle = Part.Handle, .Position = Placed.Position, .Angle = Placed.Angle});
-            // A lifted foot comes down where it is: the spacing keeps the
-            // floor below it clear too, so that it does not step onto the
-            // opponent's foot (in a side view the feet are in one plane).
-            const bool IsFoot = std::ranges::any_of(Legs, [&](const Leg& Limb) {
-                return static_cast<size_t>(Limb.Foot) == Index;
-            });
-            const float Lift = getLowestPoint(Part.Shape, Placed.Position, Placed.Angle);
-            if (IsFoot && Lift > 0.0f) {
-                Result.push_back(
-                    {.Handle = Part.Handle, .Position = Placed.Position - Vec2{0.0f, Lift}, .Angle = Placed.Angle});
-            }
-        } else {
+        if (Part.Unjam) continue;
+        if (StrikingParts.test(Index) || !Part.Kinematic) {
+            Result.push_back(carry(Part));
+            continue;
+        }
+        const Placement& Placed = Pose[Index];
+        Result.push_back({.Handle = Part.Handle, .Position = Placed.Position, .Angle = Placed.Angle});
+        // A lifted foot comes down where it is: the spacing keeps the floor
+        // below it clear too, so that it does not step onto the opponent's
+        // foot (in a side view the feet are in one plane).
+        const bool IsFoot = std::ranges::any_of(Legs, [&](const Leg& Limb) {
+            return static_cast<size_t>(Limb.Foot) == Index;
+        });
+        const float Lift = getLowestPoint(Part.Shape, Placed.Position, Placed.Angle);
+        if (IsFoot && Lift > 0.0f) {
             Result.push_back(
-                {.Handle = Part.Handle, .Position = Part.Handle.getPosition() + Shift, .Angle = Part.Handle.getAngle()});
+                {.Handle = Part.Handle, .Position = Placed.Position - Vec2{0.0f, Lift}, .Angle = Placed.Angle});
         }
     }
     return Result;
@@ -680,8 +706,12 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         // stepping back plants when it is there.
         const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
         if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
+        if (SlidingFeet && Limb.Locked) {
+            Limb.Locked = false;   // slides from where it stood (slideFeet())
+            Limb.KeptOffsetX = 0.0f;
+        }
 
-        if (Planted && !Limb.Locked && !Limb.Stepping) {
+        if (Planted && !Limb.Locked && !Limb.Stepping && !SlidingFeet) {
             Limb.Locked = true;
             Limb.LockX = ClipAnkle.X + Limb.OffsetX;
         } else if (!Planted && Limb.Locked) {
@@ -875,12 +905,6 @@ void Rig::refreshTargets() {
     }
 }
 
-void Rig::refreshCollisionMask(PartState& Part) const {
-    uint64_t Mask = Part.CollisionMask;
-    if (CurrentPosture == Posture::KnockedDown) Mask &= ~PosedPartBit;
-    Part.Handle.setCollisionMask(Mask);
-}
-
 void Rig::knockDown(Vec2 Velocity, float Spin) {
     CurrentPosture = Posture::KnockedDown;
     PostureSec = 0.0f;
@@ -902,7 +926,6 @@ void Rig::knockDown(Vec2 Velocity, float Spin) {
     // moves as fast as the leg, which says nothing about the whole body.
     const Vec2 Center = getCenterOfMass();
     for (auto& Part : Parts) {
-        refreshCollisionMask(Part);
         Part.Handle.setLinearVelocity(Velocity + perp(Part.Handle.getWorldCenterOfMass() - Center) * Spin);
         Part.Handle.setAngularVelocity(Spin);
     }
@@ -913,7 +936,6 @@ void Rig::startGettingUp() {
     CurrentPosture = Posture::GettingUp;
     PostureSec = 0.0f;
     for (auto&& [Part, From] : std::views::zip(Parts, GetUpFrom)) {
-        refreshCollisionMask(Part);
         if (!Part.Kinematic) continue;
         From = {.Position = Part.Handle.getPosition(), .Angle = Part.Handle.getAngle()};
         Physics->setBodyType(Part.Handle, physics::BodyType::Kinematic);
