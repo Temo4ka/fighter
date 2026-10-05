@@ -78,3 +78,21 @@ TEST_CASE("loadCombatTuning: data/combat.json loads", "[combat]") {
     CHECK(Tuning.BodyHalfWidth > 0.0f);
     CHECK(Tuning.SeparationSpeed > 0.0f);
 }
+
+TEST_CASE("parseCombatTuning: physics steps, contacts and the allowed overlap", "[combat]") {
+    const CombatTuning Tuning = parseCombatTuning(R"({ "physicsSteps": 2, "physicsSubSteps": 3, "contactHertz": 90,
+        "fighterFriction": 0.2, "armOverlapTolerance": 0.03, "overlapTolerance": 0.005 })");
+    CHECK(Tuning.PhysicsSteps == 2);
+    CHECK(Tuning.PhysicsSubSteps == 3);
+    CHECK(Tuning.ContactHertz == 90.0f);
+    CHECK(Tuning.FighterFriction == 0.2f);
+    CHECK(Tuning.ArmOverlapTolerance == 0.03f);
+    CHECK(Tuning.OverlapTolerance == 0.005f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "physicsSteps": 0 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "physicsSteps": 1.5 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "physicsSubSteps": 0 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactHertz": 0 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "fighterFriction": -0.1 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "armOverlapTolerance": -0.01 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "overlapTolerance": -0.01 })"), std::runtime_error);
+}

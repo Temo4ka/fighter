@@ -743,3 +743,125 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
     CHECK(Stops > 0);
     CHECK(Held <= Depth + 1e-3f);
 }
+
+TEST_CASE("Rig: pushBody moves the planted feet with the pelvis", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    Rig& Body = Stage.Body;
+    Stage.run(10);
+    REQUIRE(Body.isFootLocked(BodyPart::FootL));
+    REQUIRE(Body.isFootLocked(BodyPart::FootR));
+    const float PelvisX = getPelvisX(Body);
+    const float FootLX = Body.getPartPosition(BodyPart::FootL).X;
+    const float FootRX = Body.getPartPosition(BodyPart::FootR).X;
+    // Pushed 1 cm a step for 10 steps: the body slides as a whole.
+    for (int Step = 0; Step < 10; ++Step) {
+        Body.planMotion(Dt);
+        Body.pushBody(0.01f);
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+    }
+    CHECK(getPelvisX(Body) - PelvisX == Approx(0.1f).margin(0.002f));
+    CHECK(Body.getPartPosition(BodyPart::FootL).X - FootLX == Approx(0.1f).margin(0.002f));
+    CHECK(Body.getPartPosition(BodyPart::FootR).X - FootRX == Approx(0.1f).margin(0.002f));
+    CHECK(Body.isFootLocked(BodyPart::FootL));
+    CHECK(Body.isFootLocked(BodyPart::FootR));
+
+    // The prediction of the spacing does the same for a pelvis away from
+    // the plan: every part it lists moves along.
+    Body.planMotion(Dt);
+    const float Planned = Body.getController().getPlannedX();
+    const std::vector<PartPlacement> Here = Body.predictBody(Planned, Dt);
+    const std::vector<PartPlacement> There = Body.predictBody(Planned + 0.05f, Dt);
+    REQUIRE(Here.size() == There.size());
+    for (auto&& [Near, Far] : std::views::zip(Here, There)) {
+        CHECK(Far.Position.X - Near.Position.X == Approx(0.05f).margin(1e-3f));
+    }
+}
+
+TEST_CASE("Rig: slideFeet slides the planted feet to the clip at footSlideSpeed", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    Rig& Body = Stage.Body;
+    const ControlParams& Control = Body.getControl();
+    Stage.run(10);
+    const float StanceOffset = Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body);
+    // A push leaves the planted feet behind the pelvis (within the slip).
+    Body.addPush(0.08f);
+    Stage.run(20);
+    REQUIRE(Body.isFootLocked(BodyPart::FootL));
+    REQUIRE(Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body) < StanceOffset - 0.03f);
+
+    // Sliding, a foot moves no faster than footSlideSpeed relative to the
+    // pelvis and ends in the clip's pose.
+    const auto getOffset = [&] { return Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body); };
+    float Fastest = 0.0f;
+    for (int Step = 0; Step < 30; ++Step) {
+        const float Before = getOffset();
+        Body.planMotion(Dt);
+        Body.slideFeet();
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+        Fastest = std::max(Fastest, std::abs(getOffset() - Before));
+    }
+    CHECK(Fastest <= Control.FootSlideSpeed * Dt + 1e-3f);
+    CHECK(Fastest > 0.0f);
+    CHECK(getOffset() == Approx(StanceOffset).margin(0.005f));
+}
+
+TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
+    // The left fighter swings its front leg into the right one's legs in
+    // big steps; the spacing is too slow to keep them apart. The leg is no
+    // striker: holdLimbsBack holds it at the opponent.
+    constexpr float Depth = 0.01f;
+    const auto swing = [&](bool Hold) {
+        Duel Swing(-0.5f, 0.5f);
+        Swing.Spacing.PosedSeparationSpeed = 1e-3f;
+        Swing.Spacing.SeparationSpeed = 1e-3f;
+        Swing.run(5);
+        PerBodyPart<float> Pose = loadStance();
+        Pose[static_cast<size_t>(BodyPart::ThighL)] = 1.6f;
+        Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
+        Swing.Left.setTargetAngles(Pose);
+        float Deepest = 0.0f;
+        for (int Step = 0; Step < 20; ++Step) {
+            Swing.run(1);
+            if (Hold) Swing.Left.holdLimbsBack(Depth);
+            for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}) {
+                Deepest = std::max(Deepest, Swing.Left.getPosedPenetration(Part));
+            }
+        }
+        return Deepest;
+    };
+    CHECK(swing(false) > 3.0f * Depth);
+    CHECK(swing(true) <= Depth + 1e-3f);
+}
+
+TEST_CASE("Rig: the spacing sees a striker where it is and where the clip takes it", "[rig]") {
+    // The left fighter is about to swing its front leg straight out into the
+    // right one: the clip's pose of the leg overlaps the opponent, where it
+    // is now does not.
+    Duel Kick(-0.5f, 0.5f);
+    Kick.run(5);
+    PerBodyPart<float> Pose = loadStance();
+    Pose[static_cast<size_t>(BodyPart::ThighL)] = 1.6f;
+    Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
+    Kick.Left.setTargetAngles(Pose);
+    Kick.Left.planMotion(Dt);
+    Kick.Right.planMotion(Dt);
+    const auto getGap = [&] {
+        return Kick.Left.measureGap(Kick.Left.predictBody(Kick.Left.getController().getPlannedX(), Dt),
+                                    Kick.Right.predictBody(Kick.Right.getController().getPlannedX(), Dt));
+    };
+    const size_t Parts = Kick.Left.predictBody(Kick.Left.getController().getPlannedX(), Dt).size();
+    // A plain leg overlaps where it goes: the spacing would push the
+    // opponent away before the kick lands.
+    CHECK(getGap() < 0.0f);
+    // A striker does not overlap: it overlaps only if it does in both places.
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::ShinL));
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    Kick.Left.setStrikingParts(Strikers, Strikers);
+    CHECK(getGap() >= 0.0f);
+    // The lifted kicking foot keeps no floor below it clear (one shadow
+    // placement fewer).
+    CHECK(Kick.Left.predictBody(Kick.Left.getController().getPlannedX(), Dt).size() == Parts - 1);
+}

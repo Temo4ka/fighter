@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "combat/battle.hpp"
+#include "combat/tuning.hpp"
 #include "scenario.hpp"
 
 using namespace fighter;
@@ -204,4 +205,28 @@ TEST_CASE("No pass-through: knight against rogue", "[combat][overlap]") {
     const OverlapLog Log = runScripted(Fight, 5, true, 40);
     INFO(Log.describe());
     CHECK(Log.WorstExcess <= 0.0f);
+}
+
+TEST_CASE("No pass-through: the allowed overlap depends on the pair of parts", "[combat][overlap]") {
+    ScratchData Data("overlap_tolerance");
+    Data.replace("combat.json", "\"armOverlapTolerance\": 0.02", "\"armOverlapTolerance\": 0.03");
+    // Spawned inside each other: the bodies overlap before the first step.
+    Data.replace("combat.json", "\"spawnDistance\": 2.4", "\"spawnDistance\": 0.3");
+    Battle Fight(Data.makeConfig());
+    const physics::PartOverlap Arms{.First = {0, BodyPart::ForearmL}, .Second = {1, BodyPart::UpperArmR}};
+    const physics::PartOverlap ArmOnLeg{.First = {0, BodyPart::ForearmL}, .Second = {1, BodyPart::ShinR}};
+    CHECK(Fight.getOverlapTolerance(Arms) == 0.03f);
+    CHECK(Fight.getOverlapTolerance(ArmOnLeg) == loadCombatTuning(Data.getDir() / "combat.json").OverlapTolerance);
+
+    // The worst overlap is the one furthest beyond its tolerance, not
+    // necessarily the deepest.
+    const std::optional<physics::PartOverlap> Worst = Fight.findWorstOverlap();
+    const std::optional<physics::PartOverlap> Deepest = Fight.findDeepestOverlap();
+    REQUIRE(Worst.has_value());
+    REQUIRE(Deepest.has_value());
+    CHECK(Worst->Depth - Fight.getOverlapTolerance(*Worst) >= Deepest->Depth - Fight.getOverlapTolerance(*Deepest));
+
+    // Far apart nothing overlaps.
+    Battle Apart(makeConfig());
+    CHECK_FALSE(Apart.findWorstOverlap().has_value());
 }
