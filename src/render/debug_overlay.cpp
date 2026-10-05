@@ -1,5 +1,6 @@
 #include "render/debug_overlay.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -7,6 +8,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/ConvexShape.hpp>
@@ -39,6 +41,8 @@ constexpr float LineHeight = 16.0f;
 constexpr int CircleSegments = 32;
 /// The panel starts below the HUD (bars and names, data/visuals.json "hud").
 constexpr float PanelTop = 100.0f;
+constexpr float PanelPadding = 6.0f;
+constexpr float PanelColumnGap = 8.0f;
 constexpr float TwoPi = 2.0f * std::numbers::pi_v<float>;
 
 sf::Color toSfColor(debug::Rgba Source) { return sf::Color(Source.R, Source.G, Source.B, Source.A); }
@@ -259,21 +263,31 @@ void DebugOverlay::drawPanel(sf::RenderTarget& Target, const Camera& Cam, const 
         for (const std::string& Event : List.getEvents()) Lines.push_back({Event});
     }
 
-    // Translucent backing under the text.
-    float Width = 0.0f;
-    std::vector<sf::Text> Texts;
-    Texts.reserve(Lines.size());
-    for (size_t Index = 0; Index < Lines.size(); ++Index) {
-        sf::Text& Line = Texts.emplace_back(Font, Lines[Index].Text, FontSize);
-        Line.setFillColor(Lines[Index].Color);
-        Line.setPosition({16.0f, PanelTop + 6.0f + LineHeight * static_cast<float>(Index)});
-        Width = std::max(Width, Line.getLocalBounds().size.x);
+    // The lines flow into columns when they do not fit the window height,
+    // each column on its own translucent backing.
+    const float WindowHeight = static_cast<float>(Cam.getWindowSize().y);
+    const size_t RowsPerColumn = std::max<size_t>(
+        1, static_cast<size_t>((WindowHeight - PanelTop - 2.0f * PanelPadding) / LineHeight));
+    float ColumnLeft = 8.0f;
+    for (size_t First = 0; First < Lines.size(); First += RowsPerColumn) {
+        const size_t Last = std::min(First + RowsPerColumn, Lines.size());
+        float Width = 0.0f;
+        std::vector<sf::Text> Texts;
+        Texts.reserve(Last - First);
+        for (size_t Index = First; Index < Last; ++Index) {
+            sf::Text& Line = Texts.emplace_back(Font, Lines[Index].Text, FontSize);
+            Line.setFillColor(Lines[Index].Color);
+            Line.setPosition({ColumnLeft + 8.0f,
+                              PanelTop + PanelPadding + LineHeight * static_cast<float>(Index - First)});
+            Width = std::max(Width, Line.getLocalBounds().size.x);
+        }
+        sf::RectangleShape Back({Width + 16.0f, LineHeight * static_cast<float>(Last - First) + 2.0f * PanelPadding});
+        Back.setPosition({ColumnLeft, PanelTop});
+        Back.setFillColor(sf::Color(0, 0, 0, 170));
+        Target.draw(Back);
+        for (const sf::Text& Line : Texts) Target.draw(Line);
+        ColumnLeft += Width + 16.0f + PanelColumnGap;
     }
-    sf::RectangleShape Back({Width + 16.0f, LineHeight * static_cast<float>(Lines.size()) + 12.0f});
-    Back.setPosition({8.0f, PanelTop});
-    Back.setFillColor(sf::Color(0, 0, 0, 170));
-    Target.draw(Back);
-    for (const sf::Text& Line : Texts) Target.draw(Line);
 }
 
 } // namespace fighter::render
