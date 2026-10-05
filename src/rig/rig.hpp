@@ -16,7 +16,12 @@
 ///  - physical parts (torso, head, arms) are dynamic bodies driven by
 ///    PD-style joint motors towards the clip angles relative to their
 ///    parent, so the torso is held relative to the pelvis. Strikes and hit
-///    reactions are physics.
+///    reactions are physics. Standing, the pelvis carries them: every step
+///    they take the change of the pelvis motion (not of a knockback), the
+///    motors add the clip's own joint speed and always have the torque to
+///    reach the pose without overshoot (the inertia of the child chain),
+///    and their weight is taken off, so at rest and walking the upper body
+///    follows the clip; hits, knockback and knockdowns still swing it.
 ///
 /// There are no balance assists: a standing fighter cannot fall, because its
 /// support is not physical. Stiffness scales the motors: it is raised during
