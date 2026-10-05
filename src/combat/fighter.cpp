@@ -99,8 +99,9 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     Body.setTargetAngles(Shown.Angles);
     // The strikers of an attack stop at the opponent by themselves; the
     // spacing keeps the rest of the body off it.
+    const std::bitset<BodyPartCount> AttackParts = getMove() ? AttackClip->Strikers : std::bitset<BodyPartCount>{};
     const bool Striking = getMove() && Contact == ContactStage::None && AttackTime < AttackClip->ActiveEndSec;
-    Body.setStrikingParts(Striking ? AttackClip->Strikers : std::bitset<BodyPartCount>{});
+    Body.setStrikingParts(Striking ? AttackParts : std::bitset<BodyPartCount>{}, AttackParts);
     Body.setMoveVelocity(Velocity);
     Body.setBaseStiffness(Top ? Top->Stiffness : 1.0f);
     Body.planMotion(Dt);
@@ -142,14 +143,10 @@ void Fighter::onStrikeLanded(bool Clean) {
 
 void Fighter::stopAtContact() {
     // In any phase: nothing passes through the opponent. A contact in the
-    // startup jams the attack. The other posed limbs are held back too.
+    // startup jams the attack. The posed limbs are held back too.
     const CombatTuning& Tuning = Rules->Tuning;
-    if (!getMove()) {
-        Body.holdLimbsBack({}, Tuning.ContactStopDepth);
-        return;
-    }
-    stopStrikeAtContact();
-    Body.holdLimbsBack(AttackClip->Strikers, Tuning.ContactStopDepth);
+    if (getMove()) stopStrikeAtContact();
+    Body.holdLimbsBack(Tuning.ContactStopDepth);
 }
 
 void Fighter::stopStrikeAtContact() {

@@ -189,15 +189,20 @@ inline rig::RigDef loadHumanoid() {
     return rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json");
 }
 
-/// How deep \p Part of fighter \p Index overlaps the posed parts of the
-/// other fighter in the snapshot, m; 0 if it does not touch them. The
-/// shapes are rebuilt from the rig file at the parts' snapshot placements
+/// \p Part of fighter \p Index and the posed parts of the other fighter (or
+/// only \p OnlyOther) rebuilt from the rig file at their snapshot placements
 /// in a probe world (as the rig places them: mirrored for the facing,
 /// centered on their bounds).
-inline float getPosedPenetration(const Battle& Fight, uint8_t Index, BodyPart Part,
+struct PosedProbe {
+    physics::World Probe;
+    physics::Body Part;
+    std::vector<physics::Body> Others;
+};
+
+inline PosedProbe makePosedProbe(const Battle& Fight, uint8_t Index, BodyPart Part,
                                  std::optional<BodyPart> OnlyOther = std::nullopt) {
     const rig::RigDef Def = loadHumanoid();
-    physics::World Probe;
+    PosedProbe Result;
     const auto addPart = [&](uint8_t Owner, BodyPart Which) {
         const FighterView& View = Fight.getSnapshot().Fighters[Owner];
         const PartTransform& Placed = View.Parts[static_cast<size_t>(Which)];
@@ -220,24 +225,47 @@ inline float getPosedPenetration(const Battle& Fight, uint8_t Index, BodyPart Pa
             High = Shape.Center + Radius;
         }
         const Vec2 Origin = (Low + High) * 0.5f;
-        const physics::Body Handle = Probe.createBody({.Type = physics::BodyType::Kinematic,
-                                                       .Position = Placed.Position,
-                                                       .Angle = Placed.Angle,
-                                                       .Part = physics::PartRef{Owner, Which}});
-        Probe.addShape(Handle, {.Kind = Shape.Shape,
-                                .Center = Shape.Center - Origin,
-                                .Begin = Shape.Begin - Origin,
-                                .End = Shape.End - Origin,
-                                .HalfExtents = Shape.HalfExtents,
-                                .Radius = Shape.Radius});
+        const physics::Body Handle = Result.Probe.createBody({.Type = physics::BodyType::Kinematic,
+                                                              .Position = Placed.Position,
+                                                              .Angle = Placed.Angle,
+                                                              .Part = physics::PartRef{Owner, Which}});
+        Result.Probe.addShape(Handle, {.Kind = Shape.Shape,
+                                       .Center = Shape.Center - Origin,
+                                       .Begin = Shape.Begin - Origin,
+                                       .End = Shape.End - Origin,
+                                       .HalfExtents = Shape.HalfExtents,
+                                       .Radius = Shape.Radius});
         return Handle;
     };
     const auto Other = static_cast<uint8_t>(1 - Index);
     for (size_t Posed = 0; Posed < BodyPartCount; ++Posed) {
         const auto Which = static_cast<BodyPart>(Posed);
-        if (Def.Kinematic.test(Posed) && (!OnlyOther || *OnlyOther == Which)) addPart(Other, Which);
+        if (Def.Kinematic.test(Posed) && (!OnlyOther || *OnlyOther == Which)) {
+            Result.Others.push_back(addPart(Other, Which));
+        }
     }
-    return Probe.getPosedPenetration(addPart(Index, Part));
+    Result.Part = addPart(Index, Part);
+    return Result;
+}
+
+/// How deep \p Part of fighter \p Index overlaps the posed parts of the
+/// other fighter in the snapshot, m; 0 if it does not touch them.
+inline float getPosedPenetration(const Battle& Fight, uint8_t Index, BodyPart Part,
+                                 std::optional<BodyPart> OnlyOther = std::nullopt) {
+    const PosedProbe Probe = makePosedProbe(Fight, Index, Part, OnlyOther);
+    return Probe.Probe.getPosedPenetration(Probe.Part);
+}
+
+/// The smallest gap between \p Part of fighter \p Index and the posed parts
+/// of the other fighter in the snapshot, m; negative: how deep they overlap.
+inline float getPosedGap(const Battle& Fight, uint8_t Index, BodyPart Part) {
+    const PosedProbe Probe = makePosedProbe(Fight, Index, Part);
+    float Smallest = 1e9f;
+    for (const auto& Other : Probe.Others) {
+        Smallest = std::min(Smallest, Probe.Probe.getGapAt(Probe.Part, Probe.Part.getPosition(), Probe.Part.getAngle(),
+                                                           Other, Other.getPosition(), Other.getAngle()));
+    }
+    return Smallest;
 }
 
 inline FighterConfig loadFighter(const std::string& Name) {

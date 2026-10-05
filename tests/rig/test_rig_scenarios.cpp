@@ -4,14 +4,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <filesystem>
 #include <optional>
 #include <utility>
 #include <variant>
 
 #include "../combat/scenario.hpp"
 #include "combat/battle.hpp"
-#include "rig/rig_def.hpp"
 
 using namespace fighter;
 using namespace fighter::combat;
@@ -134,11 +132,11 @@ TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", 
     Battle Fight(makeConfig());
     pressToWall(Fight, true);
     const auto& Fighters = Fight.getSnapshot().Fighters;
-    // Still close: every landed jab pushes the fighters apart to the rig's
-    // closeRange, and P1 presses in again.
-    const float CloseRange =
-        rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json").Control.CloseRange;
-    CHECK(getPelvisGap(Fight) < CloseRange + 0.05f);
+    // Still close: as close as P1 gets without the exchange. The legs keep
+    // the stances apart (about 0.75 m between the pelvises), so P1 cannot
+    // press in to the rig's closeRange any more; landed jabs do not drive
+    // the fighters apart for good either.
+    CHECK(getPelvisGap(Fight) < getPelvisGap(Quiet) + 0.05f);
     // The arms are back in the guard, not stuck in the opponent: between
     // the guard resting on the opponent's chest (pressed back a few cm) and
     // the free one. Jammed, it was 10 cm short.

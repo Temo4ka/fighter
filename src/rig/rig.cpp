@@ -269,17 +269,13 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
     return Fraction;
 }
 
-void Rig::holdLimbsBack(const std::bitset<BodyPartCount>& Except, float MaxDepth) {
+void Rig::holdLimbsBack(float MaxDepth) {
     HeldLimbs.reset();
     if (CurrentPosture == Posture::KnockedDown) return;
-    std::bitset<BodyPartCount> Skipped;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        if (Except.test(Index)) Skipped.set(static_cast<size_t>(getLimbTop(static_cast<BodyPart>(Index))));
-    }
     const physics::Body Pelvis = getPart(Root).Handle;
     for (const auto& Joint : Joints) {
         const auto Top = static_cast<size_t>(Joint.Child);
-        if (Joint.Parent != Root || !isKinematic(Joint.Child) || Skipped.test(Top)) continue;
+        if (Joint.Parent != Root || !isKinematic(Joint.Child)) continue;
         std::vector<physics::Body> Limb;
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Part = static_cast<BodyPart>(Index);
@@ -692,12 +688,13 @@ std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
         Result.push_back({.Handle = Part.Handle, .Position = Placed.Position, .Angle = Placed.Angle});
         // A lifted foot comes down where it is: the spacing keeps the floor
         // below it clear too, so that it does not step onto the opponent's
-        // foot (in a side view the feet are in one plane).
+        // foot (in a side view the feet are in one plane). A kicking foot
+        // goes back instead.
         const bool IsFoot = std::ranges::any_of(Legs, [&](const Leg& Limb) {
             return static_cast<size_t>(Limb.Foot) == Index;
         });
         const float Lift = getLowestPoint(Part.Shape, Placed.Position, Placed.Angle);
-        if (IsFoot && Lift > 0.0f) {
+        if (IsFoot && Lift > 0.0f && !AttackingParts.test(Index)) {
             Result.push_back(
                 {.Handle = Part.Handle, .Position = Placed.Position - Vec2{0.0f, Lift}, .Angle = Placed.Angle});
         }

@@ -159,9 +159,15 @@ public:
     void setFacing(bool FacingRight);
     /// The posed parts that strike now (the strikers of an attack before it
     /// stopped at a contact): they stop at the opponent by themselves
-    /// (stopAtContact), so the spacing of the fighters leaves them out
-    /// (predictBody). Combat sets it every step; none by default.
-    void setStrikingParts(const std::bitset<BodyPartCount>& Striking) { StrikingParts = Striking; }
+    /// (stopAtContact), so the spacing of the fighters treats them apart
+    /// (predictBody). \p Attacking: the strikers of the attack all through
+    /// it; a lifted foot among them does not step down where it is, so the
+    /// spacing keeps no floor below it clear. Combat sets both every step;
+    /// none by default.
+    void setStrikingParts(const std::bitset<BodyPartCount>& Striking, const std::bitset<BodyPartCount>& Attacking) {
+        StrikingParts = Striking;
+        AttackingParts = Attacking;
+    }
     /// Keeps a knocked-down fighter on the floor as a limp ragdoll: it does
     /// not get up until this is cleared. Combat sets it on a knockout; a
     /// fighter that is still standing (or getting up) collapses where it is.
@@ -227,15 +233,16 @@ public:
     std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
 
     /// Call after the physics step and stopAtContact(). A posed limb (a leg)
-    /// that is not one of \p Except (the strikers of an attack, stopped by
-    /// stopAtContact) and whose own motion in the step, relative to the
-    /// pelvis, took it deeper than \p MaxDepth (m) into the opponent goes
-    /// back along that motion to MaxDepth deep (it stays on its hip; the
-    /// pelvis keeps its motion). Nothing in physics stops a posed limb, and
-    /// the spacing of the fighters (rig/spacing.hpp) can push the bodies
-    /// apart only so fast: a foot swung through the opponent's in one step
-    /// stops at it instead. Touching is fine.
-    void holdLimbsBack(const std::bitset<BodyPartCount>& Except, float MaxDepth);
+    /// whose own motion in the step, relative to the pelvis, took it deeper
+    /// than \p MaxDepth (m) into the opponent goes back along that motion to
+    /// MaxDepth deep (it stays on its hip; the pelvis keeps its motion).
+    /// Nothing in physics stops a posed limb, and the spacing of the
+    /// fighters (rig/spacing.hpp) can push the bodies apart only so fast: a
+    /// foot swung through the opponent's in one step, or the thigh of a kick
+    /// rising into a guard the solver cannot push away, stops there instead.
+    /// Touching is fine; the strikers stopAtContact() already stopped are no
+    /// deeper than that.
+    void holdLimbsBack(float MaxDepth);
 
     /// \name State
     /// @{
@@ -475,6 +482,7 @@ private:
     float WeaponReach = 0.0f;
     WeaponShape Weapon;
     std::bitset<BodyPartCount> StrikingParts;   ///< setStrikingParts().
+    std::bitset<BodyPartCount> AttackingParts;  ///< setStrikingParts().
     /// The strikers stopAtContact() last held back, and whether it did so
     /// in the last step; for the debug draw.
     std::bitset<BodyPartCount> StoppedParts;

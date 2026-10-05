@@ -40,6 +40,18 @@ PerBodyPart<float> loadStance() {
     return anim::sampleClip(Stance, 0.0f).Angles;
 }
 
+/// The stance with both legs straight under the hips: the bodies are narrow,
+/// so that the spacing of the legs lets the pelvises come as close as the
+/// pushbox does (the shipped stance keeps them about 0.75 m apart).
+PerBodyPart<float> loadNarrowStance() {
+    PerBodyPart<float> Narrow = loadStance();
+    for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR, BodyPart::ShinR,
+                            BodyPart::FootR}) {
+        Narrow[static_cast<size_t>(Part)] = 0.0f;
+    }
+    return Narrow;
+}
+
 RigSetup makeSetup(float X, bool FacingRight, uint8_t Index = 0, float MassScale = 1.0f) {
     const stats::PhysicalProfile Profile = stats::computeProfile({}, {}, stats::BalanceTable::getDefaults());
     RigSetup Setup;
@@ -98,6 +110,14 @@ struct Duel {
         addArena(PhysWorld);
         for (Rig* Body : {&Left, &Right}) {
             Body->setTargetAngles(loadStance());
+            Body->snapToTargets();
+        }
+    }
+
+    /// Both stand in \p Targets from the start.
+    void pose(const PerBodyPart<float>& Targets) {
+        for (Rig* Body : {&Left, &Right}) {
+            Body->setTargetAngles(Targets);
             Body->snapToTargets();
         }
     }
@@ -444,8 +464,10 @@ TEST_CASE("Rig: knocked down against the wall it slumps along it", "[rig]") {
 }
 
 TEST_CASE("keepApart: standing pelvises stay apart and the heavier one gives way less", "[rig]") {
-    // The right fighter is twice as heavy; both walk into each other.
+    // The right fighter is twice as heavy; both walk into each other. Their
+    // legs are narrow: the pushbox keeps them apart, not the legs.
     Duel Clash(-0.5f, 0.5f, 2.0f);
+    Clash.pose(loadNarrowStance());
     const float MinGap = 2.0f * Clash.Spacing.BodyHalfWidth;
     Clash.Left.setMoveVelocity(1.0f);
     Clash.Right.setMoveVelocity(-1.0f);
@@ -461,6 +483,7 @@ TEST_CASE("keepApart: standing pelvises stay apart and the heavier one gives way
     // The order of the arguments does not matter: a fighter may stand on
     // the other side after getting up.
     Duel Swapped(-0.2f, 0.2f);
+    Swapped.pose(loadNarrowStance());
     Swapped.Right.setMoveVelocity(0.0f);
     for (int Step = 0; Step < 30; ++Step) {
         Swapped.Left.planMotion(Dt);
@@ -475,6 +498,7 @@ TEST_CASE("keepApart: standing pelvises stay apart and the heavier one gives way
 
 TEST_CASE("keepApart: the walls stop the pelvis and a fighter at a wall does not give way", "[rig]") {
     Duel Corner(1.5f, 2.6f);
+    Corner.pose(loadNarrowStance());
     Corner.Left.setMoveVelocity(1.0f);
     Corner.run(180);
     const float MaxX = ArenaHalfWidth - Corner.Spacing.BodyHalfWidth;
@@ -503,7 +527,10 @@ TEST_CASE("keepApart: a standing fighter does not walk through a lying one", "[r
 }
 
 TEST_CASE("pushApartOnHit: a hit at close range pushes the fighters apart", "[rig]") {
+    // Narrow legs: the shipped stance keeps the pelvises further apart than
+    // the close range.
     Duel Close(-0.26f, 0.26f, 2.0f);
+    Close.pose(loadNarrowStance());
     Close.run(5);
     const float CloseRange = Close.Right.getControl().CloseRange;
     const float Deficit = CloseRange - (getPelvisX(Close.Right) - getPelvisX(Close.Left));
@@ -522,6 +549,7 @@ TEST_CASE("pushApartOnHit: a hit at close range pushes the fighters apart", "[ri
 
 TEST_CASE("pushApartOnHit: against the wall the attacker takes all of the push", "[rig]") {
     Duel Corner(2.2f, 2.75f);
+    Corner.pose(loadNarrowStance());
     Corner.run(5);
     REQUIRE(Corner.Right.isAgainstWall());
     REQUIRE(pushApartOnHit(Corner.Left, Corner.Right) > 0.0f);
@@ -542,6 +570,12 @@ TEST_CASE("Rig: a posed leg hits the opponent's posed legs and pelvis", "[rig]")
     Kick[static_cast<size_t>(BodyPart::ThighL)] = 1.0f;
     Kick[static_cast<size_t>(BodyPart::ShinL)] = 0.0f;
     Low.Left.setTargetAngles(Kick);
+    // A striking leg: the spacing of the bodies does not push the opponent
+    // away from it.
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::ShinL));
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    Low.Left.setStrikingParts(Strikers, Strikers);
     std::vector<physics::HitEvent> Hits;
     for (int Step = 0; Step < 30; ++Step) {
         Low.run(1);
@@ -666,6 +700,8 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
     Strikers.set(static_cast<size_t>(BodyPart::FootL));
     const auto kick = [&](bool Stop) {
         Duel Kick(-0.5f, 0.5f);
+        // The spacing of the bodies leaves the strikers to stopAtContact().
+        Kick.Left.setStrikingParts(Strikers, Strikers);
         PerBodyPart<float> Pose = loadStance();
         const float StartThigh = Pose[static_cast<size_t>(BodyPart::ThighL)];
         float Deepest = 0.0f;
@@ -686,7 +722,9 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
         return std::pair(Deepest, Stops);
     };
     const auto [Through, NoStops] = kick(false);
-    CHECK(Through > 0.05f);   // nothing else stops a posed leg
+    // Nothing else stops a posed leg in time (the spacing only pushes the
+    // bodies apart once the leg is in the opponent).
+    CHECK(Through > 3.0f * Depth);
     CHECK(NoStops == 0);
     const auto [Held, Stops] = kick(true);
     CHECK(Stops > 0);
