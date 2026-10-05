@@ -249,8 +249,9 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     }
 
     publishSnapshot();
-    drawDebug();
+    // The overlap first: its panel line stays near the top.
     drawOverlap();
+    drawDebug();
 }
 
 void Battle::finish(Winner Outcome, BattleEnd End) {
@@ -276,8 +277,9 @@ void Battle::settle(float Dt) {
     for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
     ++Tick;
     publishSnapshot();
-    drawDebug();
+    // The overlap first: its panel line stays near the top.
     drawOverlap();
+    drawDebug();
 }
 
 std::optional<physics::PartOverlap> Battle::findDeepestOverlap() const { return Sim->PhysWorld.findDeepestOverlap(); }
