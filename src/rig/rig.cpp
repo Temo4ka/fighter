@@ -40,16 +40,17 @@ constexpr float WallMarkHeight = 1.8f;      ///< m.
 /// ignores the posed parts of the other fighter: a kick still moving through
 /// the falling body would fling it, as nothing stops a kinematic leg. Parts
 /// of the rig's "passThrough" list ignore each other (RigDef::PassThrough):
-/// their category is PassThroughBit alone, and their mask leaves it out. A
-/// limb that lets go of the opponent ("unjam") collides with the arena only.
+/// their category is PassThroughBit alone, and their mask leaves it out.
 /// @{
-constexpr uint64_t ArenaBit = uint64_t{1} << 0;
 constexpr uint64_t PosedPartBit = uint64_t{1} << 1;
 constexpr uint64_t PhysicalPartBit = uint64_t{1} << 2;
 constexpr uint64_t PassThroughBit = uint64_t{1} << 3;
 constexpr uint64_t CollideWithAll = ~uint64_t{0};
 /// @}
 
+/// A yielding limb returns to the clip only when the clip's pose of it is
+/// this far clear of the opponent, m.
+constexpr float YieldClearance = 0.01f;
 /// A foot offset smaller than this needs no leg correction, m.
 constexpr float MinFootOffset = 1e-4f;
 /// Knockback slower than this lets a standing fighter step its feet back, m/s.
@@ -93,6 +94,8 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
       MotorMaxTorque(Setup.MotorMaxTorque * Def.Control.TorqueScale),
       MotorGain(Setup.MotorGain * Def.Control.GainScale),
       MoveSpeedScale(Setup.MoveSpeedScale),
+      YieldAngles(Def.YieldAngles),
+      YieldPosed(Def.YieldPosed),
       WeaponReach(std::max(0.0f, Setup.WeaponReachM)) {
     PerBodyPart<Vec2> Centers{};
     createParts(PhysWorld, Def, Setup, Centers);
@@ -115,8 +118,21 @@ void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
     TargetAngles = Angles;
     for (auto& Joint : Joints) {
         const float Angle = Angles[static_cast<size_t>(Joint.Child)] * Facing;
-        Joint.Target = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Wish = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
     }
+    // A yielding limb that the clip asks for something new (a strike) tries
+    // again.
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const auto LimbPart = static_cast<BodyPart>(Index);
+        const PartState& Limb = Parts[Index];
+        if (!Limb.Unjam || Limb.Limb != LimbPart || !Limb.Yielding) continue;
+        const bool NewWish = std::ranges::any_of(Joints, [&](const JointState& Joint) {
+            const PartState& Part = getPart(Joint.Child);
+            return Part.Unjam && Part.Limb == LimbPart && std::abs(Joint.Wish - Joint.YieldWish) > Control.JamAngle;
+        });
+        if (NewWish) setLimbYielding(LimbPart, false);
+    }
+    refreshTargets();
 }
 
 void Rig::setMoveVelocity(float Velocity) { Controller.setTargetVelocity(Velocity); }
@@ -252,10 +268,7 @@ bool Rig::isKinematic(BodyPart Part) const {
     return getPart(Part).Kinematic && CurrentPosture != Posture::KnockedDown;
 }
 
-bool Rig::isUnjamming(BodyPart Part) const {
-    const PartState& State = getPart(Part);
-    return State.Unjam && getPart(State.Limb).Freed;
-}
+bool Rig::isYielding(BodyPart Part) const { return getPart(Part).Yielding; }
 
 float Rig::getStiffness() const { return BaseStiffness * HitFactor * getPostureStiffness(); }
 
@@ -450,7 +463,8 @@ void Rig::createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSe
         Joint.AnchorInParent = Anchor - Centers[static_cast<size_t>(Source.Parent)];
         Joint.ChildFromAnchor = Centers[static_cast<size_t>(Source.Child)] - Anchor;
         Joint.RestDirection = getHeading(Joint.ChildFromAnchor);
-        Joint.Target = std::clamp(0.0f, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Wish = std::clamp(0.0f, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.Target = Joint.Wish;
         Joint.Handle = PhysWorld.createRevoluteJoint({
             .BodyA = getPart(Source.Parent).Handle,
             .BodyB = getPart(Source.Child).Handle,
@@ -724,18 +738,24 @@ void Rig::driveMotors() {
             continue;
         }
         // Stiffness scales both the response speed and the torque limit: a
-        // stiff joint snaps to its target, a weak one lags and gives way.
-        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * Stiffness;
+        // stiff joint snaps to its target, a weak one lags and gives way. A
+        // yielding limb is softer still.
+        const float JointStiffness = getPart(Joint.Child).Yielding ? Stiffness * Control.YieldStiffness : Stiffness;
+        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * JointStiffness;
         Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
-        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * Stiffness);
+        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * JointStiffness);
     }
 }
 
 void Rig::updateJams(float Dt) {
     // Two motors pushing limbs into each other hold a deadlock forever: each
     // is at its torque limit, and nothing in the pose changes. A limb that
-    // touches the opponent and stays far from its target for JamSec lets go:
-    // it passes through the opponent until it no longer overlaps it.
+    // touches the opponent and stays far from its target for JamSec yields:
+    // its motors soften and it pulls back to the yield pose. It still
+    // collides, so nothing passes through; the solver pushes it out of the
+    // way. It yields at least YieldSec, then until the clip's pose of it is
+    // clear of the opponent: a guard that does not fit at close range stays
+    // tucked instead of jamming again and again.
     if (CurrentPosture == Posture::KnockedDown) return;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         PartState& Limb = Parts[Index];
@@ -743,43 +763,77 @@ void Rig::updateJams(float Dt) {
         if (!Limb.Unjam || Limb.Limb != LimbPart) continue;
 
         bool Touching = false;
-        bool Overlapping = false;
         float Error = 0.0f;
         for (const auto& Joint : Joints) {
             const PartState& Part = getPart(Joint.Child);
             if (!Part.Unjam || Part.Limb != LimbPart) continue;
-            if (Limb.Freed) {
-                Overlapping = Overlapping || Physics->isOverlappingOtherFighter(Part.Handle);
-            } else {
-                Touching = Touching || Physics->isTouchingOtherFighter(Part.Handle);
-                Error = std::max(Error, std::abs(Joint.Target - Joint.Handle.getAngle()));
-            }
+            Touching = Touching || Physics->isTouchingOtherFighter(Part.Handle);
+            Error = std::max(Error, std::abs(Joint.Wish - Joint.Handle.getAngle()));
         }
-        if (Limb.Freed) {
-            if (!Overlapping) setLimbFreed(LimbPart, false);
+        if (Limb.Yielding) {
+            Limb.YieldSec += Dt;
+            if (Limb.YieldSec >= Control.YieldSec && !isWishBlocked(LimbPart)) setLimbYielding(LimbPart, false);
             continue;
         }
         Limb.StuckSec = Touching && Error > Control.JamAngle ? Limb.StuckSec + Dt : 0.0f;
-        if (Limb.StuckSec >= Control.JamSec) setLimbFreed(LimbPart, true);
+        if (Limb.StuckSec >= Control.JamSec) setLimbYielding(LimbPart, true);
     }
 }
 
-void Rig::setLimbFreed(BodyPart Limb, bool Freed) {
+void Rig::setLimbYielding(BodyPart Limb, bool Yielding) {
     getPart(Limb).StuckSec = 0.0f;
+    getPart(Limb).YieldSec = 0.0f;
     for (auto& Part : Parts) {
-        if (!Part.Unjam || Part.Limb != Limb) continue;
-        Part.Freed = Freed;
-        refreshCollisionMask(Part);
+        if (Part.Unjam && Part.Limb == Limb) Part.Yielding = Yielding;
     }
+    for (auto& Joint : Joints) {
+        const PartState& Part = getPart(Joint.Child);
+        if (Part.Unjam && Part.Limb == Limb) Joint.YieldWish = Joint.Wish;
+    }
+    refreshTargets();
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} {} {}", FighterIndex + 1, getBodyPartName(Limb),
-                                    Freed ? "stuck in the opponent: lets go" : "is free again"));
+                                    Yielding ? "stuck in the opponent: yields" : "stops yielding"));
+    }
+}
+
+bool Rig::isWishBlocked(BodyPart Limb) const {
+    // Forward kinematics of the limb at the clip's angles; the parent of
+    // its topmost part stays where it is.
+    PerBodyPart<Placement> Pose{};
+    std::bitset<BodyPartCount> Placed;
+    for (const auto& Joint : Joints) {
+        const PartState& Child = getPart(Joint.Child);
+        if (!Child.Unjam || Child.Limb != Limb) continue;
+        const auto ParentIndex = static_cast<size_t>(Joint.Parent);
+        const PartState& Parent = Parts[ParentIndex];
+        const Placement From = Placed.test(ParentIndex) ? Pose[ParentIndex]
+                                                        : Placement{.Position = Parent.Handle.getPosition(),
+                                                                    .Angle = Parent.Handle.getAngle()};
+        const float Angle = From.Angle + Joint.Wish;
+        const Vec2 Anchor = From.Position + rotate(Joint.AnchorInParent, From.Angle);
+        const auto ChildIndex = static_cast<size_t>(Joint.Child);
+        Pose[ChildIndex] = {.Position = Anchor + rotate(Joint.ChildFromAnchor, Angle), .Angle = Angle};
+        Placed.set(ChildIndex);
+        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, YieldClearance)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Rig::refreshTargets() {
+    for (auto& Joint : Joints) {
+        const auto Child = static_cast<size_t>(Joint.Child);
+        Joint.Target = Joint.Wish;
+        if (Parts[Child].Yielding && YieldPosed.test(Child)) {
+            Joint.Target = std::clamp(YieldAngles[Child] * Facing, Joint.LowerAngle, Joint.UpperAngle);
+        }
     }
 }
 
 void Rig::refreshCollisionMask(PartState& Part) const {
     uint64_t Mask = Part.CollisionMask;
-    if (Part.Unjam && getPart(Part.Limb).Freed) Mask = ArenaBit;
     if (CurrentPosture == Posture::KnockedDown) Mask &= ~PosedPartBit;
     Part.Handle.setCollisionMask(Mask);
 }
@@ -795,9 +849,10 @@ void Rig::knockDown(Vec2 Velocity, float Spin) {
 
     for (auto& Part : Parts) {
         if (Part.Kinematic) Physics->setBodyType(Part.Handle, physics::BodyType::Dynamic);
-        Part.Freed = false;
+        Part.Yielding = false;
         Part.StuckSec = 0.0f;
     }
+    refreshTargets();
     // The whole body takes the momentum of the hit as one rigid body: every
     // part moves with the push plus the spin about the center of mass. The
     // motion the parts had is dropped: a physical part hit by a kinematic leg
@@ -855,7 +910,7 @@ void Rig::turnAround() {
     releaseFeet();
 
     // The arms now reach to the other side, maybe into the opponent behind:
-    // a limb that overlaps it passes through until it is out.
+    // a limb that overlaps it yields, and the solver pushes it out.
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         const auto LimbPart = static_cast<BodyPart>(Index);
         const PartState& Limb = Parts[Index];
@@ -863,7 +918,7 @@ void Rig::turnAround() {
         const bool Overlapping = std::ranges::any_of(Parts, [&](const PartState& Part) {
             return Part.Unjam && Part.Limb == LimbPart && Physics->isOverlappingOtherFighter(Part.Handle);
         });
-        if (Overlapping) setLimbFreed(LimbPart, true);
+        if (Overlapping) setLimbYielding(LimbPart, true);
     }
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} turns to face {}", FighterIndex + 1, Facing > 0.0f ? "right" : "left"));
@@ -928,11 +983,11 @@ void Rig::drawFeetAndLimbs() const {
         if (!Limb.Locked) continue;
         debug::drawCross(debug::Cat::Contacts, {Limb.LockX, 0.0f}, FootLockMarkSize);
     }
-    // Limbs that let go of the opponent.
+    // Limbs that yield to the opponent.
     for (const auto& Part : Parts) {
-        if (!Part.Unjam || !getPart(Part.Limb).Freed) continue;
+        if (!Part.Yielding) continue;
         drawShape(debug::Cat::Contacts, Part.Shape, Part.Handle.getPosition(), Part.Handle.getAngle());
-        debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "free");
+        debug::drawText(debug::Cat::Contacts, Part.Handle.getPosition(), "yields");
     }
     // Posed strikers held at the opponent's posed parts in the last step.
     if (StoppedAtContact) {
@@ -987,8 +1042,9 @@ void Rig::fillPanel() const {
         if (!Limb.Unjam || Limb.Limb != static_cast<BodyPart>(Index)) continue;
         if (!Limbs.empty()) Limbs += ", ";
         Limbs += std::format("{} {}", getBodyPartName(static_cast<BodyPart>(Index)),
-                             Limb.Freed ? "free" : Limb.StuckSec > 0.0f ? std::format("stuck {:.2f} s", Limb.StuckSec)
-                                                                        : "ok");
+                             Limb.Yielding        ? std::format("yields {:.2f} s", Limb.YieldSec)
+                             : Limb.StuckSec > 0.0f ? std::format("stuck {:.2f} s", Limb.StuckSec)
+                                                    : "ok");
     }
     if (StayDown) Limbs += Limbs.empty() ? "stays down" : ", stays down";
     debug::setPanel(Name + " limbs", Limbs);

@@ -37,8 +37,9 @@
 ///
 /// Between two fighters (task 2.1): parts of the "passThrough" list pass the
 /// same parts of the opponent (empty in the shipped rig: the arms collide,
-/// a jab hits the raised guard), a limb stuck in the opponent lets go until
-/// it is free ("unjam"), posed legs hit posed legs (physics::World), the
+/// a jab hits the raised guard), a limb stuck in the opponent yields: its
+/// motors soften and it pulls back to the rig's yield pose, still colliding
+/// ("unjam"; nothing passes through), posed legs hit posed legs (physics::World), the
 /// pelvises keep apart and away from the walls (rig/spacing.hpp). A posed
 /// striking limb stops where it meets the opponent's posed parts
 /// (stopAtContact): Box2D does not collide two kinematic bodies, so a kick
@@ -209,9 +210,10 @@ public:
     bool isStayingDown() const { return StayDown; }
     /// Is \p Part moved by code right now (not physical)?
     bool isKinematic(BodyPart Part) const;
-    /// Has \p Part let go of the opponent: it passes through the opponent
-    /// until it is free (ControlParams::JamAngle)?
-    bool isUnjamming(BodyPart Part) const;
+    /// Does the limb of \p Part yield: it was stuck in the opponent, so its
+    /// motors are soft and it pulls back to the yield pose
+    /// (ControlParams::JamAngle, YieldSec)? It still collides.
+    bool isYielding(BodyPart Part) const;
     float getStiffness() const;
     /// Mass of the whole fighter (the profile's), kg.
     float getTotalMass() const { return TotalMass; }
@@ -272,10 +274,11 @@ private:
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
         uint64_t CollisionMask = 0; ///< While standing; a knockdown also drops the posed parts.
-        bool Unjam = false;       ///< May let go of the opponent (RigDef::Unjam).
+        bool Unjam = false;       ///< May yield when stuck in the opponent (RigDef::Unjam).
         BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
         float StuckSec = 0.0f;    ///< Limb only: how long it has been stuck in the opponent.
-        bool Freed = false;       ///< Passes through the opponent until it is free.
+        bool Yielding = false;    ///< Soft, pulling back to the yield pose.
+        float YieldSec = 0.0f;    ///< Limb only: how long it has been yielding.
     };
 
     struct JointState {
@@ -285,7 +288,9 @@ private:
         float Strength = 1.0f;
         float LowerAngle = 0.0f;  ///< Mirrored, rad.
         float UpperAngle = 0.0f;
-        float Target = 0.0f;      ///< Mirrored and clamped to the limits, rad.
+        float Wish = 0.0f;        ///< The clip's angle, mirrored and clamped to the limits, rad.
+        float Target = 0.0f;      ///< What the motor drives to: Wish, or the yield pose, rad.
+        float YieldWish = 0.0f;   ///< Wish when the limb started to yield, rad.
         Vec2 AnchorInParent;      ///< Hinge in the parent's body frame (reference pose).
         Vec2 ChildFromAnchor;     ///< Child body origin relative to the hinge (reference pose).
         float RestDirection = 0.0f; ///< Direction of the child from the hinge in the reference pose, rad.
@@ -352,7 +357,12 @@ private:
     static float getRestepDistance(const Leg& Limb);
     void driveMotors();
     void updateJams(float Dt);
-    void setLimbFreed(BodyPart Limb, bool Freed);
+    void setLimbYielding(BodyPart Limb, bool Yielding);
+    /// Would the limb whose topmost part is \p Limb, posed at the clip's
+    /// angles from where its parent is now, overlap the opponent?
+    bool isWishBlocked(BodyPart Limb) const;
+    /// Joint targets from the wishes and the yielding limbs.
+    void refreshTargets();
     void refreshCollisionMask(PartState& Part) const;
     void knockDown(Vec2 Velocity, float Spin);
     void startGettingUp();
@@ -379,6 +389,8 @@ private:
     std::vector<JointState> Joints;   ///< Parents before children.
     std::vector<Leg> Legs;
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
+    PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
+    std::bitset<BodyPartCount> YieldPosed;
 
     PelvisController Controller;
     Posture CurrentPosture = Posture::Standing;

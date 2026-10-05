@@ -134,10 +134,15 @@ struct ControlParams {
     /// \name Limbs stuck in the opponent
     /// @{
     /// A limb of the "unjam" list that touches the opponent and is this far
-    /// from its target angle for JamSec lets go: it passes through the
-    /// opponent until it is free, rad.
+    /// from its target angle for JamSec yields: its motors soften and it
+    /// pulls back towards RigDef::YieldAngles, still colliding, rad.
     float JamAngle = 0.35f;
     float JamSec = 0.3f;               ///< s.
+    /// Multiplies the motor stiffness of a yielding limb.
+    float YieldStiffness = 0.3f;
+    /// A limb yields at least this long, and then until it no longer touches
+    /// the opponent (or the clip asks it for something new), s.
+    float YieldSec = 0.25f;
     /// @}
 };
 
@@ -168,9 +173,15 @@ struct RigDef {
     /// jam both. They still collide with every other part. Only physical
     /// parts may pass through.
     std::bitset<BodyPartCount> PassThrough;
-    /// Physical parts that let go of the opponent when they are stuck in it
-    /// (the "unjam" list of the file; ControlParams::JamAngle).
+    /// Physical parts that yield when they are stuck in the opponent (the
+    /// "unjam" list of the file; ControlParams::JamAngle): a chain of them
+    /// (upper arm and forearm) softens and pulls back as a whole.
     std::bitset<BodyPartCount> Unjam;
+    /// Where a yielding limb pulls back to (the "yieldPose" object of the
+    /// file: joint angles in degrees like a clip pose, here in radians, for
+    /// a fighter facing right). Joints it leaves out keep the clip's target.
+    PerBodyPart<float> YieldAngles{};
+    std::bitset<BodyPartCount> YieldPosed;   ///< The joints YieldAngles sets.
     WeaponMount Weapon;
     ControlParams Control;
 

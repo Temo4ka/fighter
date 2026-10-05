@@ -40,6 +40,8 @@
 
   "unjam": ["UpperArmL", "ForearmL", "UpperArmR", "ForearmR"],
 
+  "yieldPose": { "UpperArmL": 30, "ForearmL": 145, "UpperArmR": 20, "ForearmR": 145 },
+
   "weapon": { "part": "ForearmR", "angle": 0, "radius": 0.025 },
 
   "control": {
@@ -77,6 +79,8 @@
     "footStepLift": 0.5,
 
     "jamAngle": 0.35,
-    "jamSec": 0.3
+    "jamSec": 0.3,
+    "yieldStiffness": 0.3,
+    "yieldSec": 0.25
   }
 }

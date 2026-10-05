@@ -331,32 +331,63 @@ TEST_CASE("Rig: the arms of two fighters pass each other", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: a limb stuck in the opponent lets go until it is free", "[rig]") {
-    // The left fighter reaches straight into the right one's chest.
-    Duel Stuck(-0.3f, 0.3f, 3.0f);
+TEST_CASE("Rig: a limb stuck in the opponent yields and pulls back, still colliding", "[rig]") {
+    // The left fighter reaches straight into the right one's chest. The
+    // guards start overlapping (the bodies are teleported into the stance):
+    // the solver takes them apart first.
+    Duel Stuck(-0.35f, 0.35f, 3.0f);
+    Stuck.run(30);
     PerBodyPart<float> Reaching = loadStance();
     Reaching[static_cast<size_t>(BodyPart::UpperArmL)] = 1.57f;
     Reaching[static_cast<size_t>(BodyPart::ForearmL)] = 0.0f;
     Stuck.Left.setTargetAngles(Reaching);
-    const ControlParams& Control = Stuck.Left.getControl();
+    const RigDef Def = loadHumanoid();
+    REQUIRE(Def.YieldPosed.test(static_cast<size_t>(BodyPart::ForearmL)));
 
-    bool Freed = false;
-    for (int Step = 0; Step < 60 && !Freed; ++Step) {
-        Stuck.run(1);
-        Freed = Stuck.Left.isUnjamming(BodyPart::ForearmL);
+    // Nothing passes through: the arm is pushed out of the chest (the posed
+    // feet are the spacing's, not checked here).
+    float Deepest = 0.0f;
+    const auto runWatching = [&](int Steps) {
+        for (int Step = 0; Step < Steps; ++Step) {
+            Stuck.run(1);
+            const auto Overlap = Stuck.PhysWorld.findDeepestOverlap();
+            if (Overlap && !Def.Kinematic.test(static_cast<size_t>(Overlap->First.Part))) {
+                Deepest = std::max(Deepest, Overlap->Depth);
+            }
+        }
+    };
+    bool Yielding = false;
+    for (int Step = 0; Step < 60 && !Yielding; ++Step) {
+        runWatching(1);
+        Yielding = Stuck.Left.isYielding(BodyPart::ForearmL);
     }
-    REQUIRE(Freed);
-    CHECK(Stuck.Left.isUnjamming(BodyPart::UpperArmL));   // the whole arm
-    CHECK_FALSE(Stuck.Left.isUnjamming(BodyPart::ForearmR));
-    // Free, it reaches its target through the opponent.
-    Stuck.run(30);
-    CHECK(Stuck.Left.getJointAngle(BodyPart::UpperArmL) == Approx(1.57f).margin(Control.JamAngle));
+    REQUIRE(Yielding);
+    CHECK(Stuck.Left.isYielding(BodyPart::UpperArmL));   // the whole arm
+    CHECK_FALSE(Stuck.Left.isYielding(BodyPart::ForearmR));
+    // It pulls back to the yield pose: the elbow bends, from straight (the
+    // wish) more than halfway to the yield angle.
+    runWatching(10);
+    CHECK(Stuck.Left.getJointAngle(BodyPart::ForearmL) > Def.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] * 0.5f);
+    CHECK(Deepest < 0.01f);
 
-    // Pulled back out of the opponent, it collides again.
+    // A new wish (the clip asks for the guard) ends the yield at once.
     Stuck.Left.setTargetAngles(loadStance());
+    CHECK_FALSE(Stuck.Left.isYielding(BodyPart::ForearmL));
+}
+
+TEST_CASE("Rig: a yielding limb stops yielding once it is clear", "[rig]") {
+    Duel Stuck(-0.35f, 0.35f, 3.0f);
+    PerBodyPart<float> Reaching = loadStance();
+    Reaching[static_cast<size_t>(BodyPart::UpperArmL)] = 1.57f;
+    Reaching[static_cast<size_t>(BodyPart::ForearmL)] = 0.0f;
+    Stuck.Left.setTargetAngles(Reaching);
+    for (int Step = 0; Step < 60 && !Stuck.Left.isYielding(BodyPart::ForearmL); ++Step) Stuck.run(1);
+    REQUIRE(Stuck.Left.isYielding(BodyPart::ForearmL));
+    // Backing off, the arm is clear of the opponent: after yieldSec it
+    // drives to the clip again.
     Stuck.Left.setMoveVelocity(-1.0f);
     Stuck.run(60);
-    CHECK_FALSE(Stuck.Left.isUnjamming(BodyPart::ForearmL));
+    CHECK_FALSE(Stuck.Left.isYielding(BodyPart::ForearmL));
 }
 
 TEST_CASE("Rig: a fighter at the wall touches it with its back when facing away", "[rig]") {
