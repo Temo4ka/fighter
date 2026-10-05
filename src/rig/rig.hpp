@@ -337,6 +337,8 @@ public:
     /// negative: how deep they overlap (a striker: the larger of its gaps
     /// at its two places, PartPlacement::Striking). Nothing moves.
     float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
+    /// Are posed parts striking now (setStrikingParts())?
+    bool isStriking() const { return StrikingParts.any(); }
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
     /// @}

@@ -178,7 +178,10 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     // An overlap left over from the last step (two feet that met) only has
     // to shrink: it is pushed out eased.
     const float LeftOver = std::min(LeftMotion.getSpacingMotion().Overlap, RightMotion.getSpacingMotion().Overlap);
-    const float MaxOverlap = std::max(Params.MaxSoftOverlap, LeftOver);
+    // A strike sweeps fast: while one swings, overlaps are not eased (its
+    // stop at the contact needs the bodies where they are meant to be).
+    const bool Striking = Left.isStriking() || Right.isStriking();
+    const float MaxOverlap = Striking ? 0.0f : std::max(Params.MaxSoftOverlap, LeftOver);
     bool Hard = false;
     float OverlapLeft = Overlap > 0.0f ? getOverlap(Slowed + Pushed) : 0.0f;
     if (OverlapLeft > MaxOverlap) {
@@ -213,6 +216,11 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
           std::tuple(&RightMotion, RightPlanned, RightX, RightSlowX)}) {
         // A hard push does not make the next push faster than an eased one.
         const PelvisController::SpacingMotion Split = splitCorrection(*Motion, Planned, Corrected, Dt);
+        // A walk held back goes on at the speed it was let go (without the
+        // knockback): it picks up again gently.
+        if (Split.Slowed != 0.0f) {
+            Motion->slowWalk((Corrected - Motion->getPositionX()) / Dt - Motion->getKnockback());
+        }
         Motion->setSpacingMotion({.Slowed = Split.Slowed,
                                   .Pushed = Split.Pushed,
                                   .Eased = std::clamp((Corrected - SlowedTo) / Dt, -Params.PushMaxSpeed,

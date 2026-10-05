@@ -67,6 +67,11 @@ public:
         PlannedX += Delta;
         SpacingShift += Delta;
     }
+    /// The walk was held back to \p Speed (m/s, along the walk) in this
+    /// step: the walking speed drops to it (not below 0), so that it picks
+    /// up again with WalkAcceleration when the way is free instead of at
+    /// once.
+    void slowWalk(float Speed);
     /// Makes the planned position the current one.
     void commit(float Dt);
     /// Stands still at \p NewX: no walking, no knockback.

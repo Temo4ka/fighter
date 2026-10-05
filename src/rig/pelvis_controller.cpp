@@ -51,6 +51,11 @@ void PelvisController::limit(float MinX, float MaxX) {
     }
 }
 
+void PelvisController::slowWalk(float Speed) {
+    const float Along = WalkVelocity >= 0.0f ? 1.0f : -1.0f;
+    WalkVelocity = Along * std::clamp(Speed * Along, 0.0f, std::abs(WalkVelocity));
+}
+
 void PelvisController::commit(float Dt) {
     Velocity = Dt > 0.0f ? (PlannedX - PositionX) / Dt : 0.0f;
     PositionX = PlannedX;
