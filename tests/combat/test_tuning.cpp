@@ -42,9 +42,8 @@ TEST_CASE("parseCombatTuning: the stop of a posed strike at a contact", "[combat
     CHECK(Tuning.ContactStopDepth == 0.02f);
     CHECK(Tuning.ContactHoldSec == 0.1f);
     CHECK(Tuning.ContactRecoveryBlendSec == 0.2f);
-    CHECK_FALSE(Tuning.ContactStopInStartup);
-    CHECK(parseCombatTuning(R"({ "contactStopInStartup": true })").ContactStopInStartup);
-    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactStopInStartup": 1 })"), std::runtime_error);
+    // The stop acts in every phase: there is no switch for the startup any more.
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "contactStopInStartup": true })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "contactStopDepth": 0 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "contactHoldSec": -1 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "contactRecoveryBlendSec": -1 })"), std::runtime_error);

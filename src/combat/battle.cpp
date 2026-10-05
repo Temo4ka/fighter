@@ -153,6 +153,7 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     struct Strike {
         physics::HitEvent Hit;
         const MoveDef* Move = nullptr;
+        bool Jammed = false;   ///< Ran into the opponent in its startup: not a clean strike.
     };
     std::array<std::optional<Strike>, 2> Strikes;
     for (const auto& Contact : Sim->PhysWorld.getHitEvents()) {
@@ -162,7 +163,8 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         if (!IsStrike()) continue;
         std::optional<Strike>& Strongest = Strikes[Hit.Attacker.Fighter];
         if (!Strongest || Hit.Impulse > Strongest->Hit.Impulse) {
-            Strongest = Strike{.Hit = Hit, .Move = Sim->Fighters[Hit.Attacker.Fighter].getMove()};
+            const Fighter& Striker = Sim->Fighters[Hit.Attacker.Fighter];
+            Strongest = Strike{.Hit = Hit, .Move = Striker.getMove(), .Jammed = Striker.isJammed()};
         }
     }
 
@@ -177,9 +179,9 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         // A hit pushes the victim away from the attacker.
         const float AttackerX = Attacker.getRig().getPartPosition(BodyPart::Pelvis).X;
         const float VictimX = Victim.getRig().getPartPosition(BodyPart::Pelvis).X;
-        const HitOutcome Outcome =
-            Victim.takeHit(Hit, Move, Attacker.getPowerScale(Move), VictimX >= AttackerX ? 1.0f : -1.0f);
-        Attacker.onStrikeLanded(!Outcome.Blocked);
+        const HitOutcome Outcome = Victim.takeHit(Hit, Move, Attacker.getPowerScale(Move),
+                                                  VictimX >= AttackerX ? 1.0f : -1.0f, Landed->Jammed);
+        Attacker.onStrikeLanded(!Outcome.Blocked && !Landed->Jammed);
         rig::pushApartOnHit(Attacker.getRig(), Victim.getRig());
 
         FighterReport& Hitter = Reports[Hit.Attacker.Fighter];
@@ -203,10 +205,11 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         const Vec2 Direction = (Victim.getRig().getPartPosition(Hit.Victim.Part) -
                                 Attacker.getRig().getPartPosition(Hit.Attacker.Part)).getNormalized();
         Sim->RecentHits.push_back({.Hit = Hit, .Direction = Direction});
-        debug::logEvent(std::format("{} {} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{} (J={:.1f} N*s)",
+        debug::logEvent(std::format("{} {} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}{} (J={:.1f} N*s)",
                                     PlayerNames[Hit.Attacker.Fighter], Move.Id, getBodyPartName(Hit.Victim.Part),
                                     Outcome.Strength, getReactionLevelName(Outcome.Reaction), Outcome.Damage,
-                                    Outcome.Blocked ? ", blocked" : "", Hit.Impulse));
+                                    Outcome.Blocked ? ", blocked" : "", Landed->Jammed ? ", jammed" : "",
+                                    Hit.Impulse));
     }
 
     for (auto&& [Index, Player] : std::views::zip(std::views::iota(uint8_t{0}), Sim->Fighters)) {

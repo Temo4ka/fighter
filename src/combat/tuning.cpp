@@ -43,7 +43,6 @@ constexpr std::array TuningFields = {
 /// The only whole-number parameter.
 constexpr std::string_view MaxChainLengthKey = "maxChainLength";
 /// The yes/no parameters.
-constexpr std::string_view ContactStopInStartupKey = "contactStopInStartup";
 constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
 
 } // namespace
@@ -59,13 +58,6 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
                     throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
                 }
                 Tuning.MaxChainLength = Value.get<int>();
-                continue;
-            }
-            if (Key == ContactStopInStartupKey) {
-                if (!Value.is_boolean()) {
-                    throw std::runtime_error(std::format("{} must be true or false, not {}", Key, Value.dump()));
-                }
-                Tuning.ContactStopInStartup = Value.get<bool>();
                 continue;
             }
             if (Key == StopSlidesFeetKey) {

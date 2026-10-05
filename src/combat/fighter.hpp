@@ -113,18 +113,26 @@ public:
     /// weapon power for a weapon move, \p Direction +1 if the hit pushes it
     /// to the right, -1 to the left. Applies damage, buildup, block stamina
     /// and the reaction (stun, knockdown, knockout) and returns what it did.
-    HitOutcome takeHit(const physics::HitEvent& Hit, const MoveDef& Move, float PowerScale, float Direction);
+    /// A \p JammedStrike (Fighter::isJammed) gets no min_reaction.
+    HitOutcome takeHit(const physics::HitEvent& Hit, const MoveDef& Move, float PowerScale, float Direction,
+                       bool JammedStrike = false);
     /// The current attack landed; it hits only once, later contacts are
-    /// bumps. \p Clean: not blocked, so it may be chained.
+    /// bumps. \p Clean: not blocked and not jammed, so it may be chained.
     void onStrikeLanded(bool Clean);
-    /// Call after the physics step: a posed striking limb of an attack in or
-    /// past its striking phase that sank into the opponent's posed parts
-    /// goes back to the contact (rig::Rig::stopAtContact). The first stop of
-    /// an attack holds the clip at the contact pose for
-    /// CombatTuning::ContactHoldSec; then the recovery plays, blending from
-    /// the contact pose over CombatTuning::ContactRecoveryBlendSec. The hit
-    /// itself is the physics world's, as for any strike.
+    /// Call after the physics step: a posed striking limb of an attack that
+    /// ran into the opponent (its posed parts, or a part the solver could
+    /// not push away) goes back to the contact (rig::Rig::stopAtContact), in
+    /// any phase of the attack. The first stop of an attack holds the clip
+    /// at the contact pose for CombatTuning::ContactHoldSec; then the
+    /// recovery plays, blending from the contact pose over
+    /// CombatTuning::ContactRecoveryBlendSec. The hit itself is the physics
+    /// world's, as for any strike. A first stop in the startup jams the
+    /// attack (isJammed): the leg did hit, so that contact is a strike too,
+    /// with its real speed, but not a clean one (no min_reaction, no chain).
     void stopAtContact();
+    /// Did the current attack run into the opponent in its startup
+    /// (stopAtContact)?
+    bool isJammed() const { return getMove() && Jammed; }
     /// Is the attack holding the pose of a posed strike stopped at the
     /// opponent (stopAtContact)?
     bool isHoldingContact() const { return getMove() && Contact == ContactStage::Holding; }
@@ -249,6 +257,7 @@ private:
     float AttackTimeBefore = 0.0f;         ///< Clip time before the last step, s.
     ContactStage Contact = ContactStage::None;
     float ContactHoldLeftSec = 0.0f;       ///< While Holding, real time.
+    bool Jammed = false;                   ///< Stopped at the opponent in the startup.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
     bool AttackLanded = false;
     bool AttackHitClean = false;

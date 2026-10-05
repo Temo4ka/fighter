@@ -17,6 +17,5 @@
   "endSettleSec": 1.2,
   "contactStopDepth": 0.01,
   "contactHoldSec": 0.08,
-  "contactRecoveryBlendSec": 0.15,
-  "contactStopInStartup": false
+  "contactRecoveryBlendSec": 0.15
 }

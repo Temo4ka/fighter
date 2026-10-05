@@ -43,6 +43,9 @@ constexpr int StopSearchSteps = 20;
 /// A pair of posed parts held at a contact deeper than this many stop depths
 /// before the step sank in while nothing stopped it (findPosedStop()).
 constexpr float InsideFactor = 2.0f;
+/// A posed striker approaching another part slower than this does not run
+/// into it (findPosedStop()): it slides along it or leaves it, m/s.
+constexpr float MinClosingSpeed = 0.05f;
 
 /// The closest approach of two posed shapes.
 struct ShapeGap {
@@ -56,6 +59,8 @@ float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other);
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage);
 b2ShapeProxy makeLocalProxy(b2ShapeId Shape);
 ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, b2Transform TransformB);
+ShapeGap measureBodyGap(b2BodyId BodyA, b2Transform TransformA, b2BodyId BodyB, b2Transform TransformB);
+b2Transform makeTransform(Vec2 Position, Vec2 Rotation);
 b2Transform getTransform(b2ShapeId Shape);
 
 } // namespace
@@ -292,7 +297,8 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
     // is no contact to go back to and it can be no hit. A pair held at the
     // contact is about MaxDepth deep, so while holding the limit has room.
     // Touching is as for posed hits: closer than TouchTolerance.
-    const float MaxBefore = Holding ? MaxDepth * InsideFactor : -TouchTolerance;
+    const float MaxPosedBefore = Holding ? MaxDepth * InsideFactor : -TouchTolerance;
+    const float MaxDynamicBefore = Holding ? MaxDepth * InsideFactor : MaxDepth;
     struct Pair {
         const PartBody* Mover = nullptr;
         const PartBody* Other = nullptr;
@@ -302,11 +308,23 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
         const auto Slot = findSlot(Striker);
         if (!Slot || Striker.getType() != BodyType::Kinematic) continue;
         const PartBody& Mover = PartBodies[*Slot];
+        const Placement MoverBefore = getPlacementDuringStep(Mover, 0.0f);
+        const Placement MoverNow = getPlacementDuringStep(Mover, 1.0f);
         for (const auto& Other : PartBodies) {
-            if (Other.Part.Fighter == Mover.Part.Fighter || Other.Handle.getType() != BodyType::Kinematic) continue;
-            const float Before = measurePairPenetration(Mover, getPlacementDuringStep(Mover, 0.0f), Other,
-                                                        getPlacementDuringStep(Other, 0.0f));
-            if (Before <= MaxBefore) Pairs.push_back({.Mover = &Mover, .Other = &Other});
+            if (Other.Part.Fighter == Mover.Part.Fighter) continue;
+            const bool Posed = Other.Handle.getType() == BodyType::Kinematic;
+            const Placement OtherBefore = getPlacementDuringStep(Other, 0.0f);
+            const ShapeGap GapBefore = measureBodyGap(loadBody(Mover.Handle.Id), makeTransform(MoverBefore.Position, MoverBefore.Rotation),
+                                                      loadBody(Other.Handle.Id), makeTransform(OtherBefore.Position, OtherBefore.Rotation));
+            if (-GapBefore.Distance > (Posed ? MaxPosedBefore : MaxDynamicBefore)) continue;
+            const float Now = measurePairPenetration(Mover, MoverNow, Other, getPlacementDuringStep(Other, 1.0f));
+            if (Now < -TouchTolerance || (!Posed && Now <= MaxDepth)) continue;
+            // Closing: the striker moved towards the other part (the
+            // normal points from it to the other part).
+            const Vec2 Relative = getVelocityBeforeStep(Mover, GapBefore.Point) -
+                                  getVelocityBeforeStep(Other, GapBefore.Point);
+            if (dot(Relative, GapBefore.Normal) < MinClosingSpeed) continue;
+            Pairs.push_back({.Mover = &Mover, .Other = &Other});
         }
     }
     // The opponent's parts stay where they are now.
@@ -554,18 +572,9 @@ float World::measurePosedPenetration(const PartBody& Entry, const Placement& Pla
 
 float World::measurePairPenetration(const PartBody& Entry, const Placement& Placed, const PartBody& Other,
                                     const Placement& OtherPlaced) const {
-    const b2Transform Own{toBox2D(Placed.Position), {Placed.Rotation.X, Placed.Rotation.Y}};
-    const b2Transform Theirs{toBox2D(OtherPlaced.Position), {OtherPlaced.Rotation.X, OtherPlaced.Rotation.Y}};
-    std::array<b2ShapeId, MaxShapesPerBody> OwnStorage{};
-    std::array<b2ShapeId, MaxShapesPerBody> OtherStorage{};
-    const std::span<b2ShapeId> OtherShapes = getShapes(loadBody(Other.Handle.Id), OtherStorage);
-    float Deepest = std::numeric_limits<float>::lowest();
-    for (const auto& OwnShape : getShapes(loadBody(Entry.Handle.Id), OwnStorage)) {
-        for (const auto& OtherShape : OtherShapes) {
-            Deepest = std::max(Deepest, -measureGap(OwnShape, Own, OtherShape, Theirs).Distance);
-        }
-    }
-    return Deepest;
+    return -measureBodyGap(loadBody(Entry.Handle.Id), makeTransform(Placed.Position, Placed.Rotation), loadBody(Other.Handle.Id),
+                           makeTransform(OtherPlaced.Position, OtherPlaced.Rotation))
+                .Distance;
 }
 
 World::Placement World::getPlacementDuringStep(const PartBody& Entry, float Fraction) const {
@@ -636,6 +645,25 @@ b2ShapeProxy makeLocalProxy(b2ShapeId Shape) {
             return {};
     }
 }
+
+/// The closest approach of the shapes of two bodies placed at the given
+/// transforms (the deepest overlap if they overlap).
+ShapeGap measureBodyGap(b2BodyId BodyA, b2Transform TransformA, b2BodyId BodyB, b2Transform TransformB) {
+    std::array<b2ShapeId, MaxShapesPerBody> StorageA{};
+    std::array<b2ShapeId, MaxShapesPerBody> StorageB{};
+    const std::span<b2ShapeId> ShapesB = getShapes(BodyB, StorageB);
+    ShapeGap Closest{.Distance = std::numeric_limits<float>::max()};
+    for (const auto& ShapeA : getShapes(BodyA, StorageA)) {
+        for (const auto& ShapeB : ShapesB) {
+            const ShapeGap Gap = measureGap(ShapeA, TransformA, ShapeB, TransformB);
+            if (Gap.Distance < Closest.Distance) Closest = Gap;
+        }
+    }
+    return Closest;
+}
+
+/// A body transform from a position and a rotation given as (cos, sin).
+b2Transform makeTransform(Vec2 Position, Vec2 Rotation) { return {toBox2D(Position), {Rotation.X, Rotation.Y}}; }
 
 /// The world transform of the body a shape belongs to.
 b2Transform getTransform(b2ShapeId Shape) { return b2Body_GetTransform(b2Shape_GetBody(Shape)); }

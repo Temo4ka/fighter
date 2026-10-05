@@ -30,9 +30,9 @@
 /// step, so the normal of such a hit is taken from where the two parts were
 /// closest before the step, when they were still apart. Nothing stops a posed
 /// limb either: the code that poses it asks findPosedStop() how far along its
-/// motion of the step it could go without sinking into the opponent's posed
-/// parts and moves it back there with rewindBody() (a kick stops at the leg
-/// it hits).
+/// motion of the step it could go without sinking into the opponent and moves
+/// it back there with rewindBody() (a kick stops at the leg it hits, or at a
+/// torso the solver cannot push out of its way).
 ///
 //===----------------------------------------------------------------------===//
 
@@ -117,17 +117,25 @@ public:
     /// of other fighters, m; 0 if they do not touch. Only for a kinematic
     /// \p Target; the solver keeps dynamic parts out by itself.
     float getPosedPenetration(Body Target) const;
-    /// Do the posed bodies \p Strikers touch a posed part of another fighter
-    /// after the last step, and how much of their motion in the step could
-    /// they have made with none of them sinking deeper than \p MaxDepth (m)
-    /// into it (it stays where it is now)? Nullopt: no contact; 1: a contact
-    /// no deeper than MaxDepth; 0: the other part moved into them.
-    /// Only new contacts stop the strikers, unless \p Holding (they are held
-    /// at a contact already): then pairs that touched before the step count
-    /// too, up to twice MaxDepth deep. A deeper pair sank in while nothing
-    /// stopped it; there is no contact to go back to. A kinematic body moves
-    /// at a constant velocity during a step, so the share is found by
-    /// bisection along that straight motion.
+    /// Do the posed bodies \p Strikers run into a part of another fighter in
+    /// the last step, and how much of their motion in the step could they
+    /// have made with none of them sinking deeper than \p MaxDepth (m) into
+    /// it (it stays where it is now)? Nullopt: no contact; 1: a contact no
+    /// deeper than MaxDepth; 0: the other part moved into them.
+    /// Only closing contacts count: the striker moved towards the other part
+    /// before the step (a contact it slides along or leaves is no stop). A
+    /// posed part of the opponent counts when the striker touches it, a
+    /// dynamic one only when the striker sank deeper than MaxDepth into it:
+    /// the solver did not push it out of the way (it is held by its joints,
+    /// or it ignores posed parts, as a knocked-down body does).
+    /// A posed pair stops the strikers only as a new contact, unless
+    /// \p Holding (they are held at a contact already): then pairs that
+    /// touched before the step count too, up to twice MaxDepth deep. A
+    /// deeper pair sank in while nothing stopped it; there is no contact to
+    /// go back to. A dynamic pair counts if it was no deeper than MaxDepth
+    /// (twice that if holding) before the step. A kinematic body moves at a
+    /// constant velocity during a step, so the share is found by bisection
+    /// along that straight motion.
     std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, bool Holding) const;
     /// Puts \p Target back along its motion of the last step: \p Fraction 0
     /// is where it was before the step, 1 is where it is now. Velocities do

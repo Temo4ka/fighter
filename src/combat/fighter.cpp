@@ -107,8 +107,8 @@ void Fighter::applyControl(float Dt) { Body.applyControl(Dt); }
 
 bool Fighter::isHittable() const { return State != FighterState::KnockedDown && State != FighterState::KnockedOut; }
 
-HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack, float PowerScale,
-                            float Direction) {
+HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack, float PowerScale, float Direction,
+                            bool JammedStrike) {
     const HitInput Input{
         .Impulse = Hit.Impulse,
         .Part = Hit.Victim.Part,
@@ -119,7 +119,7 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
         .Guard = State == FighterState::Blocking ? std::optional(Guard) : std::nullopt,
         .MoveDamage = Attack.Damage,
         .PowerScale = PowerScale,
-        .MinReaction = Attack.MinReaction,
+        .MinReaction = JammedStrike ? ReactionLevel::None : Attack.MinReaction,
     };
     const HitOutcome Outcome = resolveHit(Rules->Reactions, Input);
     Hp = std::max(0.0f, Hp - Outcome.Damage);
@@ -136,12 +136,11 @@ void Fighter::onStrikeLanded(bool Clean) {
 }
 
 void Fighter::stopAtContact() {
-    // In the startup only if the tuning says so: such a contact is not a
-    // hit, so it jams the attack.
+    // In any phase: nothing passes through the opponent. A contact in the
+    // startup jams the attack.
     if (!getMove()) return;
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
-    if (Contact == ContactStage::None && Startup && !Tuning.ContactStopInStartup) return;
     const std::optional<float> Kept =
         Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth, Contact != ContactStage::None);
     if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
@@ -154,9 +153,10 @@ void Fighter::stopAtContact() {
     AttackTime = Startup ? Stopped : std::clamp(Stopped, AttackClip->ActiveBeginSec, AttackClip->ActiveEndSec);
     Contact = ContactStage::Holding;
     ContactHoldLeftSec = Tuning.ContactHoldSec;
+    Jammed = Startup;
     if constexpr (FIGHTER_DEBUG) {
-        debug::logEvent(std::format("P{} {} stopped at the opponent's posed parts (clip {:.2f} s)",
-                                    Body.getFighterIndex() + 1, Move->Id, AttackTime));
+        debug::logEvent(std::format("P{} {} {} at the opponent (clip {:.2f} s)", Body.getFighterIndex() + 1,
+                                    Move->Id, Startup ? "jammed in the startup" : "stopped", AttackTime));
     }
 }
 
@@ -186,7 +186,7 @@ float Fighter::getClipTime() const {
 bool Fighter::isAttackActive() const { return getMove() && AttackClip->isActiveAt(AttackTime); }
 
 bool Fighter::isStrikingWith(BodyPart Part) const {
-    return isAttackActive() && !AttackLanded && AttackClip->isStriker(Part);
+    return (isAttackActive() || isJammed()) && !AttackLanded && AttackClip->isStriker(Part);
 }
 
 bool Fighter::isAgainstWall() const {
@@ -256,6 +256,7 @@ void Fighter::drawDebug(std::string_view Name) const {
         } else if (getMove() && Contact == ContactStage::Recovering) {
             ContactText = std::format("{} recovers from the contact", Move->Id);
         }
+        if (isJammed()) ContactText += ", jammed in the startup";
         if (Body.isStoppedAtContact()) ContactText += " (stopped this step)";
         debug::setPanel(std::format("{} contact", Name), ContactText);
         debug::setPanel(std::format("{} legs", Name), describeLegs());
@@ -419,6 +420,7 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, const P
     AttackTimeBefore = 0.0f;
     Contact = ContactStage::None;
     ContactHoldLeftSec = 0.0f;
+    Jammed = false;
     AttackRate = Rate;
     TopRestarted = true;
     AttackLanded = false;

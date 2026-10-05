@@ -73,9 +73,10 @@ struct CombatTuning {
     /// After the end of the fight the bodies keep moving this long without
     /// input, so that a knockout fall plays out, s.
     float EndSettleSec = 1.2f;
-    /// \name A posed strike that meets the opponent's posed parts
-    /// A kick into the legs or the pelvis stops there (Box2D does not
-    /// collide two posed bodies, so nothing else would stop it).
+    /// \name A posed strike that runs into the opponent
+    /// A kick into the legs or the pelvis stops there in any phase of the
+    /// attack (Box2D does not collide two posed bodies, so nothing else would
+    /// stop it), and so does one into a torso the solver cannot push away.
     /// @{
     /// How deep a posed striking limb may sink into the opponent's posed
     /// parts before it is stopped, m.
@@ -85,11 +86,6 @@ struct CombatTuning {
     /// The recovery after a held contact blends from the contact pose into
     /// the clip's recovery over this time, s.
     float ContactRecoveryBlendSec = 0.15f;
-    /// Does a posed striker stop at the opponent's posed parts already in
-    /// the startup of the attack? Such a contact is not a hit (only the
-    /// active phase hits), so the attack is jammed. Off: in the startup the
-    /// limb passes through, as before.
-    bool ContactStopInStartup = false;
     /// @}
 };
 
