@@ -1,5 +1,6 @@
 #include "app/app.hpp"
 
+#include <algorithm>
 #include <array>
 #include <exception>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
+#include <SFML/Window/VideoMode.hpp>
 
 #include "core/log.hpp"
 #include "debug/draw.hpp"
@@ -28,9 +30,12 @@
 namespace fighter::app {
 namespace {
 
-constexpr unsigned WindowWidth = 1280;
-constexpr unsigned WindowHeight = 720;
+/// The window is 16:9, as large as fits in this share of the desktop, but
+/// not larger than PreferredWindowWidth; it can be resized afterwards.
+constexpr unsigned PreferredWindowWidth = 1600;
+constexpr float DesktopShare = 0.95f;
 
+sf::Vector2u getWindowSize();
 combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName);
 void publishStatsPanel(const combat::BattleConfig& Config, const stats::BalanceTable& Balance);
 
@@ -59,7 +64,7 @@ std::string getWinnerName(combat::Winner Outcome) {
 
 App::App(Options Settings)
     : Opts(std::move(Settings)),
-      Window(sf::VideoMode({WindowWidth, WindowHeight}), "Fighter sandbox"),
+      Window(sf::VideoMode(getWindowSize()), "Fighter sandbox"),
       Assets(Opts.Root),
       Renderer(Assets, FixedStepLoop::Config{}.StepSec)
 #if FIGHTER_DEBUG
@@ -269,6 +274,14 @@ void App::applyDebugAction(render::DebugAction Action) {
 #endif
 
 namespace {
+
+sf::Vector2u getWindowSize() {
+    const sf::Vector2u Desktop = sf::VideoMode::getDesktopMode().size;
+    const float FitWidth = std::min(static_cast<float>(Desktop.x) * DesktopShare,
+                                    static_cast<float>(Desktop.y) * DesktopShare * 16.0f / 9.0f);
+    const auto Width = static_cast<unsigned>(std::clamp(FitWidth, 640.0f, static_cast<float>(PreferredWindowWidth)));
+    return {Width, Width * 9 / 16};
+}
 
 combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName) {
     const std::filesystem::path DataDir = Root / "data";
