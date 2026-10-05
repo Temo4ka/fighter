@@ -74,6 +74,14 @@ public:
     /// other one now, whatever moves them (physics::World::findDeepestOverlap):
     /// nothing should pass through the opponent. Nullopt if nothing overlaps.
     std::optional<physics::PartOverlap> findDeepestOverlap() const;
+    /// The overlap of two parts of different fighters now that goes furthest
+    /// beyond what its pair may overlap (getOverlapTolerance). Nullopt if
+    /// nothing overlaps.
+    std::optional<physics::PartOverlap> findWorstOverlap() const;
+    /// How deep the parts of \p Overlap may sink into each other, m: two
+    /// arms pressed together by their motors CombatTuning::ArmOverlapTolerance,
+    /// any other pair CombatTuning::OverlapTolerance (data/combat.json).
+    float getOverlapTolerance(const physics::PartOverlap& Overlap) const;
 
 private:
     struct Simulation;
@@ -85,8 +93,9 @@ private:
     Surroundings getSurroundings(size_t Index) const;
     void publishSnapshot();
     void drawDebug() const;
-    /// The panel line "overlap" (now and the deepest so far) and a mark at
-    /// the deepest overlap of the fighters. Does nothing in the release build.
+    /// The panel line "overlap" (the worst overlap now and the worst so far,
+    /// with what their pairs may overlap) and a mark at the worst overlap of
+    /// the fighters. Does nothing in the release build.
     void drawOverlap();
 
     BattleConfig Cfg;

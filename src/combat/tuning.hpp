@@ -25,6 +25,25 @@ namespace fighter::combat {
 struct CombatTuning {
     /// Distance between the fighters' body origins at the start, m.
     float SpawnDistance = 2.4f;
+    /// \name Physics steps
+    /// Each simulation step is PhysicsSteps Box2D steps of PhysicsSubSteps
+    /// solver substeps each. More Box2D steps: a fast limb moves less per
+    /// step, so it sinks less deep into what it hits before the solver
+    /// pushes it out (nothing passes through the opponent); the cost grows
+    /// with PhysicsSteps * PhysicsSubSteps.
+    /// @{
+    int PhysicsSteps = 4;
+    int PhysicsSubSteps = 1;
+    /// @}
+    /// \name Allowed overlap of the fighters
+    /// How deep a part of one fighter may overlap a part of the other one
+    /// (Battle::findWorstOverlap, the "overlap" panel line, the invariant
+    /// tests), m. Two arms pressed into each other by their motors sink in a
+    /// little more than anything else.
+    /// @{
+    float ArmOverlapTolerance = 0.02f;
+    float OverlapTolerance = 0.01f;
+    /// @}
     /// Closing speed above which a contact between body parts of different
     /// fighters is reported by physics, m/s. Combat then keeps only the
     /// contacts of a striking limb in the active phase of an attack.

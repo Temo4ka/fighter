@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <format>
 #include <utility>
-#include <cstdio>
-#include <cstdlib>
 
 #include "debug/draw.hpp"
 #include "rig/pelvis_controller.hpp"
@@ -135,15 +133,11 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
             Shift = MaxShift;
         }
     }
-    if (std::getenv("DBG_SPACING") && Overlap > 0.0f) {
-        for (const float Trial : {0.0f, MaxShift}) {
-            const auto [LX, RX] = place(Trial);
-            std::fprintf(stderr, "  trial %.3f: L %.3f (now %.3f) R %.3f (now %.3f) leftIdx %d\n", Trial, LX, Left.getController().getPositionX(), RX, Right.getController().getPositionX(), Left.getFighterIndex());
-            for (const auto& P : Left.predictBody(LX, Dt)) std::fprintf(stderr, "    L (%.3f %.3f) %.2f\n", P.Position.X, P.Position.Y, P.Angle);
-            for (const auto& P : Right.predictBody(RX, Dt)) std::fprintf(stderr, "    R (%.3f %.3f) %.2f\n", P.Position.X, P.Position.Y, P.Angle);
-        }
+    if constexpr (FIGHTER_DEBUG) {
+        debug::setPanel("spacing", Overlap > 0.0f ? std::format("bodies overlap {:.3f} m -> apart {:.3f} m", Overlap,
+                                                                Shift)
+                                                  : std::format("pelvises apart {:.3f} m", Shift));
     }
-    if (std::getenv("DBG_SPACING") && Overlap > 0.0f) std::fprintf(stderr, "SPACING overlap %.4f -> shift %.4f (after %.4f, at max %.4f)\n", Overlap, Shift, getOverlap(Shift), getOverlap(MaxShift));
     if (Shift <= 0.0f) return;
     const auto [LeftX, RightX] = place(Shift);
     LeftMotion.shift(LeftX - LeftPlanned);

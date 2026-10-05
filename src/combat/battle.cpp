@@ -10,8 +10,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <cstdio>
-#include <cstdlib>
 
 #include "combat/clip_library.hpp"
 #include "combat/fighter.hpp"
@@ -56,6 +54,7 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 // Only the debug build draws the panel.
 [[maybe_unused]] std::string describeAction(const FighterView& View, const Fighter& Player);
 rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning);
+bool isArm(BodyPart Part);
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,
                            uint8_t Index);
 
@@ -74,8 +73,8 @@ struct Battle::Simulation {
     BattleRules Rules;               ///< Moves, clips, tuning and reactions; the fighters point here.
     std::vector<Fighter> Fighters;   ///< [0] left, [1] right; never resized after creation.
     std::vector<RecentHit> RecentHits;
-    /// The deepest overlap of the fighters seen so far and when, for the
-    /// panel (debug build only).
+    /// The worst overlap of the fighters seen so far (furthest beyond its
+    /// tolerance) and when, for the panel (debug build only).
     std::optional<physics::PartOverlap> WorstOverlap;
     double WorstOverlapSec = 0.0;
 };
@@ -88,7 +87,10 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves);
 
     Sim = std::make_unique<Simulation>(Simulation{
-        .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity, .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
+        .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity,
+                                     .StepPasses = Tuning.PhysicsSteps,
+                                     .SubSteps = Tuning.PhysicsSubSteps,
+                                     .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
         .Rules = {.Moves = std::move(Moves),
                   .Clips = std::move(Clips),
                   .Tuning = Tuning,
@@ -143,10 +145,6 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     // opponent's posed legs or pelvis goes back to the contact. The hits of
     // the step are already collected, with the speed the limb came in at.
     for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
-    if (std::getenv("DBG_SPACING")) {
-        if (const auto O = findDeepestOverlap(); O && O->Depth > 0.01f) std::fprintf(stderr, "TICK %llu overlap %.4f P%d %s / P%d %s states %d %d\n", (unsigned long long)Tick, O->Depth, O->First.Fighter + 1, std::string(getBodyPartName(O->First.Part)).c_str(), O->Second.Fighter + 1, std::string(getBodyPartName(O->Second.Part)).c_str(), (int)Left.getState(), (int)Right.getState());
-    }
-
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
 
@@ -282,6 +280,24 @@ void Battle::settle(float Dt) {
 
 std::optional<physics::PartOverlap> Battle::findDeepestOverlap() const { return Sim->PhysWorld.findDeepestOverlap(); }
 
+std::optional<physics::PartOverlap> Battle::findWorstOverlap() const {
+    std::optional<physics::PartOverlap> Worst;
+    float WorstExcess = 0.0f;
+    for (const auto& Overlap : Sim->PhysWorld.findOverlaps()) {
+        const float Excess = Overlap.Depth - getOverlapTolerance(Overlap);
+        if (Worst && Excess <= WorstExcess) continue;
+        Worst = Overlap;
+        WorstExcess = Excess;
+    }
+    return Worst;
+}
+
+float Battle::getOverlapTolerance(const physics::PartOverlap& Overlap) const {
+    const CombatTuning& Tuning = Sim->Rules.Tuning;
+    return isArm(Overlap.First.Part) && isArm(Overlap.Second.Part) ? Tuning.ArmOverlapTolerance
+                                                                   : Tuning.OverlapTolerance;
+}
+
 Surroundings Battle::getSurroundings(size_t Index) const {
     const Fighter& Opponent = Sim->Fighters[1 - Index];
     return {.OpponentX = Opponent.getRig().getPartPosition(BodyPart::Pelvis).X};
@@ -358,19 +374,25 @@ void Battle::drawDebug() const {
 
 void Battle::drawOverlap() {
     if constexpr (FIGHTER_DEBUG) {
-        const std::optional<physics::PartOverlap> Now = findDeepestOverlap();
-        if (Now && (!Sim->WorstOverlap || Now->Depth > Sim->WorstOverlap->Depth)) {
+        const std::optional<physics::PartOverlap> Now = findWorstOverlap();
+        const auto getExcess = [&](const physics::PartOverlap& Overlap) {
+            return Overlap.Depth - getOverlapTolerance(Overlap);
+        };
+        if (Now && (!Sim->WorstOverlap || getExcess(*Now) > getExcess(*Sim->WorstOverlap))) {
             Sim->WorstOverlap = Now;
             Sim->WorstOverlapSec = ElapsedSec;
         }
-        const auto describe = [](const physics::PartOverlap& Overlap) {
-            return std::format("{:.3f} m {} {} / {} {}", Overlap.Depth, PlayerNames[Overlap.First.Fighter],
+        const auto describe = [&](const physics::PartOverlap& Overlap) {
+            return std::format("{:.3f} m {} {} / {} {}{}", Overlap.Depth, PlayerNames[Overlap.First.Fighter],
                                getBodyPartName(Overlap.First.Part), PlayerNames[Overlap.Second.Fighter],
-                               getBodyPartName(Overlap.Second.Part));
+                               getBodyPartName(Overlap.Second.Part),
+                               getExcess(Overlap) > 0.0f
+                                   ? std::format(" OVER {:.3f} allowed", getOverlapTolerance(Overlap))
+                                   : std::string());
         };
         std::string Text = Now ? describe(*Now) : "-";
         if (Sim->WorstOverlap) {
-            Text += std::format(" (deepest {} at {:.1f} s)", describe(*Sim->WorstOverlap), Sim->WorstOverlapSec);
+            Text += std::format(" (worst {} at {:.1f} s)", describe(*Sim->WorstOverlap), Sim->WorstOverlapSec);
         }
         debug::setPanel("overlap", Text);
         if (Now && Now->Depth >= MinDrawnOverlap) {
@@ -422,6 +444,12 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena) {
             .HalfExtents = {WallThickness * 0.5f, WallHeight * 0.5f},
         });
     }
+}
+
+/// An upper arm or a forearm (with the weapon it holds).
+bool isArm(BodyPart Part) {
+    return Part == BodyPart::UpperArmL || Part == BodyPart::ForearmL || Part == BodyPart::UpperArmR ||
+           Part == BodyPart::ForearmR;
 }
 
 rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning) {

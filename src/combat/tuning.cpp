@@ -39,10 +39,21 @@ constexpr std::array TuningFields = {
     TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
     TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
     TuningField{"contactRecoveryBlendSec", &CombatTuning::ContactRecoveryBlendSec},
+    TuningField{"armOverlapTolerance", &CombatTuning::ArmOverlapTolerance},
+    TuningField{"overlapTolerance", &CombatTuning::OverlapTolerance},
 };
 
-/// The only whole-number parameter.
-constexpr std::string_view MaxChainLengthKey = "maxChainLength";
+/// A whole-number key of the file and the parameter it sets.
+struct CountField {
+    std::string_view Key;
+    int CombatTuning::*Member;
+};
+
+constexpr std::array CountFields = {
+    CountField{"maxChainLength", &CombatTuning::MaxChainLength},
+    CountField{"physicsSteps", &CombatTuning::PhysicsSteps},
+    CountField{"physicsSubSteps", &CombatTuning::PhysicsSubSteps},
+};
 /// The yes/no parameters.
 constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
 
@@ -54,11 +65,11 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
         for (const auto& [Key, Value] : Root.items()) {
-            if (Key == MaxChainLengthKey) {
+            if (const auto Count = std::ranges::find(CountFields, Key, &CountField::Key); Count != CountFields.end()) {
                 if (!Value.is_number_integer()) {
                     throw std::runtime_error(std::format("{} must be a whole number, not {}", Key, Value.dump()));
                 }
-                Tuning.MaxChainLength = Value.get<int>();
+                Tuning.*(Count->Member) = Value.get<int>();
                 continue;
             }
             if (Key == StopSlidesFeetKey) {
@@ -105,6 +116,10 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.ContactRecoveryBlendSec < 0.0f) {
         throw std::runtime_error("contactRecoveryBlendSec must not be negative");
     }
+    if (Tuning.PhysicsSteps < 1) throw std::runtime_error("physicsSteps must be at least 1");
+    if (Tuning.PhysicsSubSteps < 1) throw std::runtime_error("physicsSubSteps must be at least 1");
+    if (Tuning.ArmOverlapTolerance < 0.0f) throw std::runtime_error("armOverlapTolerance must not be negative");
+    if (Tuning.OverlapTolerance < 0.0f) throw std::runtime_error("overlapTolerance must not be negative");
     return Tuning;
 }
 

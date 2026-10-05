@@ -60,7 +60,11 @@ class World {
 public:
     struct Config {
         Vec2 Gravity{0.0f, -9.81f};   ///< m/s^2, Y up.
-        int SubSteps = 4;             ///< Box2D solver substeps per simulation step.
+        /// Box2D steps per step(), each over an equal share of its Dt: a
+        /// fast limb moves less per Box2D step, so it sinks less deep into
+        /// what it hits before the solver sees the contact.
+        int StepPasses = 1;
+        int SubSteps = 4;             ///< Box2D solver substeps per Box2D step.
         /// Closing speed above which a contact between body parts of
         /// different fighters is reported as a hit, m/s.
         float HitSpeedThreshold = 1.0f;
@@ -112,6 +116,10 @@ public:
     /// whatever their types and collision filters: the measure of "nothing
     /// passes through the opponent". Nullopt if no two parts overlap.
     std::optional<PartOverlap> findDeepestOverlap() const;
+    /// Every pair of body parts of different fighters that overlap now, with
+    /// the deepest overlap of their shapes, whatever their types and
+    /// collision filters; in a deterministic order.
+    std::vector<PartOverlap> findOverlaps() const;
     /// @}
 
     /// \name Posed parts of different fighters
@@ -232,6 +240,7 @@ private:
     float getStrikeMass(const PartBody& Entry) const;
 
     uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
+    int StepPasses = 1;
     int SubSteps = 4;
     std::vector<PartBody> PartBodies;
     std::vector<HitEvent> Hits;

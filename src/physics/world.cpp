@@ -11,9 +11,6 @@
 #include <span>
 #include <utility>
 #include <vector>
-#include <cstdlib>
-#include <cstdio>
-#include <string>
 
 #include <box2d/box2d.h>
 
@@ -75,13 +72,13 @@ b2Transform getTransform(b2ShapeId Shape);
 
 } // namespace
 
-World::World(Config Settings) : SubSteps(Settings.SubSteps), HitSpeedThreshold(Settings.HitSpeedThreshold) {
+World::World(Config Settings)
+    : StepPasses(std::max(Settings.StepPasses, 1)),
+      SubSteps(Settings.SubSteps),
+      HitSpeedThreshold(Settings.HitSpeedThreshold) {
     b2WorldDef Def = b2DefaultWorldDef();
     Def.gravity = toBox2D(Settings.Gravity);
     Def.hitEventThreshold = Settings.HitSpeedThreshold;
-    if (std::getenv("DBG_HERTZ")) Def.contactHertz = std::stof(std::getenv("DBG_HERTZ"));
-    if (std::getenv("DBG_SUBSTEPS")) SubSteps = std::stoi(std::getenv("DBG_SUBSTEPS"));
-    if (std::getenv("DBG_PUSH")) Def.maxContactPushSpeed = std::stof(std::getenv("DBG_PUSH"));
     // Fighters must never fall asleep: their motors work every step.
     Def.enableSleep = false;
     Id = b2StoreWorldId(b2CreateWorld(&Def));
@@ -91,6 +88,7 @@ World::~World() { destroy(); }
 
 World::World(World&& Other) noexcept
     : Id(std::exchange(Other.Id, 0)),
+      StepPasses(Other.StepPasses),
       SubSteps(Other.SubSteps),
       PartBodies(std::move(Other.PartBodies)),
       Hits(std::move(Other.Hits)),
@@ -101,6 +99,7 @@ World& World::operator=(World&& Other) noexcept {
     if (this != &Other) {
         destroy();
         Id = std::exchange(Other.Id, 0);
+        StepPasses = Other.StepPasses;
         SubSteps = Other.SubSteps;
         PartBodies = std::move(Other.PartBodies);
         Hits = std::move(Other.Hits);
@@ -217,9 +216,9 @@ void World::setStrikeMass(Body Target, float Kg) {
 void World::step(float Dt) {
     recordPartVelocities();
     Hits.clear();
-    const int Passes = std::getenv("DBG_PASSES") ? std::stoi(std::getenv("DBG_PASSES")) : 1;
-    for (int Pass = 0; Pass < Passes; ++Pass) {
-        b2World_Step(loadWorld(Id), Dt / static_cast<float>(Passes), SubSteps);
+    // Hit events are read after every Box2D step: the next one drops them.
+    for (int Pass = 0; Pass < StepPasses; ++Pass) {
+        b2World_Step(loadWorld(Id), Dt / static_cast<float>(StepPasses), SubSteps);
         collectHits();
     }
     collectPosedHits();
@@ -278,7 +277,14 @@ bool World::isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle,
 }
 
 std::optional<PartOverlap> World::findDeepestOverlap() const {
-    std::optional<PartOverlap> Deepest;
+    const std::vector<PartOverlap> Overlaps = findOverlaps();
+    if (Overlaps.empty()) return std::nullopt;
+    // The first of equally deep ones, as the pairs are listed.
+    return *std::ranges::max_element(Overlaps, std::ranges::less{}, &PartOverlap::Depth);
+}
+
+std::vector<PartOverlap> World::findOverlaps() const {
+    std::vector<PartOverlap> Overlaps;
     std::array<b2ShapeId, MaxShapesPerBody> StorageA{};
     std::array<b2ShapeId, MaxShapesPerBody> StorageB{};
     for (size_t SlotA = 0; SlotA < PartBodies.size(); ++SlotA) {
@@ -288,6 +294,7 @@ std::optional<PartOverlap> World::findDeepestOverlap() const {
             const PartBody& PartB = PartBodies[SlotB];
             if (PartA.Part.Fighter == PartB.Part.Fighter) continue;
             const std::span<b2ShapeId> ShapesB = getShapes(loadBody(PartB.Handle.Id), StorageB);
+            std::optional<PartOverlap> Deepest;
             for (const auto& ShapeA : ShapesA) {
                 for (const auto& ShapeB : ShapesB) {
                     const ShapeGap Gap = measureGap(ShapeA, getTransform(ShapeA), ShapeB, getTransform(ShapeB));
@@ -296,9 +303,10 @@ std::optional<PartOverlap> World::findDeepestOverlap() const {
                                           .Point = Gap.Point};
                 }
             }
+            if (Deepest) Overlaps.push_back(*Deepest);
         }
     }
-    return Deepest;
+    return Overlaps;
 }
 
 float World::getPosedPenetration(Body Target) const {
@@ -343,7 +351,6 @@ std::optional<float> World::findPosedStop(std::span<const Body> Strikers, float 
             // slides along or leaves, or one the other part pressed into it,
             // is no stop.
             const float NowFromStart = measurePairPenetration(Mover, MoverBefore, Other, getPlacementDuringStep(Other, 1.0f));
-            if (std::getenv("DBG_STOP")) std::fprintf(stderr, "STOP now %.4f from start %.4f limit %.4f posed %d\n", Now, NowFromStart, Limit, Posed);
             if (Now - NowFromStart < MinClosingDepth) continue;
             Pairs.push_back({.Mover = &Mover, .Other = &Other, .Limit = Limit});
         }

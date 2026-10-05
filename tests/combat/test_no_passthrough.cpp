@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <map>
 #include <optional>
@@ -20,8 +19,10 @@ using namespace fighter::combat::test;
 // The global invariant of the body: no part of one fighter passes through
 // any part of the other one, in any phase of anything they do. Long
 // scripted fights (both attack, walk into each other, at the wall, crouch,
-// block, chain, knock each other down) watch the deepest overlap of two
-// parts of different fighters every step (Battle::findDeepestOverlap).
+// block, chain, knock each other down) watch the overlap of two parts of
+// different fighters every step: none may go deeper than its pair is allowed
+// (Battle::findWorstOverlap, data/combat.json armOverlapTolerance and
+// overlapTolerance).
 
 namespace {
 
@@ -92,25 +93,29 @@ private:
     int Age = 0;
 };
 
-/// The deepest overlap a fight reached, and where.
+/// The worst overlap a fight reached (furthest beyond what its pair may
+/// overlap, Battle::getOverlapTolerance), and where.
 struct OverlapLog {
-    float Deepest = 0.0f;
+    float WorstExcess = -1.0f;   ///< Depth minus tolerance; positive: too deep.
     std::string Where;
-    /// How many steps overlapped deeper than the tolerance, per pair of parts.
+    /// How many steps overlapped deeper than allowed, per pair of parts.
     std::map<std::string, int> DeepSteps;
     std::map<std::string, float> PairDeepest;
 
-    void watch(const Battle& Fight, float Tolerance) {
-        const std::optional<physics::PartOverlap> Now = Fight.findDeepestOverlap();
+    void watch(const Battle& Fight) {
+        const std::optional<physics::PartOverlap> Now = Fight.findWorstOverlap();
         if (!Now) return;
         const auto& Fighters = Fight.getSnapshot().Fighters;
         const std::string Pair = std::format("P{} {} / P{} {}", Now->First.Fighter + 1,
                                              getBodyPartName(Now->First.Part), Now->Second.Fighter + 1,
                                              getBodyPartName(Now->Second.Part));
-        if (Now->Depth > Tolerance) ++DeepSteps[Pair];
-        PairDeepest[Pair] = std::max(PairDeepest[Pair], Now->Depth);
-        if (Now->Depth <= Deepest) return;
-        Deepest = Now->Depth;
+        const float Excess = Now->Depth - Fight.getOverlapTolerance(*Now);
+        if (Excess > 0.0f) {
+            ++DeepSteps[Pair];
+            PairDeepest[Pair] = std::max(PairDeepest[Pair], Now->Depth);
+        }
+        if (Excess <= WorstExcess) return;
+        WorstExcess = Excess;
         Where = std::format("{:.3f} m {} at tick {} (P1 {} {}, P2 {} {}, pelvises {:.2f} m apart)", Now->Depth, Pair,
                             Fight.getSnapshot().Tick, static_cast<int>(Fighters[0].State), Fighters[0].MoveId,
                             static_cast<int>(Fighters[1].State), Fighters[1].MoveId,
@@ -118,15 +123,15 @@ struct OverlapLog {
                                      getPart(Fighters[0], BodyPart::Pelvis).Position.X));
     }
 
-    void report(const std::string& Name) const {
-        std::fprintf(stderr, "%s: deepest %s\n", Name.c_str(), Where.c_str());
+    /// Where it went too deep, for the test output.
+    std::string describe() const {
+        std::string Text = std::format("worst {}", Where);
         for (const auto& [Pair, Steps] : DeepSteps) {
-            std::fprintf(stderr, "  %s: %d steps, deepest %.3f\n", Pair.c_str(), Steps, PairDeepest.at(Pair));
+            Text += std::format("\n  {}: {} steps too deep, deepest {:.3f}", Pair, Steps, PairDeepest.at(Pair));
         }
+        return Text;
     }
 };
-
-constexpr float Tolerance = 0.01f;
 
 /// Both fighters scripted for \p Seconds.
 OverlapLog runScripted(Battle& Fight, uint32_t Seed, bool Pushy, int Seconds) {
@@ -138,7 +143,7 @@ OverlapLog runScripted(Battle& Fight, uint32_t Seed, bool Pushy, int Seconds) {
         const PlayerCommands LeftCmd = Left.next(Fighters[0], Fighters[1]);
         const PlayerCommands RightCmd = Right.next(Fighters[1], Fighters[0]);
         Fight.update(LeftCmd, RightCmd, Dt);
-        Log.watch(Fight, Tolerance);
+        Log.watch(Fight);
     }
     return Log;
 }
@@ -150,8 +155,8 @@ TEST_CASE("No pass-through: a scripted brawl in the open", "[combat][overlap]") 
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     Battle Fight(Data.makeConfig());
     const OverlapLog Log = runScripted(Fight, 1, false, 40);
-    Log.report("open");
-    CHECK(Log.Deepest <= Tolerance);
+    INFO(Log.describe());
+    CHECK(Log.WorstExcess <= 0.0f);
 }
 
 TEST_CASE("No pass-through: both walk into each other and strike", "[combat][overlap]") {
@@ -159,8 +164,8 @@ TEST_CASE("No pass-through: both walk into each other and strike", "[combat][ove
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     Battle Fight(Data.makeConfig());
     const OverlapLog Log = runScripted(Fight, 2, true, 40);
-    Log.report("pushy");
-    CHECK(Log.Deepest <= Tolerance);
+    INFO(Log.describe());
+    CHECK(Log.WorstExcess <= 0.0f);
 }
 
 TEST_CASE("No pass-through: at the wall", "[combat][overlap]") {
@@ -171,13 +176,13 @@ TEST_CASE("No pass-through: at the wall", "[combat][overlap]") {
     // P2 backs into the wall, P1 follows.
     for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) {
         Fight.update({.MoveX = 1.0f}, {.MoveX = 1.0f}, Dt);
-        Log.watch(Fight, Tolerance);
+        Log.watch(Fight);
     }
     const OverlapLog Rest = runScripted(Fight, 3, true, 40);
-    Log.report("wall walk");
-    Rest.report("wall");
-    CHECK(Log.Deepest <= Tolerance);
-    CHECK(Rest.Deepest <= Tolerance);
+    INFO(Log.describe());
+    INFO(Rest.describe());
+    CHECK(Log.WorstExcess <= 0.0f);
+    CHECK(Rest.WorstExcess <= 0.0f);
 }
 
 TEST_CASE("No pass-through: knockdowns", "[combat][overlap]") {
@@ -185,8 +190,8 @@ TEST_CASE("No pass-through: knockdowns", "[combat][overlap]") {
     Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
     Battle Fight(Data.makeConfig());
     const OverlapLog Log = runScripted(Fight, 4, true, 40);
-    Log.report("knockdowns");
-    CHECK(Log.Deepest <= Tolerance);
+    INFO(Log.describe());
+    CHECK(Log.WorstExcess <= 0.0f);
 }
 
 TEST_CASE("No pass-through: knight against rogue", "[combat][overlap]") {
@@ -197,6 +202,6 @@ TEST_CASE("No pass-through: knight against rogue", "[combat][overlap]") {
     Config.Right = loadFighter("rogue");
     Battle Fight(Config);
     const OverlapLog Log = runScripted(Fight, 5, true, 40);
-    Log.report("weapons");
-    CHECK(Log.Deepest <= Tolerance);
+    INFO(Log.describe());
+    CHECK(Log.WorstExcess <= 0.0f);
 }
