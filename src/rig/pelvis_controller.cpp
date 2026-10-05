@@ -8,6 +8,8 @@ namespace {
 
 /// Knockback slower than this is over, m/s.
 constexpr float KnockbackRest = 1e-3f;
+/// A travel shorter than this is no travel (getTravelShare()), m.
+constexpr float MinTravel = 1e-6f;
 
 } // namespace
 
@@ -16,21 +18,41 @@ void PelvisController::plan(float Dt) {
     const bool Braking = std::abs(TargetVelocity) < std::abs(WalkVelocity) || TargetVelocity * WalkVelocity < 0.0f;
     const float MaxChange = (Braking ? Config.WalkDeceleration : Config.WalkAcceleration) * Dt;
     WalkVelocity += std::clamp(TargetVelocity - WalkVelocity, -MaxChange, MaxChange);
-    PlannedX = PositionX + (WalkVelocity + Knockback) * Dt;
+    PlannedX = PositionX + (WalkVelocity + Knockback + Carry) * Dt;
+    PlannedTravel = PlannedX - PositionX;
+    CarryTravel = Carry * Dt;
+    SpacingShift = 0.0f;
+    WallShift = 0.0f;
 
-    Knockback *= std::exp(-Config.KnockbackDecay * Dt);
+    const float Decay = std::exp(-Config.KnockbackDecay * Dt);
+    Knockback *= Decay;
+    PushOut *= Decay;
     if (std::abs(Knockback) < KnockbackRest) Knockback = 0.0f;
+    if (std::abs(PushOut) < KnockbackRest) PushOut = 0.0f;
+    const float CarryDrop = CarryDeceleration * Dt;
+    Carry -= std::clamp(Carry, -CarryDrop, CarryDrop);
+}
+
+float PelvisController::getTravelShare(float EndX, float Travel) const {
+    if (std::abs(Travel) < MinTravel) return 1.0f;
+    return std::clamp((EndX - PositionX) / Travel, 0.0f, 1.0f);
 }
 
 void PelvisController::limit(float MinX, float MaxX) {
     if (PlannedX < MinX) {
+        WallShift += MinX - PlannedX;
         PlannedX = MinX;
         WalkVelocity = std::max(WalkVelocity, 0.0f);
         Knockback = std::max(Knockback, 0.0f);
+        PushOut = std::max(PushOut, 0.0f);
+        Carry = std::max(Carry, 0.0f);
     } else if (PlannedX > MaxX) {
+        WallShift += MaxX - PlannedX;
         PlannedX = MaxX;
         WalkVelocity = std::min(WalkVelocity, 0.0f);
         Knockback = std::min(Knockback, 0.0f);
+        PushOut = std::min(PushOut, 0.0f);
+        Carry = std::min(Carry, 0.0f);
     }
 }
 
@@ -45,6 +67,13 @@ void PelvisController::reset(float NewX) {
     Velocity = 0.0f;
     WalkVelocity = 0.0f;
     Knockback = 0.0f;
+    PushOut = 0.0f;
+    Carry = 0.0f;
+    CarryTravel = 0.0f;
+    PlannedTravel = 0.0f;
+    SpacingShift = 0.0f;
+    WallShift = 0.0f;
+    Spacing = {};
 }
 
 } // namespace fighter::rig

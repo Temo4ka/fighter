@@ -58,6 +58,11 @@ public:
     /// returns \p Target. A joint missing from the start pose is not blended.
     Pose step(const Pose& Target, float Dt);
 
+    /// The pose step() would show for \p Target at the fade's current
+    /// weight, without advancing it: the same fade applied to another target
+    /// (the pose of a step without travel, rig::Rig::setTravelPose).
+    Pose peek(const Pose& Target) const;
+
     /// Drops the fade: the next step() returns the target as it is.
     void cancel();
 

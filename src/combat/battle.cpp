@@ -461,7 +461,10 @@ rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuni
     return {.ArenaHalfWidth = Arena.HalfWidthM,
             .BodyHalfWidth = Tuning.BodyHalfWidth,
             .SeparationSpeed = Tuning.SeparationSpeed,
-            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed};
+            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed,
+            .PushMaxSpeed = Tuning.PushMaxSpeed,
+            .PushAcceleration = Tuning.PushAcceleration,
+            .MaxSoftOverlap = Tuning.PushSoftOverlap};
 }
 
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,

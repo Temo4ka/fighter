@@ -75,7 +75,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
         if (DesiredFacingRight != Body.isFacingRight()) Body.setFacing(DesiredFacingRight);
     }
 
-    const float Velocity = planWalking(Cmd, Dt);
+    // The pelvis plans its motion first: the legs step with its travel.
+    Body.setMoveVelocity(planWalking(Cmd));
+    Body.planMotion(Dt);
+    advanceLegs(Dt);
     if (State == FighterState::Idle && Walk.isPlaying()) setState(FighterState::Walking);
     if (State == FighterState::Walking && !Walk.isPlaying()) setState(FighterState::Idle);
 
@@ -83,7 +86,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     // A clip that takes both legs over (crouch, low block, a stagger) ends
     // the walk and the stance it held: the legs come back to the normal one.
     if (Top && coversLegs(*Top)) Walk.settle();
-    const anim::Pose Target = buildTargetPose(Top, Dt);
+    const TargetPoses Target = buildTargetPose(Top, Dt);
     // A clip that starts fades in, one that ends fades out (its own times).
     if (Top != ShownTop || TopRestarted) {
         if (Top) {
@@ -94,22 +97,34 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
     ShownTop = Top;
     TopRestarted = false;
-    Shown = Fade.step(Target, Dt);
+    Shown = Fade.step(Target.Moving, Dt);
+    ShownStill = Fade.peek(Target.Still);
 
     Body.setTargetAngles(Shown.Angles);
+    if (Stride.FollowsTravel) Body.setTravelPose(ShownStill.Angles, Stride.Travel);
     // The strikers of an attack stop at the opponent by themselves; the
     // spacing keeps the rest of the body off it.
     const std::bitset<BodyPartCount> AttackParts = getMove() ? AttackClip->Strikers : std::bitset<BodyPartCount>{};
     const bool Striking = getMove() && Contact == ContactStage::None && AttackTime < AttackClip->ActiveEndSec;
     Body.setStrikingParts(Striking ? AttackParts : std::bitset<BodyPartCount>{}, AttackParts);
-    Body.setMoveVelocity(Velocity);
     Body.setBaseStiffness(Top ? Top->Stiffness : 1.0f);
-    Body.planMotion(Dt);
     PreviousCmd = Cmd;
     return Started;
 }
 
-void Fighter::applyControl(float Dt) { Body.applyControl(Dt); }
+void Fighter::applyControl(float Dt) {
+    // The spacing may have let the pelvis make only part of its planned
+    // travel: the walk cycle keeps that share of its step, so the legs step
+    // only as far as the pelvis goes (the rig poses them the same way).
+    if (Stride.FollowsTravel) {
+        const float Share = Body.getTravelShare();
+        (Stride.Crouched ? CrouchWalk : Walk).follow(Share);
+        Shown = anim::blendPoses(ShownStill, Shown, Share);
+        ShownLegs = anim::blendPoses(ShownLegsStill, ShownLegs, Share);
+    }
+    LastPlannedTravel = Body.getController().getPlannedTravel();
+    Body.applyControl(Dt);
+}
 
 bool Fighter::isHittable() const { return State != FighterState::KnockedDown && State != FighterState::KnockedOut; }
 
@@ -441,8 +456,9 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, const P
     ChainRequest.reset();
 }
 
-float Fighter::planWalking(const PlayerCommands& Cmd, float Dt) {
+float Fighter::planWalking(const PlayerCommands& Cmd) {
     const CombatTuning& Tuning = Rules->Tuning;
+    Stride = {};
     if (Body.getPosture() != rig::Posture::Standing) {
         Walk.settle();
         CrouchWalk.settle();
@@ -450,6 +466,7 @@ float Fighter::planWalking(const PlayerCommands& Cmd, float Dt) {
     }
     const bool Crouched = State == FighterState::Crouching;
     if (!Crouched) CrouchWalk.settle();
+    Stride.Crouched = Crouched;
     const bool AttackAllowsMove = State == FighterState::Attacking && AttackClip->AllowMove && !AttackFromCrouch;
     const bool BlockAllowsMove = State == FighterState::Blocking && Rules->Clips.getBlock(Guard).AllowMove;
     const bool CanMove = !PendingAttack && (State == FighterState::Idle || State == FighterState::Walking ||
@@ -468,43 +485,84 @@ float Fighter::planWalking(const PlayerCommands& Cmd, float Dt) {
     if (Crouched) Scale *= Tuning.CrouchWalkSpeedScale;
     if (Exhausted) Scale *= Tuning.ExhaustedSpeedScale;
 
-    LegCycle& Cycle = Crouched ? CrouchWalk : Walk;
-    // The cycle follows the distance actually covered, so the feet keep up
-    // with the pelvis and do not march on the spot when the way is blocked.
-    // The crouch walk plays once per period at the full crouch walking speed.
-    const float CycleSpeed = Body.getWalkSpeed() * (Crouched ? Tuning.CrouchWalkSpeedScale : 1.0f);
-    const float Rate = std::abs(Body.getController().getVelocity()) / CycleSpeed;
-    if (!WantsToMove) {
-        if (Cycle.getMode() == LegCycle::Mode::Walking) FeetSettling = true;
-        Cycle.stop(Dt, Tuning.WalkStopRate);
-        // Stopped in the normal stance: the legs cross over to the stance
-        // clip's (or the crouch's); the switched one holds the cycle's pose.
-        if (FeetSettling && !Cycle.isPlaying() && Cycle.isEngaged() && Cycle.getVariant() == StanceVariant::Normal) {
-            Cycle.settle();
-        }
-        if (FeetSettling) {
-            // Played on quickly, the cycle moves the planted foot too, and so
-            // does the cross-over: it slides into the pose instead of being
-            // held off it. Then the feet stay where they stand, also when the
-            // pelvis glides on a little, instead of stepping under the body
-            // once more (rig::Rig::keepFeetPlanted).
-            const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive());
-            if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
-                Body.slideFeet();
-            } else {
-                Body.keepFeetPlanted();
-                const bool Settled = !Cycle.isStopping() && !Crossing;
-                if (Settled && Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
-            }
-        }
-        return 0.0f;
-    }
-    FeetSettling = false;
-    Cycle.walk(Dt, Rate, Forward ? 1.0f : -1.0f);
-    return MoveX * Body.getWalkSpeed() * Scale;
+    // Pushed along (by the opponent, a hit), the legs may step with the
+    // pelvis where nothing else poses them: not in an attack or getting up.
+    const bool LegsFree = State == FighterState::Idle || State == FighterState::Walking || Crouched ||
+                          State == FighterState::Blocking || State == FighterState::Reacting;
+    const anim::Clip* Top = getTopClip();
+    Stride.CanStep = LegsFree && !PendingAttack && !(Top && coversLegs(*Top) && !Crouched);
+    Stride.WantsToMove = WantsToMove;
+    Stride.Sign = MoveX > 0.0f ? 1.0f : -1.0f;
+    return WantsToMove ? MoveX * Body.getWalkSpeed() * Scale : 0.0f;
 }
 
-anim::Pose Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
+void Fighter::advanceLegs(float Dt) {
+    if (Body.getPosture() != rig::Posture::Standing) return;
+    const CombatTuning& Tuning = Rules->Tuning;
+    const bool Crouched = Stride.Crouched;
+    LegCycle& Cycle = Crouched ? CrouchWalk : Walk;
+    // The cycle follows the distance the pelvis covers, so the feet keep up
+    // with it. The crouch walk plays once per period at the full crouch
+    // walking speed.
+    const float CycleSpeed = Body.getWalkSpeed() * (Crouched ? Tuning.CrouchWalkSpeedScale : 1.0f);
+    const rig::PelvisController& Motion = Body.getController();
+    const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
+    const float MinTravel = Tuning.StepMinSpeed * Dt;
+    // The planned travel of this step (walking, knockback, the push of the
+    // opponent going on); the spacing may take some of it back, the cycle
+    // then keeps only that share (applyControl()).
+    const float Travel = Motion.getPlannedTravel();
+    if (Stride.WantsToMove) {
+        // Held in place by the opponent (it planned to go, the pelvis did
+        // not): the cycle follows the travel, so the legs hold their pose
+        // instead of marching on the spot. (Playing the stop here would move
+        // the feet without travel, into the opponent.)
+        const float LastTravel = Motion.getVelocity() * Dt;
+        Stride.Held = LastPlannedTravel * Stride.Sign > MinTravel && LastTravel * Stride.Sign < MinTravel;
+    } else if (!Stride.CanStep || std::abs(Travel - Motion.getCarryTravel()) <= MinTravel) {
+        // Not walking: the legs step with a knockback or a push-out (a hit),
+        // but not with the push of the opponent's body (the carry): its feet
+        // are at the opponent's, and a foot lifted there would come down on
+        // them (the feet slide with the push instead, Rig::pushBody).
+        stopLegs(Cycle, Crouched, Dt);
+        return;
+    }
+    // Walking, or knocked back faster than a step: the legs step along,
+    // forwards or backwards, as far as the pelvis goes.
+    FeetSettling = false;
+    Stride.Pushed = !Stride.WantsToMove || Travel * Stride.Sign < 0.0f;
+    Cycle.walk(Dt, std::abs(Travel) / (CycleSpeed * Dt), Travel * Facing);
+    Stride.FollowsTravel = true;
+    Stride.Travel = Travel;
+}
+
+void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
+    const CombatTuning& Tuning = Rules->Tuning;
+    if (Cycle.getMode() == LegCycle::Mode::Walking) FeetSettling = true;
+    Cycle.stop(Dt, Tuning.WalkStopRate);
+    // Stopped in the normal stance: the legs cross over to the stance
+    // clip's (or the crouch's); the switched one holds the cycle's pose.
+    if (FeetSettling && !Cycle.isPlaying() && Cycle.isEngaged() && Cycle.getVariant() == StanceVariant::Normal) {
+        Cycle.settle();
+    }
+    if (FeetSettling) {
+        // Played on quickly, the cycle moves the planted foot too, and so
+        // does the cross-over: it slides into the pose instead of being
+        // held off it. Then the feet stay where they stand, also when the
+        // pelvis glides on a little, instead of stepping under the body
+        // once more (rig::Rig::keepFeetPlanted).
+        const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive());
+        if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
+            Body.slideFeet();
+        } else {
+            Body.keepFeetPlanted();
+            const bool Settled = !Cycle.isStopping() && !Crossing;
+            if (Settled && Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
+        }
+    }
+}
+
+Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
     const anim::Clip& WalkClip = Rules->Clips.get(clips::Walk);
     anim::Pose Target = anim::sampleClip(Rules->Clips.get(clips::Stance), 0.0f);
 
@@ -519,32 +577,46 @@ anim::Pose Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
         Source = LegSource::SwitchedStance;
     }
     anim::Pose Legs;
+    anim::Pose LegsStill;
     switch (Source) {
-        case LegSource::Walk: Legs = anim::sampleClip(WalkClip, Walk.getTime()); break;
+        case LegSource::Walk:
+            Legs = anim::sampleClip(WalkClip, Walk.getTime());
+            LegsStill = anim::sampleClip(WalkClip, Walk.getStepFromTime());
+            break;
         case LegSource::SwitchedStance: Legs = getSwitchedStanceLegs(); break;
         case LegSource::Stance: Legs = getMasked(Target, WalkClip.Keys.front().Target); break;
     }
+    if (Source != LegSource::Walk) LegsStill = Legs;
     if (Source != ShownSource) LegFade.begin(ShownLegs, Rules->Tuning.StanceSettleSec);
     ShownSource = Source;
     ShownLegs = LegFade.step(Legs, Dt);
+    ShownLegsStill = LegFade.peek(LegsStill);
     if (SwitchStep && !LegFade.isActive()) SwitchStep = false;
-    anim::layerPose(Target, ShownLegs);
 
-    if (State == FighterState::Attacking && AttackFromCrouch) {
-        anim::layerPose(Target, anim::sampleClip(Rules->Clips.get(clips::Crouch), 0.0f));
-    }
-    if (Top) anim::layerPose(Target, anim::sampleClip(*Top, getTopClipTime()));
-    // Crouched, the crouch walk sets the legs once it has played, and holds
-    // where it stopped.
+    // The same layers over the legs of the step and over those without its
+    // travel.
     const bool WithCrouchWalk = State == FighterState::Crouching && CrouchWalk.isEngaged();
-    if (WithCrouchWalk) {
-        anim::layerPose(Target, anim::sampleClip(Rules->Clips.get(clips::CrouchWalk), CrouchWalk.getTime()));
-    }
+    const auto compose = [&](const anim::Pose& ShownLegPose, float CrouchWalkTime) {
+        anim::Pose Result = Target;
+        anim::layerPose(Result, ShownLegPose);
+        if (State == FighterState::Attacking && AttackFromCrouch) {
+            anim::layerPose(Result, anim::sampleClip(Rules->Clips.get(clips::Crouch), 0.0f));
+        }
+        if (Top) anim::layerPose(Result, anim::sampleClip(*Top, getTopClipTime()));
+        // Crouched, the crouch walk sets the legs once it has played, and
+        // holds where it stopped.
+        if (WithCrouchWalk) {
+            anim::layerPose(Result, anim::sampleClip(Rules->Clips.get(clips::CrouchWalk), CrouchWalkTime));
+        }
+        return Result;
+    };
+    TargetPoses Result{.Moving = compose(ShownLegs, CrouchWalk.getTime()),
+                       .Still = compose(ShownLegsStill, CrouchWalk.getStepFromTime())};
     if (State == FighterState::Crouching && WithCrouchWalk != ShowsCrouchWalk) {
         Fade.begin(Shown, Rules->Tuning.StanceSettleSec);
     }
     ShowsCrouchWalk = WithCrouchWalk;
-    return Target;
+    return Result;
 }
 
 anim::Pose Fighter::getSwitchedStanceLegs() const {

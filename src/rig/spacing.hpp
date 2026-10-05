@@ -52,11 +52,20 @@ struct SpacingParams {
     /// Half the width of a fighter's pushbox, m: the pelvises stay at least
     /// twice this apart and this far from the walls.
     float BodyHalfWidth = 0.25f;
-    /// Overlapping pelvises are pushed apart at most this fast, m/s.
+    /// A standing pelvis steps off a body lying under it at most this fast,
+    /// m/s.
     float SeparationSpeed = 4.0f;
-    /// Overlapping bodies (legs, torsos, heads) are pushed apart at most this
-    /// fast, m/s: a leg swings into the opponent's faster than walking.
+    /// The largest correction of a step the spacing looks for (overlapping
+    /// pelvises or bodies), as a speed, m/s.
     float PosedSeparationSpeed = 12.0f;
+    /// Beyond taking back their approach, the fighters are pushed apart at
+    /// most this fast, m/s...
+    float PushMaxSpeed = 1.5f;
+    /// ...and that speed changes at most this fast, m/s^2 (eased in and out).
+    float PushAcceleration = 20.0f;
+    /// Bodies the eased push would leave deeper than this in each other are
+    /// pushed apart at once, as far as that needs (a hard push), m.
+    float MaxSoftOverlap = 0.008f;
 };
 
 /// Corrects the planned pelvis motion of both fighters for the walls and

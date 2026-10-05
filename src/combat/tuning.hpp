@@ -60,11 +60,20 @@ struct CombatTuning {
     /// Half the width of a fighter's pushbox, m: the pelvises stay at least
     /// twice this apart and this far from the arena walls.
     float BodyHalfWidth = 0.25f;
-    /// Overlapping pelvises are pushed apart at most this fast, m/s.
+    /// A standing fighter steps off a body lying under it at most this
+    /// fast, m/s.
     float SeparationSpeed = 4.0f;
-    /// Overlapping bodies (legs, torsos, heads; rig/spacing.hpp) are pushed
-    /// apart at most this fast, m/s.
+    /// The largest correction of a step the spacing looks for (overlapping
+    /// pelvises or bodies; rig/spacing.hpp), as a speed, m/s.
     float PosedSeparationSpeed = 12.0f;
+    /// Beyond taking back their approach (which only slows a walk down), the
+    /// spacing pushes the fighters apart at most this fast, m/s...
+    float PushMaxSpeed = 1.5f;
+    /// ...and that push speed changes at most this fast, m/s^2.
+    float PushAcceleration = 20.0f;
+    /// Bodies the eased push would leave deeper than this in each other are
+    /// pushed apart at once (a hard push), m. Below overlapTolerance.
+    float PushSoftOverlap = 0.008f;
     /// With no stamina left, walking and strikes are this much slower (O.13).
     float ExhaustedSpeedScale = 0.7f;
     /// An exhausted fighter is slow until its stamina is back to this share
@@ -96,6 +105,11 @@ struct CombatTuning {
     /// legs back into the normal stance during its startup: in this share of
     /// it (0..1]. The startup itself does not change.
     float SwitchStepShare = 0.8f;
+    /// The legs step when the pelvis moves faster than this, m/s: walking,
+    /// a pelvis held slower than this by the opponent stops the walk cycle
+    /// on both feet (no marching on the spot); not walking, a pelvis pushed
+    /// faster than this makes the legs step along.
+    float StepMinSpeed = 0.15f;
     /// Walking while crouched is this much slower than walking.
     float CrouchWalkSpeedScale = 0.5f;
     /// A strike other than the low kick pressed while crouched: the fighter

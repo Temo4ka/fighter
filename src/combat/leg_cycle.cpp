@@ -77,12 +77,22 @@ LegCycle::LegCycle(float NewPeriodSec, std::vector<SupportSpan> NewSpans, size_t
 
 void LegCycle::walk(float Dt, float Rate, float NewDirection) {
     Direction = NewDirection > 0.0f ? 1.0f : -1.0f;
-    TimeSec = wrapTime(TimeSec + Dt * Rate * Direction, PeriodSec);
+    StepSec = Dt * Rate * Direction;
+    TimeSec = wrapTime(TimeSec + StepSec, PeriodSec);
     CurrentMode = Mode::Walking;
     Engaged = true;
 }
 
+void LegCycle::follow(float Share) {
+    const float Kept = StepSec * std::clamp(Share, 0.0f, 1.0f);
+    TimeSec = wrapTime(TimeSec - StepSec + Kept, PeriodSec);
+    StepSec = Kept;
+}
+
+float LegCycle::getStepFromTime() const { return wrapTime(TimeSec - StepSec, PeriodSec); }
+
 void LegCycle::stop(float Dt, float Rate) {
+    StepSec = 0.0f;
     if (CurrentMode == Mode::Still) return;
     const StopPlan Plan = planStop();
     const float Step = Dt * std::max(Rate, anim::MinPlaybackRate);
@@ -96,6 +106,7 @@ void LegCycle::stop(float Dt, float Rate) {
 }
 
 void LegCycle::settle() {
+    StepSec = 0.0f;
     TimeSec = getNormalTime();
     CurrentMode = Mode::Still;
     Engaged = false;

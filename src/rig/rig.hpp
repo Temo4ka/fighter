@@ -132,6 +132,16 @@ public:
     /// Target joint angles for a fighter facing right (see anim::Pose); the
     /// rig mirrors them when it faces left. The Pelvis entry is the lean.
     void setTargetAngles(const PerBodyPart<float>& Angles);
+    /// The angles of setTargetAngles() are those of the pose after the
+    /// pelvis travels \p Travel (m, along X) in this step: a walk cycle
+    /// advanced by the planned travel, or by the push of the last step;
+    /// these are the angles without it. The joints then follow the travel
+    /// the pelvis really makes after the spacing (getTravelShare()): in
+    /// between, the angles are interpolated by its share, so a walk that the
+    /// spacing holds back steps only as far as the pelvis goes (predictBody()
+    /// poses it the same way). Call after setTargetAngles(), which drops the
+    /// link.
+    void setTravelPose(const PerBodyPart<float>& StillAngles, float Travel);
     /// Requested walking speed in the world, m/s; 0 stops.
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
@@ -181,10 +191,16 @@ public:
     PelvisController& getController() { return Controller; }
     /// Pushes the whole body by \p Delta (m, along X) in this step: the
     /// planned pelvis position and the planted feet move together, so a
-    /// foot pressed into the opponent's leaves with the body. The spacing
-    /// of the fighters calls it (rig/spacing.hpp) between planMotion() and
-    /// applyControl().
+    /// foot pressed into the opponent's leaves with the body. A push that
+    /// only takes back some of the step's own planned travel (a walk slowed
+    /// down) leaves the planted feet where they are: the fighter just
+    /// travels less. The spacing of the fighters calls it (rig/spacing.hpp)
+    /// between planMotion() and applyControl().
     void pushBody(float Delta);
+    /// The share of the travel of setTravelPose() the pelvis makes after the
+    /// corrections so far (PelvisController::getTravelShare); the posed
+    /// joints follow it. 1 without a link.
+    float getTravelShare() const { return Controller.getTravelShare(Controller.getPlannedX(), PoseTravel); }
     const PelvisController& getController() const { return Controller; }
 
     /// Moves the kinematic parts, drives the motors of the physical ones and
@@ -355,6 +371,7 @@ private:
         float LowerAngle = 0.0f;  ///< Mirrored, rad.
         float UpperAngle = 0.0f;
         float Wish = 0.0f;        ///< The clip's angle, mirrored and clamped to the limits, rad.
+        float StillWish = 0.0f;   ///< Wish without the step's travel (setTravelPose()), rad.
         float Target = 0.0f;      ///< What the motor drives to: Wish, or the yield pose, rad.
         float YieldWish = 0.0f;   ///< Wish when the limb started to yield, rad.
         Vec2 AnchorInParent;      ///< Hinge in the parent's body frame (reference pose).
@@ -407,18 +424,30 @@ private:
                                              const PerBodyPart<float>& Corrections = {}) const;
     /// Root placement at \p RootX, at the height where the lowest
     /// kinematic part touches the floor.
-    Placement getStandingRoot(float RootX) const;
+    Placement getStandingRoot(float RootX, const PerBodyPart<float>& Corrections = {}) const;
     float getPostureStiffness() const;
     void advancePosture();
     void moveKinematicParts(float Dt);
     /// The pose of the kinematic parts with the root at \p RootX: the target
-    /// pose, the planted feet of \p Limbs held (their locks are updated), or
-    /// the blend of getting up at \p PostureTime.
-    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime) const;
-    /// Holds planted feet in place: returns the joint corrections of the
-    /// legs for the uncorrected pose \p Pose and updates the locks of
-    /// \p Limbs.
-    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const;
+    /// pose with \p Corrections, the planted feet of \p Limbs held (their
+    /// locks are updated), or the blend of getting up at \p PostureTime.
+    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime,
+                                            const PerBodyPart<float>& Corrections) const;
+    /// Holds planted feet in place: returns the joint corrections for the
+    /// pose \p Pose (posed with the corrections \p Base, which it keeps for
+    /// the joints it does not bend) and updates the locks of \p Limbs.
+    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
+                                 const PerBodyPart<float>& Base) const;
+    /// How far the planted feet go along when the pelvis ends the step at
+    /// \p RootX, relative to its own plan: only the part beyond the step's
+    /// planned travel (pushBody()), m.
+    float getFootDrag(float RootX) const;
+    /// Joint corrections (to the targets) of the pose at \p Share of the
+    /// planned travel (setTravelPose()).
+    PerBodyPart<float> getTravelCorrections(float Share) const;
+    /// Sets the joints to the share of the planned travel the pelvis makes
+    /// (setTravelPose()); applyControl() calls it before the commit.
+    void followTravel();
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
@@ -475,6 +504,7 @@ private:
     std::bitset<BodyPartCount> UnjamParts;   ///< RigDef::Unjam.
 
     PelvisController Controller;
+    float PoseTravel = 0.0f;          ///< setTravelPose(): the travel the target angles assume, m.
     Posture CurrentPosture = Posture::Standing;
     float PostureSec = 0.0f;
     bool StayDown = false;

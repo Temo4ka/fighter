@@ -26,6 +26,9 @@ constexpr std::array TuningFields = {
     TuningField{"bodyHalfWidth", &CombatTuning::BodyHalfWidth},
     TuningField{"separationSpeed", &CombatTuning::SeparationSpeed},
     TuningField{"posedSeparationSpeed", &CombatTuning::PosedSeparationSpeed},
+    TuningField{"pushMaxSpeed", &CombatTuning::PushMaxSpeed},
+    TuningField{"pushAcceleration", &CombatTuning::PushAcceleration},
+    TuningField{"pushSoftOverlap", &CombatTuning::PushSoftOverlap},
     TuningField{"exhaustedSpeedScale", &CombatTuning::ExhaustedSpeedScale},
     TuningField{"exhaustedRecoverFraction", &CombatTuning::ExhaustedRecoverFraction},
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
@@ -33,6 +36,7 @@ constexpr std::array TuningFields = {
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
     TuningField{"stanceSettleSec", &CombatTuning::StanceSettleSec},
     TuningField{"switchStepShare", &CombatTuning::SwitchStepShare},
+    TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
     TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
     TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
@@ -92,6 +96,9 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.BodyHalfWidth <= 0.0f) throw std::runtime_error("bodyHalfWidth must be positive");
     if (Tuning.SeparationSpeed <= 0.0f) throw std::runtime_error("separationSpeed must be positive");
     if (Tuning.PosedSeparationSpeed <= 0.0f) throw std::runtime_error("posedSeparationSpeed must be positive");
+    if (Tuning.PushMaxSpeed <= 0.0f) throw std::runtime_error("pushMaxSpeed must be positive");
+    if (Tuning.PushAcceleration <= 0.0f) throw std::runtime_error("pushAcceleration must be positive");
+    if (Tuning.PushSoftOverlap < 0.0f) throw std::runtime_error("pushSoftOverlap must not be negative");
     if (Tuning.ExhaustedSpeedScale <= 0.0f || Tuning.ExhaustedSpeedScale > 1.0f) {
         throw std::runtime_error("exhaustedSpeedScale must be in (0, 1]");
     }
@@ -108,6 +115,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.SwitchStepShare <= 0.0f || Tuning.SwitchStepShare > 1.0f) {
         throw std::runtime_error("switchStepShare must be in (0, 1]");
     }
+    if (Tuning.StepMinSpeed < 0.0f) throw std::runtime_error("stepMinSpeed must not be negative");
     if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {
         throw std::runtime_error("crouchWalkSpeedScale must be in (0, 1]");
     }

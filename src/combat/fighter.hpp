@@ -210,9 +210,26 @@ private:
     const MoveDef* chooseFreeState(const PlayerCommands& Cmd, const Surroundings& Around, float Dt);
     /// \p Cmd: the commands of this step (does the fighter walk on?).
     void startMove(const MoveDef& Next, const Surroundings& Around, const PlayerCommands& Cmd, int ChainPosition);
-    float planWalking(const PlayerCommands& Cmd, float Dt);
-    /// The pose for the motors this step: stance, legs, the clip on top.
-    anim::Pose buildTargetPose(const anim::Clip* Top, float Dt);
+    /// The walking speed \p Cmd asks for, m/s (world); remembers what the
+    /// legs should do for advanceLegs().
+    float planWalking(const PlayerCommands& Cmd);
+    /// Moves the walk cycle (or the crouch walk) after the pelvis planned its
+    /// motion: walking, it advances by the planned travel and later keeps
+    /// the share the pelvis really makes (applyControl()); held in place by
+    /// the opponent, it stops on both feet instead of marching on the spot;
+    /// pushed along without walking, the legs step with the pelvis; else it
+    /// stops (on both feet).
+    void advanceLegs(float Dt);
+    /// The stop of the leg cycle when the fighter does not walk (released,
+    /// or held in place): plays on to both feet down, the feet settle.
+    void stopLegs(LegCycle& Cycle, bool Crouched, float Dt);
+    /// The pose for the motors this step: stance, legs, the clip on top;
+    /// and the same without the step's travel (rig::Rig::setTravelPose).
+    struct TargetPoses {
+        anim::Pose Moving;
+        anim::Pose Still;
+    };
+    TargetPoses buildTargetPose(const anim::Clip* Top, float Dt);
     std::string describeLegs() const;
     /// The legs of the switched stance: the stance_switched clip, or the
     /// stance's legs mirrored.
@@ -243,6 +260,20 @@ private:
     /// between the stance and the walk cycle, and for the switch-step.
     anim::PoseTransition LegFade;
     anim::Pose ShownLegs;                  ///< What LegFade gave last step.
+    anim::Pose ShownLegsStill;             ///< ShownLegs without the step's travel.
+    /// What the legs do in this step (planWalking(), advanceLegs()).
+    struct LegPlan {
+        bool Crouched = false;
+        bool WantsToMove = false;
+        float Sign = 0.0f;           ///< Of the requested walk, world X.
+        bool CanStep = false;        ///< May step along when pushed.
+        bool FollowsTravel = false;  ///< The cycle walked with the travel below.
+        float Travel = 0.0f;         ///< The pelvis travel the cycle's step assumes, m (world).
+        bool Held = false;           ///< Walking, but the opponent holds the pelvis.
+        bool Pushed = false;         ///< Not walking, but the legs step with a push.
+    };
+    LegPlan Stride;
+    float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.
     /// What sets the legs below the clip on top.
     enum class LegSource : uint8_t { Stance, SwitchedStance, Walk };
     LegSource ShownSource = LegSource::Stance; ///< Last step's; a change crosses over (LegFade).
@@ -276,6 +307,7 @@ private:
     /// The pose fades over when the clip on top changes (anim::PoseTransition).
     anim::PoseTransition Fade;
     anim::Pose Shown;                      ///< The pose the motors got last step.
+    anim::Pose ShownStill;                 ///< Shown without the step's travel (rig::Rig::setTravelPose).
     const anim::Clip* ShownTop = nullptr;  ///< The clip on top in the last step.
     bool TopRestarted = false;             ///< The clip on top started again (a chain, a stronger reaction).
 };
