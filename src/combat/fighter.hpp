@@ -266,11 +266,10 @@ private:
         bool Crouched = false;
         bool WantsToMove = false;
         float Sign = 0.0f;           ///< Of the requested walk, world X.
-        bool CanStep = false;        ///< May step along when pushed.
         bool FollowsTravel = false;  ///< The cycle walked with the travel below.
         float Travel = 0.0f;         ///< The pelvis travel the cycle's step assumes, m (world).
         bool Held = false;           ///< Walking, but the opponent holds the pelvis.
-        bool Pushed = false;         ///< Not walking, but the legs step with a push.
+        bool Pushed = false;         ///< Walking, but pushed back: the legs step backwards.
     };
     LegPlan Stride;
     float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.

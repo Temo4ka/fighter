@@ -485,12 +485,6 @@ float Fighter::planWalking(const PlayerCommands& Cmd) {
     if (Crouched) Scale *= Tuning.CrouchWalkSpeedScale;
     if (Exhausted) Scale *= Tuning.ExhaustedSpeedScale;
 
-    // Pushed along (by the opponent, a hit), the legs may step with the
-    // pelvis where nothing else poses them: not in an attack or getting up.
-    const bool LegsFree = State == FighterState::Idle || State == FighterState::Walking || Crouched ||
-                          State == FighterState::Blocking || State == FighterState::Reacting;
-    const anim::Clip* Top = getTopClip();
-    Stride.CanStep = LegsFree && !PendingAttack && !(Top && coversLegs(*Top) && !Crouched);
     Stride.WantsToMove = WantsToMove;
     Stride.Sign = MoveX > 0.0f ? 1.0f : -1.0f;
     return WantsToMove ? MoveX * Body.getWalkSpeed() * Scale : 0.0f;
@@ -508,29 +502,28 @@ void Fighter::advanceLegs(float Dt) {
     const rig::PelvisController& Motion = Body.getController();
     const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
     const float MinTravel = Tuning.StepMinSpeed * Dt;
-    // The planned travel of this step (walking, knockback, the push of the
-    // opponent going on); the spacing may take some of it back, the cycle
-    // then keeps only that share (applyControl()).
-    const float Travel = Motion.getPlannedTravel();
-    if (Stride.WantsToMove) {
-        // Held in place by the opponent (it planned to go, the pelvis did
-        // not): the cycle follows the travel, so the legs hold their pose
-        // instead of marching on the spot. (Playing the stop here would move
-        // the feet without travel, into the opponent.)
-        const float LastTravel = Motion.getVelocity() * Dt;
-        Stride.Held = LastPlannedTravel * Stride.Sign > MinTravel && LastTravel * Stride.Sign < MinTravel;
-    } else if (!Stride.CanStep || std::abs(Travel - Motion.getCarryTravel()) <= MinTravel) {
-        // Not walking: the legs step with a knockback or a push-out (a hit),
-        // but not with the push of the opponent's body (the carry): its feet
-        // are at the opponent's, and a foot lifted there would come down on
-        // them (the feet slide with the push instead, Rig::pushBody).
+    if (!Stride.WantsToMove) {
+        // Not walking: the walk stops on both feet. A fighter pushed by the
+        // opponent's body (the carry) or knocked back by a hit does not step
+        // with it: its feet are at the opponent's, and a foot lifted there
+        // would come down on them; the planted feet go along with the push
+        // (Rig::pushBody) or hold their place and step back under the body
+        // afterwards (the rig's footRestepDistance).
         stopLegs(Cycle, Crouched, Dt);
         return;
     }
-    // Walking, or knocked back faster than a step: the legs step along,
-    // forwards or backwards, as far as the pelvis goes.
+    // The planned travel of this step (the walk, and a knockback or a push
+    // going on); the spacing may take some of it back, the cycle then keeps
+    // only that share (applyControl()). Held in place by the opponent (it
+    // planned to go, the pelvis did not), the legs hold their pose instead
+    // of marching on the spot. (Playing the stop here would move the feet
+    // without travel, into the opponent.)
+    const float Travel = Motion.getPlannedTravel();
+    const float LastTravel = Motion.getVelocity() * Dt;
+    Stride.Held = LastPlannedTravel * Stride.Sign > MinTravel && LastTravel * Stride.Sign < MinTravel;
+    // Pushed back faster than it walks, the walker steps backwards.
+    Stride.Pushed = Travel * Stride.Sign < 0.0f;
     FeetSettling = false;
-    Stride.Pushed = !Stride.WantsToMove || Travel * Stride.Sign < 0.0f;
     Cycle.walk(Dt, std::abs(Travel) / (CycleSpeed * Dt), Travel * Facing);
     Stride.FollowsTravel = true;
     Stride.Travel = Travel;
@@ -539,6 +532,7 @@ void Fighter::advanceLegs(float Dt) {
 void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
     const CombatTuning& Tuning = Rules->Tuning;
     if (Cycle.getMode() == LegCycle::Mode::Walking) FeetSettling = true;
+    const bool WasPlaying = Cycle.isPlaying();
     Cycle.stop(Dt, Tuning.WalkStopRate);
     // Stopped in the normal stance: the legs cross over to the stance
     // clip's (or the crouch's); the switched one holds the cycle's pose.
@@ -551,7 +545,9 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
         // held off it. Then the feet stay where they stand, also when the
         // pelvis glides on a little, instead of stepping under the body
         // once more (rig::Rig::keepFeetPlanted).
-        const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive());
+        // A cycle that stopped in this step starts its cross-over in this
+        // step too (buildTargetPose()).
+        const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive()) || (WasPlaying && !Cycle.isPlaying());
         if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
             Body.slideFeet();
         } else {

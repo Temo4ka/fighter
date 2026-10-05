@@ -160,23 +160,21 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
         }
     }
 
-    // Taking back the approach is free: the walk just slows down. What is
-    // left pushes the fighters apart. A push goes on as the pelvises' own
-    // motion (the carry, PelvisController::setCarry), easing out at
-    // PushAcceleration, and grows by PushAcceleration at most, up to
-    // PushMaxSpeed: no jerk, no back and forth.
+    // Taking back the approach is free: the walk just slows down (and a
+    // fighter walked into is shoved along, by mass). What is left pushes the
+    // fighters apart: that push speed grows by PushAcceleration at most, up
+    // to PushMaxSpeed, and it stops where the bodies are apart (it only does
+    // what they need, so it slows down to their contact): no jerk, no back
+    // and forth.
     const float Slowed = std::min(Needed, Closing);
-    // The push of the last step goes on in this step's plans (the carry,
-    // already eased out by PushAcceleration * Dt); a new push may make up for
-    // that and grow by as much again, up to PushMaxSpeed.
-    const float Carried = std::max(0.0f, RightMotion.getCarry() - LeftMotion.getCarry());
-    const float MaxPush =
-        std::clamp(Params.PushMaxSpeed - Carried, 0.0f, 2.0f * Params.PushAcceleration * Dt) * Dt;
+    const float LastPush =
+        std::max(0.0f, RightMotion.getSpacingMotion().Eased - LeftMotion.getSpacingMotion().Eased);
+    const float MaxPush = std::min(Params.PushMaxSpeed, LastPush + Params.PushAcceleration * Dt) * Dt;
     float Pushed = std::clamp(Needed - Slowed, 0.0f, MaxPush);
     // Nothing passes through the opponent: bodies that the eased push would
     // leave deeper than MaxSoftOverlap in each other (a kick, a crouch, a
-    // foot set down on the opponent's) are pushed as far as that needs, at
-    // once (a hard push, told in the event log).
+    // foot set down on the opponent's) are pushed apart at once, as far as
+    // they need (a hard push, told in the event log).
     // An overlap left over from the last step (two feet that met) only has
     // to shrink: it is pushed out eased.
     const float LeftOver = std::min(LeftMotion.getSpacingMotion().Overlap, RightMotion.getSpacingMotion().Overlap);
@@ -184,16 +182,8 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     bool Hard = false;
     float OverlapLeft = Overlap > 0.0f ? getOverlap(Slowed + Pushed) : 0.0f;
     if (OverlapLeft > MaxOverlap) {
-        float Low = Slowed + Pushed;
-        float High = std::max(Low, Needed);
-        if (getOverlap(High) <= MaxOverlap) {
-            for (int Step = 0; Step < SeparationSearchSteps; ++Step) {
-                const float Middle = (Low + High) * 0.5f;
-                (getOverlap(Middle) > MaxOverlap ? Low : High) = Middle;
-            }
-        }
-        Pushed = High - Slowed;
-        OverlapLeft = getOverlap(High);
+        Pushed = std::max(Pushed, Needed - Slowed);
+        OverlapLeft = getOverlap(Slowed + Pushed);
         Hard = true;
     }
     const float Shift = Slowed + Pushed;
@@ -208,27 +198,26 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
         if (Hard) {
             debug::logEvent(std::format("spacing hard push: bodies overlap {:.3f} m, apart {:.3f} m at once", Overlap,
                                         Pushed));
-        } else if (Carried < MinLoggedPush && Pushed / Dt >= MinLoggedPush) {
+        } else if (LastPush < MinLoggedPush && Pushed / Dt >= MinLoggedPush) {
             debug::logEvent(std::format("spacing pushes apart: {}needs {:.3f} m more than the approach",
                                         Overlap > 0.0f ? std::format("bodies overlap {:.3f} m, ", Overlap) : "",
                                         Needed - Slowed));
-        } else if (Carried >= MinLoggedPush && Pushed / Dt < MinLoggedPush) {
+        } else if (LastPush >= MinLoggedPush && Pushed / Dt < MinLoggedPush) {
             debug::logEvent("spacing push over");
         }
     }
-    // The push goes on and eases out (the carry); the slowing does not: a
-    // fighter walked into stops with the walk.
     const auto [LeftX, RightX] = place(Shift);
     const auto [LeftSlowX, RightSlowX] = place(Slowed);
     for (auto&& [Motion, Planned, Corrected, SlowedTo] :
          {std::tuple(&LeftMotion, LeftPlanned, LeftX, LeftSlowX),
           std::tuple(&RightMotion, RightPlanned, RightX, RightSlowX)}) {
-        // A hard push does not carry on faster than an eased one.
-        const float NewCarry = std::clamp(Motion->getCarry() + (Corrected - SlowedTo) / Dt, -Params.PushMaxSpeed,
-                                          Params.PushMaxSpeed);
-        Motion->setCarry(NewCarry, Params.PushAcceleration);
+        // A hard push does not make the next push faster than an eased one.
         const PelvisController::SpacingMotion Split = splitCorrection(*Motion, Planned, Corrected, Dt);
-        Motion->setSpacingMotion({.Slowed = Split.Slowed, .Pushed = Split.Pushed, .Overlap = OverlapLeft});
+        Motion->setSpacingMotion({.Slowed = Split.Slowed,
+                                  .Pushed = Split.Pushed,
+                                  .Eased = std::clamp((Corrected - SlowedTo) / Dt, -Params.PushMaxSpeed,
+                                                      Params.PushMaxSpeed),
+                                  .Overlap = OverlapLeft});
     }
     if (Shift <= 0.0f) return;
     Left.pushBody(LeftX - LeftPlanned);
