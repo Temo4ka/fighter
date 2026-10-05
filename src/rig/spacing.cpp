@@ -211,9 +211,12 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     }
     const auto [LeftX, RightX] = place(Shift);
     const auto [LeftSlowX, RightSlowX] = place(Slowed);
-    for (auto&& [Motion, Planned, Corrected, SlowedTo] :
-         {std::tuple(&LeftMotion, LeftPlanned, LeftX, LeftSlowX),
-          std::tuple(&RightMotion, RightPlanned, RightX, RightSlowX)}) {
+    // Without the walls: what the walls move over to the other fighter.
+    const float LeftFree = LeftPlanned - Shift * LeftShare;
+    const float RightFree = RightPlanned + Shift * (1.0f - LeftShare);
+    for (auto&& [Motion, Planned, Corrected, SlowedTo, Free] :
+         {std::tuple(&LeftMotion, LeftPlanned, LeftX, LeftSlowX, LeftFree),
+          std::tuple(&RightMotion, RightPlanned, RightX, RightSlowX, RightFree)}) {
         // A hard push does not make the next push faster than an eased one.
         const PelvisController::SpacingMotion Split = splitCorrection(*Motion, Planned, Corrected, Dt);
         // A walk held back goes on at the speed it was let go (without the
@@ -225,6 +228,7 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
                                   .Pushed = Split.Pushed,
                                   .Eased = std::clamp((Corrected - SlowedTo) / Dt, -Params.PushMaxSpeed,
                                                       Params.PushMaxSpeed),
+                                  .Wall = (Corrected - Free) / Dt,
                                   .Overlap = OverlapLeft});
     }
     if (Shift <= 0.0f) return;
@@ -275,7 +279,7 @@ void reportCorrections(const Rig& Body, float Dt) {
     }
     const PelvisController& Motion = Body.getController();
     const PelvisController::SpacingMotion Spacing = Motion.getSpacingMotion();
-    const float Wall = Motion.getWallShift() / Dt;
+    const float Wall = Motion.getWallShift() / Dt + Spacing.Wall;
     const float PushOut = Motion.getPushOut();
     debug::setPanel(Name, std::format("spacing: slowed {:+.2f}, pushed {:+.2f}; wall {:+.2f}; push-out {:+.2f} m/s",
                                       Spacing.Slowed, Spacing.Pushed, Wall, PushOut));

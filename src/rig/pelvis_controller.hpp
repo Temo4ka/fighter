@@ -103,11 +103,14 @@ public:
     /// (rig::keepApart), m/s along X: Slowed takes back some of the planned
     /// approach (the walk is slower), Pushed moves it beyond its plan (apart
     /// from the opponent), of which Eased is the push beyond what slowing
-    /// the approach shoves (it grows at a limited rate, rig::keepApart).
+    /// the approach shoves (it grows at a limited rate, rig::keepApart);
+    /// Wall is the part of the correction a wall moved over to this fighter
+    /// because the opponent's back is at it.
     struct SpacingMotion {
         float Slowed = 0.0f;
         float Pushed = 0.0f;
         float Eased = 0.0f;
+        float Wall = 0.0f;
         /// How deep the bodies were left in each other (planned), m.
         float Overlap = 0.0f;
     };
