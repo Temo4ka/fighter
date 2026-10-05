@@ -22,6 +22,7 @@
   "physicsSteps": 8,
   "physicsSubSteps": 4,
   "contactHertz": 240.0,
+  "fighterFriction": 0.6,
   "armOverlapTolerance": 0.02,
   "overlapTolerance": 0.012
 }

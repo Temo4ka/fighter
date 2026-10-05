@@ -56,6 +56,7 @@ constexpr std::array ControlFields = {
     ControlField{"footPlantHeight", &ControlParams::FootPlantHeight},
     ControlField{"footLockSlip", &ControlParams::FootLockSlip},
     ControlField{"footLockRelease", &ControlParams::FootLockRelease},
+    ControlField{"footSlideSpeed", &ControlParams::FootSlideSpeed},
     ControlField{"footRestepDistance", &ControlParams::FootRestepDistance},
     ControlField{"footStepLift", &ControlParams::FootStepLift},
     ControlField{"jamAngle", &ControlParams::JamAngle},
@@ -72,8 +73,8 @@ constexpr std::array<std::string_view, 17> NonNegativeFields = {
     "yieldStiffness",  "yieldSec"};
 
 /// Parameters that must be positive: they divide or set a duration.
-constexpr std::array<std::string_view, 5> PositiveFields = {"walkSpeed", "walkAcceleration", "walkDeceleration",
-                                                            "knockdownSpeed", "getUpSec"};
+constexpr std::array<std::string_view, 6> PositiveFields = {"walkSpeed",      "walkAcceleration", "walkDeceleration",
+                                                            "knockdownSpeed", "getUpSec",         "footSlideSpeed"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);

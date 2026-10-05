@@ -124,6 +124,9 @@ struct ControlParams {
     float FootLockSlip = 0.12f;
     /// How fast a lifted foot returns to the clip, 1/s.
     float FootLockRelease = 12.0f;
+    /// How fast a planted foot slides along the floor to the clip's pose
+    /// when combat lets it (Rig::slideFeet, the end of a walk), m/s.
+    float FootSlideSpeed = 2.0f;
     /// A fighter standing still with a planted foot this far from the
     /// stance (left there by a push) steps it back, m; 0 never.
     float FootRestepDistance = 0.05f;

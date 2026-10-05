@@ -43,6 +43,7 @@
 
 #pragma once
 
+#include <bitset>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -69,6 +70,10 @@ public:
         /// another one (an arm pushed by its motors) sinks in less the
         /// stiffer they are. Box2D caps it at 1/8 of the substep rate.
         float ContactHertz = 30.0f;
+        /// Friction between body parts of different fighters; nullopt: the
+        /// frictions of the two shapes mixed as for any contact. A limb
+        /// pressed onto the opponent drags it along less the lower it is.
+        std::optional<float> FighterFriction;
         /// Closing speed above which a contact between body parts of
         /// different fighters is reported as a hit, m/s.
         float HitSpeedThreshold = 1.0f;
@@ -114,8 +119,10 @@ public:
     bool isOverlappingOtherFighter(Body Target) const;
     /// Would \p Target, placed with its origin at \p Position and turned by
     /// \p Angle, come closer than \p Margin (m) to a body part of another
-    /// fighter, whatever their collision filters say? Nothing moves.
-    bool isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin) const;
+    /// fighter (other than \p Ignored), whatever their collision filters
+    /// say? Nothing moves.
+    bool isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin,
+                                     const std::bitset<BodyPartCount>& Ignored = {}) const;
     /// The deepest overlap between any body parts of different fighters,
     /// whatever their types and collision filters: the measure of "nothing
     /// passes through the opponent". Nullopt if no two parts overlap.
@@ -223,8 +230,19 @@ private:
     /// that touched after a step.
     using SlotPair = std::pair<uint32_t, uint32_t>;
 
+    /// A hit between two dynamic parts in the current step: its impulse is
+    /// summed over the Box2D steps of the simulation step.
+    struct SolvedHit {
+        uint64_t ShapeA = 0;   ///< b2ShapeId packed with b2StoreShapeId.
+        uint64_t ShapeB = 0;
+        size_t HitIndex = 0;   ///< Into Hits.
+    };
+
     void destroy();
     void recordPartVelocities();
+    /// Hits reported by Box2D in its last step. Called after every Box2D
+    /// step of a simulation step: it also adds the contact impulse of that
+    /// Box2D step to the hits between dynamic parts found so far.
     void collectHits();
     /// Hits between the kinematic parts of different fighters, which Box2D
     /// does not collide.
@@ -258,8 +276,10 @@ private:
     uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
     int StepPasses = 1;
     int SubSteps = 4;
+    std::optional<float> FighterFriction;   ///< Config::FighterFriction.
     std::vector<PartBody> PartBodies;
     std::vector<HitEvent> Hits;
+    std::vector<SolvedHit> SolvedHits;   ///< Of the current step.
     float HitSpeedThreshold = 1.0f;
     std::vector<SlotPair> TouchingPosed;   ///< Sorted.
 };

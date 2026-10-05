@@ -63,8 +63,9 @@ inline constexpr float GuardJabRange = 0.88f;
 /// the contact stop holds it there and it never reaches the pelvis; from
 /// the others it lands. This range stops the walk at 0.90 m.
 inline constexpr float KickRange = 0.92f;
-/// The body kick at close range: the shin lands on the torso.
-inline constexpr float CloseKickRange = 0.55f;
+/// The body kick from a little further than KickRange: the foot lands on
+/// the torso (the walk stops at about 0.98 m).
+inline constexpr float TorsoKickRange = 1.0f;
 
 inline BattleConfig makeConfig() {
     BattleConfig Config;

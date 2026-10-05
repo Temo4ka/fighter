@@ -143,8 +143,7 @@ public:
     void keepFeetPlanted();
     /// For this step the feet slide towards the clip's pose along the floor
     /// instead of holding their place: a planted foot lets go and closes on
-    /// the clip as a lifted one does (ControlParams::FootLockRelease), with
-    /// no jump. Combat calls it while a walk plays on quickly to a stop, so
+    /// the clip at ControlParams::FootSlideSpeed at most, with no jump. Combat calls it while a walk plays on quickly to a stop, so
     /// that the stop ends in the clip's pose.
     void slideFeet() { SlidingFeet = true; }
     /// Places every part in the target pose at rest, standing on the floor.
@@ -436,7 +435,10 @@ private:
     void updateJams(float Dt);
     void setLimbYielding(BodyPart Limb, bool Yielding);
     /// Would the limb whose topmost part is \p Limb, posed at the clip's
-    /// angles from where its parent is now, overlap the opponent?
+    /// angles from where its parent is now, overlap the opponent? The
+    /// opponent's limbs of the "unjam" list (its arms) do not block it: a
+    /// guard comes back against the opponent's guard and rests on it (the
+    /// solver keeps them apart), as two guards do that never jammed.
     bool isWishBlocked(BodyPart Limb) const;
     /// Joint targets from the wishes and the yielding limbs.
     void refreshTargets();
@@ -468,6 +470,7 @@ private:
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
     PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
     std::bitset<BodyPartCount> YieldPosed;
+    std::bitset<BodyPartCount> UnjamParts;   ///< RigDef::Unjam.
 
     PelvisController Controller;
     Posture CurrentPosture = Posture::Standing;

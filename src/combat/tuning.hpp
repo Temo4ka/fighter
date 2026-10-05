@@ -39,6 +39,10 @@ struct CombatTuning {
     /// caps it at 1/8 of the substep rate (60 Hz * PhysicsSteps *
     /// PhysicsSubSteps / 8).
     float ContactHertz = 240.0f;
+    /// Friction between body parts of different fighters: a limb pressed
+    /// onto the opponent (a foot on a lying head) drags it along less, arms
+    /// slide off each other more easily the lower it is.
+    float FighterFriction = 0.6f;
     /// @}
     /// \name Allowed overlap of the fighters
     /// How deep a part of one fighter may overlap a part of the other one

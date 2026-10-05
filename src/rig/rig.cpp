@@ -448,6 +448,7 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
         State.Size = getBoundsSize(Mirrored);
         State.Kinematic = Def.Kinematic.test(Index);
         State.Unjam = Def.Unjam.test(Index);
+        UnjamParts.set(Index, State.Unjam);
         const bool PassThrough = Def.PassThrough.test(Index);
         const uint64_t Category = State.Kinematic ? PosedPartBit : PassThrough ? PassThroughBit : PhysicalPartBit;
         const uint64_t Mask = PassThrough ? CollideWithAll & ~PassThroughBit : CollideWithAll;
@@ -777,7 +778,12 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
                                     std::min(ClipAnkle.X + Slip, std::max(HipPoint.X + Span, ClipAnkle.X)));
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
-            Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
+            if (SlidingFeet) {
+                const float MaxSlide = Control.FootSlideSpeed * Dt;
+                Limb.OffsetX -= std::clamp(Limb.OffsetX, -MaxSlide, MaxSlide);
+            } else {
+                Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
+            }
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
@@ -949,7 +955,8 @@ bool Rig::isWishBlocked(BodyPart Limb) const {
         const auto ChildIndex = static_cast<size_t>(Joint.Child);
         Pose[ChildIndex] = {.Position = Anchor + rotate(Joint.ChildFromAnchor, Angle), .Angle = Angle};
         Placed.set(ChildIndex);
-        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, YieldClearance)) {
+        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, YieldClearance,
+                                                 UnjamParts)) {
             return true;
         }
     }

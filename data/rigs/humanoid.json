@@ -75,6 +75,7 @@
     "footPlantHeight": 0.01,
     "footLockSlip": 0.2,
     "footLockRelease": 12.0,
+    "footSlideSpeed": 2.0,
     "footRestepDistance": 0.05,
     "footStepLift": 0.5,
 

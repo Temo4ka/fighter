@@ -97,9 +97,16 @@ struct Solo {
     }
 };
 
+/// The physics of data/combat.json (physicsSteps, physicsSubSteps,
+/// contactHertz, fighterFriction): two fighters press into each other as in
+/// a battle.
+const physics::World::Config DuelPhysics{
+    .StepPasses = 8, .SubSteps = 4, .ContactHertz = 240.0f, .FighterFriction = 0.6f};
+
 /// Two fighters facing each other, kept apart like in a battle.
+
 struct Duel {
-    physics::World PhysWorld;
+    physics::World PhysWorld{DuelPhysics};
     Rig Left;
     Rig Right;
     SpacingParams Spacing{.ArenaHalfWidth = ArenaHalfWidth};
@@ -517,13 +524,19 @@ TEST_CASE("keepApart: a standing fighter does not walk through a lying one", "[r
     Fallen.run(60);
     REQUIRE(Fallen.Right.getPosture() == Posture::KnockedDown);
 
+    // Until it gets up: then the two keep apart as standing fighters.
     Fallen.Left.setMoveVelocity(1.0f);
+    int LyingSteps = 0;
     for (int Step = 0; Step < 60; ++Step) {
         Fallen.run(1);
+        if (Fallen.Right.getPosture() != Posture::KnockedDown) break;
+        ++LyingSteps;
         const float Body = Fallen.Right.getExtentX().Min;
         CHECK(getPelvisX(Fallen.Left) <=
               Approx(Body - Fallen.Spacing.BodyHalfWidth - Fallen.Left.getControl().LyingClearance).margin(0.01f));
     }
+    // Long enough for the walk to reach the body.
+    CHECK(LyingSteps >= 25);
 }
 
 TEST_CASE("pushApartOnHit: a hit at close range pushes the fighters apart", "[rig]") {

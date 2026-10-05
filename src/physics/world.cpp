@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,8 @@ constexpr int MaxContactsPerShape = 16;
 constexpr int MaxShapesPerBody = 8;
 /// Contacts looked at per body when asking whether it touches a fighter.
 constexpr int MaxContactsPerBody = 32;
+/// encodeFighterFriction() keeps the friction to 1/FrictionIdScale.
+constexpr float FrictionIdScale = 10000.0f;
 /// Posed shapes closer than this touch, m (as Box2D overlap queries).
 constexpr float TouchTolerance = 0.0005f;
 /// A posed part that went from apart to this deep into a dynamic part in one
@@ -63,6 +66,8 @@ struct ShapeGap {
 };
 
 b2Polygon makeBox(const ShapeDef& Shape);
+int encodeFighterFriction(float Friction);
+float mixFriction(float FrictionA, int MaterialA, float FrictionB, int MaterialB);
 float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other);
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage);
 b2ShapeProxy makeLocalProxy(b2ShapeId Shape);
@@ -78,11 +83,13 @@ b2Transform getTransform(b2ShapeId Shape);
 World::World(Config Settings)
     : StepPasses(std::max(Settings.StepPasses, 1)),
       SubSteps(Settings.SubSteps),
+      FighterFriction(Settings.FighterFriction),
       HitSpeedThreshold(Settings.HitSpeedThreshold) {
     b2WorldDef Def = b2DefaultWorldDef();
     Def.gravity = toBox2D(Settings.Gravity);
     Def.hitEventThreshold = Settings.HitSpeedThreshold;
     Def.contactHertz = Settings.ContactHertz;
+    Def.frictionCallback = mixFriction;
     // Fighters must never fall asleep: their motors work every step.
     Def.enableSleep = false;
     Id = b2StoreWorldId(b2CreateWorld(&Def));
@@ -94,8 +101,10 @@ World::World(World&& Other) noexcept
     : Id(std::exchange(Other.Id, 0)),
       StepPasses(Other.StepPasses),
       SubSteps(Other.SubSteps),
+      FighterFriction(Other.FighterFriction),
       PartBodies(std::move(Other.PartBodies)),
       Hits(std::move(Other.Hits)),
+      SolvedHits(std::move(Other.SolvedHits)),
       HitSpeedThreshold(Other.HitSpeedThreshold),
       TouchingPosed(std::move(Other.TouchingPosed)) {}
 
@@ -105,8 +114,10 @@ World& World::operator=(World&& Other) noexcept {
         Id = std::exchange(Other.Id, 0);
         StepPasses = Other.StepPasses;
         SubSteps = Other.SubSteps;
+        FighterFriction = Other.FighterFriction;
         PartBodies = std::move(Other.PartBodies);
         Hits = std::move(Other.Hits);
+        SolvedHits = std::move(Other.SolvedHits);
         HitSpeedThreshold = Other.HitSpeedThreshold;
         TouchingPosed = std::move(Other.TouchingPosed);
     }
@@ -120,6 +131,7 @@ void World::destroy() {
     }
     PartBodies.clear();
     Hits.clear();
+    SolvedHits.clear();
     TouchingPosed.clear();
 }
 
@@ -155,6 +167,9 @@ void World::addShape(Body Target, const ShapeDef& Shape) {
     Def.material.friction = Shape.Friction;
     Def.material.restitution = Shape.Restitution;
     Def.material.customColor = detail::encodeDebugColor(Category, Owner);
+    // The friction between fighters travels in the material id: the friction
+    // callback of Box2D gets nothing else (mixFriction()).
+    if (Owner != debug::Side::None && FighterFriction) Def.material.userMaterialId = encodeFighterFriction(*FighterFriction);
     Def.filter.groupIndex = Shape.CollisionGroup;
     Def.filter.categoryBits = Shape.CollisionCategory;
     Def.filter.maskBits = Shape.CollisionMask;
@@ -220,6 +235,7 @@ void World::setStrikeMass(Body Target, float Kg) {
 void World::step(float Dt) {
     recordPartVelocities();
     Hits.clear();
+    SolvedHits.clear();
     // Hit events are read after every Box2D step: the next one drops them.
     for (int Pass = 0; Pass < StepPasses; ++Pass) {
         b2World_Step(loadWorld(Id), Dt / static_cast<float>(StepPasses), SubSteps);
@@ -251,7 +267,8 @@ bool World::isOverlappingOtherFighter(Body Target) const {
     return isOverlappingOtherFighterAt(Target, Target.getPosition(), Target.getAngle(), 0.0f);
 }
 
-bool World::isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin) const {
+bool World::isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin,
+                                        const std::bitset<BodyPartCount>& Ignored) const {
     const b2BodyId BodyId = loadBody(Target.Id);
     const auto Slot = detail::decodePartSlot(b2Body_GetUserData(BodyId));
     if (!Slot) return false;
@@ -259,12 +276,15 @@ bool World::isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle,
     struct Search {
         const std::vector<PartBody>* Parts = nullptr;
         uint8_t Owner = 0;
+        const std::bitset<BodyPartCount>* Ignored = nullptr;
         bool Found = false;
-    } State{.Parts = &PartBodies, .Owner = PartBodies[*Slot].Part.Fighter};
+    } State{.Parts = &PartBodies, .Owner = PartBodies[*Slot].Part.Fighter, .Ignored = &Ignored};
     const auto onOverlap = [](b2ShapeId Shape, void* Context) {
         auto* Query = static_cast<Search*>(Context);
         const auto Other = detail::decodePartSlot(b2Body_GetUserData(b2Shape_GetBody(Shape)));
-        Query->Found = Other && (*Query->Parts)[*Other].Part.Fighter != Query->Owner;
+        if (!Other) return true;
+        const PartRef& Part = (*Query->Parts)[*Other].Part;
+        Query->Found = Part.Fighter != Query->Owner && !Query->Ignored->test(static_cast<size_t>(Part.Part));
         return !Query->Found;   // stop at the first one
     };
 
@@ -529,17 +549,28 @@ void World::collectHits() {
         // same collision between free bodies instead (no restitution).
         const bool HasKinematic = PartA.Handle.getType() == BodyType::Kinematic ||
                                   PartB.Handle.getType() == BodyType::Kinematic;
-        float Impulse = 0.0f;
         if (HasKinematic) {
             const float MassA = getStrikeMass(PartA);
             const float MassB = getStrikeMass(PartB);
             const float MassSum = MassA + MassB;
-            Impulse = MassSum > 0.0f ? Event.approachSpeed * MassA * MassB / MassSum : 0.0f;
-        } else {
-            Impulse = sumContactImpulse(Event.shapeIdA, Event.shapeIdB);
+            const float Impulse = MassSum > 0.0f ? Event.approachSpeed * MassA * MassB / MassSum : 0.0f;
+            addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed, Impulse);
+            continue;
         }
-
-        addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed, Impulse);
+        // Two free bodies: the contact impulse of the whole simulation step,
+        // summed below over this Box2D step and the later ones. A contact
+        // that touches again within the step is the same hit.
+        const uint64_t ShapeA = b2StoreShapeId(Event.shapeIdA);
+        const uint64_t ShapeB = b2StoreShapeId(Event.shapeIdB);
+        const bool Known = std::ranges::any_of(SolvedHits, [&](const SolvedHit& Hit) {
+            return (Hit.ShapeA == ShapeA && Hit.ShapeB == ShapeB) || (Hit.ShapeA == ShapeB && Hit.ShapeB == ShapeA);
+        });
+        if (Known) continue;
+        SolvedHits.push_back({.ShapeA = ShapeA, .ShapeB = ShapeB, .HitIndex = Hits.size()});
+        addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed, 0.0f);
+    }
+    for (const auto& Hit : SolvedHits) {
+        Hits[Hit.HitIndex].Impulse += sumContactImpulse(b2LoadShapeId(Hit.ShapeA), b2LoadShapeId(Hit.ShapeB));
     }
 }
 
@@ -722,6 +753,19 @@ b2Polygon makeBox(const ShapeDef& Shape) {
     const float Rounding = Shape.Radius;
     return b2MakeOffsetRoundedBox(Shape.HalfExtents.X - Rounding, Shape.HalfExtents.Y - Rounding,
                                   toBox2D(Shape.Center), b2Rot_identity, Rounding);
+}
+
+/// The material id of a fighter's body part that carries the friction
+/// between fighters (World::Config::FighterFriction); 0 is no fighter part.
+int encodeFighterFriction(float Friction) {
+    return 1 + static_cast<int>(std::lround(std::max(Friction, 0.0f) * FrictionIdScale));
+}
+
+/// Box2D's friction callback: two fighters' body parts get the friction
+/// their material ids carry, anything else Box2D's own mix.
+float mixFriction(float FrictionA, int MaterialA, float FrictionB, int MaterialB) {
+    if (MaterialA > 0 && MaterialB > 0) return static_cast<float>(MaterialA - 1) / FrictionIdScale;
+    return std::sqrt(FrictionA * FrictionB);
 }
 
 /// Total normal impulse of the contact between two shapes during the last

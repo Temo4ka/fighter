@@ -91,6 +91,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
                                      .StepPasses = Tuning.PhysicsSteps,
                                      .SubSteps = Tuning.PhysicsSubSteps,
                                      .ContactHertz = Tuning.ContactHertz,
+                                     .FighterFriction = Tuning.FighterFriction,
                                      .HitSpeedThreshold = Tuning.HitSpeedThreshold}),
         .Rules = {.Moves = std::move(Moves),
                   .Clips = std::move(Clips),
