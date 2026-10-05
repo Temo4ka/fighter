@@ -865,3 +865,100 @@ TEST_CASE("Rig: the spacing sees a striker where it is and where the clip takes 
     // placement fewer).
     CHECK(Kick.Left.predictBody(Kick.Left.getController().getPlannedX(), Dt).size() == Parts - 1);
 }
+
+TEST_CASE("Rig: a push that only takes back the planned travel leaves the feet planted", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    Rig& Body = Stage.Body;
+    Stage.run(10);
+    REQUIRE(Body.isFootLocked(BodyPart::FootL));
+    const float FootLX = Body.getPartPosition(BodyPart::FootL).X;
+    // The pelvis plans to walk 1 cm a step, the spacing takes all of it back:
+    // the fighter just stands, its feet where they were.
+    Body.setMoveVelocity(0.6f);
+    for (int Step = 0; Step < 10; ++Step) {
+        Body.planMotion(Dt);
+        Body.pushBody(-Body.getController().getPlannedTravel());
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+    }
+    CHECK(Body.getPartPosition(BodyPart::FootL).X == Approx(FootLX).margin(1e-3f));
+    // Pushed beyond the start of the step, the planted feet go along with
+    // the part beyond it.
+    Body.planMotion(Dt);
+    const float Planned = Body.getController().getPlannedX();
+    const float Start = Body.getController().getPositionX();
+    const std::vector<PartPlacement> AtStart = Body.predictBody(Start, Dt);
+    const std::vector<PartPlacement> Behind = Body.predictBody(Start - 0.05f, Dt);
+    REQUIRE(Planned > Start);
+    REQUIRE(AtStart.size() == Behind.size());
+    for (auto&& [Near, Far] : std::views::zip(AtStart, Behind)) {
+        CHECK(Near.Position.X - Far.Position.X == Approx(0.05f).margin(1e-3f));
+    }
+}
+
+TEST_CASE("Rig: the posed joints follow the share of the travel made", "[rig]") {
+    // The front leg is lifted (a step), so no planted foot holds it. The pose
+    // of the step assumes the planned travel; without it the thigh is 0.2 rad
+    // further back. The spacing lets the pelvis make a share of the travel:
+    // the thigh is posed that share of the way.
+    PerBodyPart<float> Moving = loadStance();
+    Moving[static_cast<size_t>(BodyPart::ThighL)] = 0.8f;
+    Moving[static_cast<size_t>(BodyPart::ShinL)] = -1.0f;
+    PerBodyPart<float> Still = Moving;
+    Still[static_cast<size_t>(BodyPart::ThighL)] -= 0.2f;
+    const auto getThigh = [&](float Share) {
+        Solo Stage(makeSetup(0.0f, true), Moving);
+        Rig& Body = Stage.Body;
+        Stage.run(10);
+        REQUIRE_FALSE(Body.isFootLocked(BodyPart::FootL));
+        Body.setMoveVelocity(1.2f);
+        Body.planMotion(Dt);
+        const float Travel = Body.getController().getPlannedTravel();
+        Body.setTargetAngles(Moving);
+        Body.setTravelPose(Still, Travel);
+        CHECK(Body.getTravelShare() == 1.0f);
+        Body.pushBody(-Travel * (1.0f - Share));
+        CHECK(Body.getTravelShare() == Approx(Share).margin(1e-4f));
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+        return Body.getPartAngle(BodyPart::ThighL);
+    };
+    const float None = getThigh(0.0f);
+    const float Half = getThigh(0.5f);
+    const float All = getThigh(1.0f);
+    REQUIRE(std::abs(All - None) > 0.1f);
+    CHECK(Half == Approx((None + All) * 0.5f).margin(0.02f));
+}
+
+TEST_CASE("Rig: isStriking tells posed strikers", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    CHECK_FALSE(Stage.Body.isStriking());
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    Stage.Body.setStrikingParts(Strikers, Strikers);
+    CHECK(Stage.Body.isStriking());
+}
+
+TEST_CASE("keepApart: a push apart grows by pushAcceleration and stops at the contact", "[rig]") {
+    // Two standing fighters overlap by 10 cm (the pushboxes): the push
+    // apart eases in, not faster than PushMaxSpeed, and stops where they
+    // touch.
+    Duel Close(-0.2f, 0.2f);
+    Close.pose(loadNarrowStance());
+    Close.Spacing.PushAcceleration = 20.0f;
+    Close.Spacing.PushMaxSpeed = 1.5f;
+    const float MinGap = 2.0f * Close.Spacing.BodyHalfWidth;
+    float LastSpeed = 0.0f;
+    float Fastest = 0.0f;
+    for (int Step = 0; Step < 60; ++Step) {
+        const float Before = getPelvisX(Close.Right) - getPelvisX(Close.Left);
+        Close.run(1);
+        const float Speed = (getPelvisX(Close.Right) - getPelvisX(Close.Left) - Before) / Dt;
+        CHECK(Speed <= LastSpeed + Close.Spacing.PushAcceleration * Dt + 1e-3f);
+        Fastest = std::max(Fastest, Speed);
+        LastSpeed = Speed;
+    }
+    CHECK(Fastest <= Close.Spacing.PushMaxSpeed + 1e-3f);
+    CHECK(getPelvisX(Close.Right) - getPelvisX(Close.Left) == Approx(MinGap).margin(1e-3f));
+    CHECK(Close.Right.getController().getSpacingMotion().Pushed == Approx(0.0f).margin(1e-3f));
+}

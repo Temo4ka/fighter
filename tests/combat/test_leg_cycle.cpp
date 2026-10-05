@@ -148,3 +148,27 @@ TEST_CASE("getStanceVariantName: both variants have names", "[combat]") {
     CHECK(getStanceVariantName(StanceVariant::Normal) == "normal");
     CHECK(getStanceVariantName(StanceVariant::Switched) == "switched");
 }
+
+TEST_CASE("LegCycle: follow keeps the share of the last step", "[combat]") {
+    LegCycle Cycle = makeTwoSpanCycle();
+    walkTo(Cycle, 0.3f);
+    const float Before = Cycle.getTime();
+    Cycle.walk(0.1f, 1.0f, 1.0f);
+    CHECK(Cycle.getStepFromTime() == Approx(Before));
+    CHECK(Cycle.getTime() == Approx(Before + 0.1f));
+    Cycle.follow(0.25f);
+    CHECK(Cycle.getTime() == Approx(Before + 0.025f));
+    CHECK(Cycle.getStepFromTime() == Approx(Before));
+    // Backwards, across the start of the cycle.
+    walkTo(Cycle, 0.02f);
+    Cycle.walk(0.1f, 1.0f, -1.0f);
+    CHECK(Cycle.getTime() == Approx(0.72f).margin(0.01f));
+    Cycle.follow(0.5f);
+    CHECK(Cycle.getTime() == Approx(0.77f).margin(0.01f));
+    // A stop is no step to follow.
+    Cycle.stop(0.01f, 3.0f);
+    const float Stopping = Cycle.getTime();
+    CHECK(Cycle.getStepFromTime() == Approx(Stopping));
+    Cycle.follow(0.0f);
+    CHECK(Cycle.getTime() == Approx(Stopping));
+}

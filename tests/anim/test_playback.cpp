@@ -124,6 +124,19 @@ TEST_CASE("PoseTransition: fades from the start pose to the target", "[anim][pla
     CHECK(Fade.step(Target, Dt).getAngle(BodyPart::Torso) == -1.0f);
 }
 
+TEST_CASE("PoseTransition: peek blends another target at the same weight", "[anim][playback]") {
+    PoseTransition Fade;
+    const Pose Start = makePose(0.0f, 0.0f);
+    CHECK(Fade.peek(makePose(1.0f, 1.0f)).getAngle(BodyPart::Head) == 1.0f);   // no fade
+    Fade.begin(Start, 0.2f);
+    const Pose Shown = Fade.step(makePose(1.0f, 1.0f), 0.1f);
+    const Pose Other = Fade.peek(makePose(2.0f, 2.0f));
+    CHECK(Other.getAngle(BodyPart::Head) == Approx(2.0f * Shown.getAngle(BodyPart::Head)));
+    // Peeking does not advance the fade.
+    CHECK(Fade.getWeight() == Approx(0.5f));
+    CHECK(Fade.peek(makePose(2.0f, 2.0f)).getAngle(BodyPart::Head) == Approx(Other.getAngle(BodyPart::Head)));
+}
+
 TEST_CASE("PoseTransition: the first shown pose is close to the old one", "[anim][playback]") {
     PoseTransition Fade;
     Fade.begin(makePose(0.0f, 0.0f), 0.1f);
