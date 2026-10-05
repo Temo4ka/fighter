@@ -157,10 +157,12 @@ public:
     /// the share of that relative motion, the carrier staying where it is. A
     /// posed part of the opponent counts when the striker touches it, a
     /// dynamic one only when the striker sank too deep into it: the solver
-    /// did not push it out of the way (it is held by its joints, or it
-    /// ignores posed parts, as a knocked-down body does). A kinematic body
-    /// moves at a constant velocity during a step, so the share is found by
-    /// bisection along that straight motion.
+    /// did not push it out of the way (it is held by its joints, or pinned
+    /// to the floor). Going back may not take a striker deeper into any
+    /// other part than it is now; if no share keeps every part shallow
+    /// enough, the least deep one is returned. A kinematic body moves at a
+    /// constant velocity during a step, so the share is found by bisection
+    /// along that straight motion.
     std::optional<float> findPosedStop(std::span<const Body> Strikers, float MaxDepth, Body Carrier = {}) const;
     /// The smallest gap between the shapes of \p First and \p Second, their
     /// bodies placed at the given origins and angles, m; negative: how deep

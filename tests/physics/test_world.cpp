@@ -405,8 +405,8 @@ TEST_CASE("physics::World: a posed part stops at a dynamic part only when the so
         CHECK_FALSE(PhysWorld.findPosedStop(Strikers, Depth).has_value());
     }
 
-    // A ball that ignores the shin (as a knocked-down body ignores posed
-    // parts) stops it like a posed part.
+    // A ball that ignores the shin (the solver cannot push it away, as a
+    // body pinned to the floor) stops it like a posed part.
     Body Lying = addBall(PhysWorld, 1, {0.0f, 1.0f}, {});
     Lying.setCollisionMask(0);
     Shin.setTransform({-0.3f, 1.0f}, 0.0f);

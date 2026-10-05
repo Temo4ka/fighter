@@ -21,10 +21,14 @@
 ///    heads (Rig::predictBody), at PosedSeparationSpeed at most. Box2D does
 ///    not collide posed parts, and a torso held on a posed pelvis cannot get
 ///    out of the way. The overlap is split by mass (the heavier one gives
-///    way less); a fighter at a wall cannot give way. The arms are left out
-///    (the solver keeps them apart, and a stuck one yields), and so are the
-///    striking parts of an attack: they stop at the opponent
-///    (Rig::stopAtContact);
+///    way less); a fighter at a wall cannot give way. The push moves the
+///    whole body, planted feet included (Rig::pushBody). The arms are left
+///    out (the solver keeps them apart, and a stuck one yields). The
+///    striking parts of an attack overlap only where they are and where the
+///    clip takes them alike: their own motion into the opponent stops there
+///    (Rig::stopAtContact), the opponent's into them is kept off here. What
+///    the spacing cannot keep apart in time (a leg swung through the
+///    opponent's in one step) Rig::holdLimbsBack stops;
 ///  - a standing fighter keeps its pelvis BodyHalfWidth + lyingClearance
 ///    (rig file) away from the body of a fighter lying on the floor, so its
 ///    legs do not walk through it.

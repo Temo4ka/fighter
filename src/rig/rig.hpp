@@ -35,15 +35,17 @@
 /// stance while the motors ramp up. A fighter told to stay down
 /// (setStayDown, a knockout) does not get up.
 ///
-/// Between two fighters (task 2.1): parts of the "passThrough" list pass the
-/// same parts of the opponent (empty in the shipped rig: the arms collide,
-/// a jab hits the raised guard), a limb stuck in the opponent yields: its
-/// motors soften and it pulls back to the rig's yield pose, still colliding
-/// ("unjam"; nothing passes through), posed legs hit posed legs (physics::World), the
-/// pelvises keep apart and away from the walls (rig/spacing.hpp). A posed
-/// striking limb stops where it meets the opponent's posed parts
-/// (stopAtContact): Box2D does not collide two kinematic bodies, so a kick
-/// would go through the legs it hits.
+/// Between two fighters (task 2.1) nothing passes through the opponent:
+/// parts of the "passThrough" list pass the same parts of the opponent
+/// (empty in the shipped rig: the arms collide, a jab hits the raised
+/// guard), a limb stuck in the opponent yields: its motors soften and it
+/// pulls back to the rig's yield pose, still colliding ("unjam"), posed legs
+/// hit posed legs (physics::World), the bodies keep apart and away from the
+/// walls (rig/spacing.hpp), a knocked-down body collides with the standing
+/// fighter's legs. A posed striking limb stops where it meets the
+/// opponent's posed parts (stopAtContact), and a posed leg swung too deep
+/// into the opponent is held back (holdLimbsBack): Box2D does not collide
+/// two kinematic bodies, so a kick would go through the legs it hits.
 ///
 /// The order of work per simulation step is explicit: set the targets, call
 /// planMotion(), let the battle correct the plan (rig::keepApart or

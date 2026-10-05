@@ -19,9 +19,9 @@
 
 | Файл | Что | Кто читает | Состояние |
 |---|---|---|---|
-| `rigs/*.json` | тело: части, суставы, параметры управления | `rig::loadRigDef` | есть |
+| `rigs/*.json` | тело: части, суставы, параметры управления, руки, которые уступают (`unjam`), и их поза отступа (`yieldPose`, углы в градусах) | `rig::loadRigDef` | есть |
 | `poses/*.json` | клипы поз; кроме клипов ударов бой обязательно читает `stance`, `walk`, `crouch`, `crouch_walk`, блоки и реакции, необязательно — `stance_switched` | `anim::loadClip` | есть; новые клипы — задача 2.2 |
-| `combat.json` | параметры боя вне тел (расстояния, порог попадания, усталость) | `combat::loadCombatTuning` | есть |
+| `combat.json` | параметры боя вне тел (расстояния, порог попадания, усталость, остановка удара о соперника, шаги физики и жёсткость контактов, допустимое перекрытие бойцов); целые — `maxChainLength`, `physicsSteps`, `physicsSubSteps` | `combat::loadCombatTuning` | есть |
 | `items/*.json` | снаряжение и свойства оружия | `stats::loadItemCatalog` | есть |
 | `fighters/*.json` | листы бойцов | `stats::loadFighterSheet` | есть |
 | `moves/*.json` | удары | `combat::loadMoveSet` | есть |
