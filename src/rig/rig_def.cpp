@@ -47,7 +47,25 @@ constexpr std::array ControlFields = {
     ControlField{"knockdownSec", &ControlParams::KnockdownSec},
     ControlField{"getUpSec", &ControlParams::GetUpSec},
     ControlField{"knockdownStiffness", &ControlParams::KnockdownStiffness},
+    ControlField{"knockdownSpin", &ControlParams::KnockdownSpin},
+    ControlField{"knockoutStiffness", &ControlParams::KnockoutStiffness},
+    ControlField{"closeRange", &ControlParams::CloseRange},
+    ControlField{"lyingClearance", &ControlParams::LyingClearance},
+    ControlField{"wallTouchDistance", &ControlParams::WallTouchDistance},
+    ControlField{"footPlantHeight", &ControlParams::FootPlantHeight},
+    ControlField{"footLockSlip", &ControlParams::FootLockSlip},
+    ControlField{"footLockRelease", &ControlParams::FootLockRelease},
+    ControlField{"footRestepDistance", &ControlParams::FootRestepDistance},
+    ControlField{"footStepLift", &ControlParams::FootStepLift},
+    ControlField{"jamAngle", &ControlParams::JamAngle},
+    ControlField{"jamSec", &ControlParams::JamSec},
 };
+
+/// Parameters that must not be negative: distances and durations.
+constexpr std::array<std::string_view, 15> NonNegativeFields = {
+    "closeRange",     "lyingClearance",     "wallTouchDistance", "footPlantHeight", "footLockSlip",
+    "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",        "jamSec",
+    "knockdownSpin",  "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness"};
 
 /// Parameters that must be positive: they divide or set a duration.
 constexpr std::array<std::string_view, 4> PositiveFields = {"walkSpeed", "walkAcceleration", "knockdownSpeed",
@@ -57,6 +75,8 @@ void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, 
 PartDef parsePart(const Json& Node);
 JointDef parseJoint(const Json& Node);
 ControlParams parseControl(const Json& Node);
+WeaponMount parseWeapon(const Json& Node);
+std::bitset<BodyPartCount> parsePartSet(const Json& Root, const char* Key);
 BodyPart parseBodyPart(const Json& Node);
 Vec2 parseVec2(const Json& Node);
 void validateRig(const RigDef& Def);
@@ -71,22 +91,33 @@ const PartDef& RigDef::getPart(BodyPart Part) const {
 
 RigDef parseRigDef(std::string_view JsonText) {
     RigDef Result;
+    bool HasWeapon = false;
     try {
         const Json Root = Json::parse(JsonText);
-        checkKeys(Root, {"root", "parts", "joints", "kinematic", "control"}, "rig");
+        checkKeys(Root, {"root", "parts", "joints", "kinematic", "passThrough", "unjam", "weapon", "control"}, "rig");
         if (const auto RootPart = Root.find("root"); RootPart != Root.end()) Result.Root = parseBodyPart(*RootPart);
         for (const auto& Part : Root.at("parts")) Result.Parts.push_back(parsePart(Part));
         for (const auto& Joint : Root.at("joints")) Result.Joints.push_back(parseJoint(Joint));
         // The root is always kinematic: the pelvis controller moves it.
         Result.Kinematic.set(static_cast<size_t>(Result.Root));
-        for (const auto& Part : Root.value("kinematic", Json::array())) {
-            Result.Kinematic.set(static_cast<size_t>(parseBodyPart(Part)));
+        Result.Kinematic |= parsePartSet(Root, "kinematic");
+        Result.PassThrough = parsePartSet(Root, "passThrough");
+        Result.Unjam = parsePartSet(Root, "unjam");
+        if (const auto Weapon = Root.find("weapon"); Weapon != Root.end()) {
+            Result.Weapon = parseWeapon(*Weapon);
+            HasWeapon = true;
         }
         if (const auto Control = Root.find("control"); Control != Root.end()) Result.Control = parseControl(*Control);
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());
     }
     validateRig(Result);
+    // The weapon continues a capsule from its far end. Without a "weapon"
+    // object the default part is used if it is a capsule, else none.
+    if (HasWeapon && Result.getPart(Result.Weapon.Part).Shape != physics::ShapeKind::Capsule) {
+        throw std::runtime_error(
+            std::format("weapon: part {} must be a capsule", getBodyPartName(Result.Weapon.Part)));
+    }
     return Result;
 }
 
@@ -170,8 +201,28 @@ ControlParams parseControl(const Json& Node) {
         if (std::ranges::find(PositiveFields, Key) != PositiveFields.end() && Params.*(Found->Member) <= 0.0f) {
             throw std::runtime_error(std::format("control: '{}' must be positive", Key));
         }
+        if (std::ranges::find(NonNegativeFields, Key) != NonNegativeFields.end() && Params.*(Found->Member) < 0.0f) {
+            throw std::runtime_error(std::format("control: '{}' must not be negative", Key));
+        }
     }
     return Params;
+}
+
+WeaponMount parseWeapon(const Json& Node) {
+    checkKeys(Node, {"part", "angle", "radius"}, "weapon");
+    WeaponMount Mount;
+    if (const auto Part = Node.find("part"); Part != Node.end()) Mount.Part = parseBodyPart(*Part);
+    Mount.Angle = Node.value("angle", 0.0f) * RadiansPerDegree;
+    Mount.Radius = Node.value("radius", Mount.Radius);
+    if (Mount.Radius <= 0.0f) throw std::runtime_error("weapon: 'radius' must be positive");
+    return Mount;
+}
+
+/// A list of body parts under \p Key of the rig object; none if it is absent.
+std::bitset<BodyPartCount> parsePartSet(const Json& Root, const char* Key) {
+    std::bitset<BodyPartCount> Result;
+    for (const auto& Part : Root.value(Key, Json::array())) Result.set(static_cast<size_t>(parseBodyPart(Part)));
+    return Result;
 }
 
 BodyPart parseBodyPart(const Json& Node) {
@@ -209,6 +260,15 @@ void validateRig(const RigDef& Def) {
         Reached.set(static_cast<size_t>(Joint.Child));
     }
     if (!Reached.all()) throw std::runtime_error("every body part except the root needs a joint");
+
+    // Lists of physical parts: a posed part is moved by code, it cannot pass
+    // through or let go.
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (!Def.Kinematic.test(Index)) continue;
+        const std::string_view Name = getBodyPartName(static_cast<BodyPart>(Index));
+        if (Def.PassThrough.test(Index)) throw std::runtime_error(std::format("passThrough: {} is kinematic", Name));
+        if (Def.Unjam.test(Index)) throw std::runtime_error(std::format("unjam: {} is kinematic", Name));
+    }
 
     // Kinematic parts are posed by forward kinematics from the root, so each
     // of them hangs from another kinematic part.

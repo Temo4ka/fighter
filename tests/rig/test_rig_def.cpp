@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
@@ -114,4 +115,50 @@ TEST_CASE("loadRigDef: a missing file names the path", "[rig]") {
     } catch (const std::runtime_error& Error) {
         CHECK(std::string(Error.what()).find("rig.json") != std::string::npos);
     }
+}
+
+TEST_CASE("parseRigDef: parts that pass through or let go of the opponent are physical", "[rig]") {
+    const RigDef Arms =
+        parseRigDef(makeRigJson(R"(, "passThrough": ["ForearmL"], "unjam": ["UpperArmL", "ForearmL"])"));
+    CHECK(Arms.PassThrough.count() == 1);
+    CHECK(Arms.PassThrough.test(static_cast<size_t>(BodyPart::ForearmL)));
+    CHECK(Arms.Unjam.count() == 2);
+    // The root is always kinematic.
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "passThrough": ["Pelvis"])")), std::runtime_error);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "kinematic": ["ThighL"], "unjam": ["ThighL"])")),
+                    std::runtime_error);
+
+    const RigDef Humanoid = loadRigDef(HumanoidPath);
+    // The arms collide: a jab hits the raised forearm (the user's decision).
+    CHECK(Humanoid.PassThrough.none());
+    CHECK(Humanoid.Unjam.test(static_cast<size_t>(BodyPart::UpperArmL)));
+}
+
+TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
+    const RigDef Humanoid = loadRigDef(HumanoidPath);
+    CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);
+    CHECK(Humanoid.Weapon.Radius > 0.0f);
+    // Without a "weapon" object the default mount is kept, whatever the part.
+    CHECK(parseRigDef(makeRigJson()).Weapon.Part == BodyPart::ForearmR);
+    // The minimal rig is made of circles: no weapon can continue them.
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "weapon": { "part": "ForearmL" })")), std::runtime_error);
+    std::string Capsule = makeRigJson(R"(, "weapon": { "part": "ForearmL", "angle": 90, "radius": 0.03 })");
+    const std::string Circle = R"({ "part": "ForearmL", "shape": "circle", "center": [0, 1], "radius": 0.1 })";
+    Capsule.replace(Capsule.find(Circle), Circle.size(),
+                    R"({ "part": "ForearmL", "shape": "capsule", "from": [0, 1], "to": [0, 0.8], "radius": 0.04 })");
+    const RigDef Armed = parseRigDef(Capsule);
+    CHECK(Armed.Weapon.Part == BodyPart::ForearmL);
+    CHECK(Armed.Weapon.Angle == Catch::Approx(1.5708f));
+    CHECK(Armed.Weapon.Radius == 0.03f);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "weapon": { "part": "ForearmL", "length": 1 })")),
+                    std::runtime_error);
+}
+
+TEST_CASE("parseRigDef: distances of the body of task 2.1 must not be negative", "[rig]") {
+    for (const auto* Key : {"closeRange", "lyingClearance", "footLockSlip", "footRestepDistance", "jamSec"}) {
+        CAPTURE(Key);
+        const std::string Control = std::string(R"(, "control": { ")") + Key + R"(": -0.1 })";
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(Control)), std::runtime_error);
+    }
+    CHECK(parseRigDef(makeRigJson(R"(, "control": { "closeRange": 0.9 })")).Control.CloseRange == 0.9f);
 }

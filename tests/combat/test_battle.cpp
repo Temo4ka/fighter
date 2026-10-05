@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "combat/battle.hpp"
+#include "combat/moves.hpp"
 #include "combat/tuning.hpp"
 #include "rig/rig_def.hpp"
 #include "scenario.hpp"
@@ -61,9 +62,9 @@ struct AttackLog {
     float LargestSway = 0.0f;         ///< Largest change of the dummy's torso lean, rad.
 };
 
-/// P1 walks up to the dummy (P2) until \p Range, then jabs (or kicks) once
-/// every \p Period ticks, for \p Ticks.
-AttackLog attackDummy(Battle& Fight, bool Kick, int Period, int Ticks, float Range) {
+/// P1 walks up to the dummy (P2) until \p Range, then presses \p Button
+/// once every \p Period ticks, for \p Ticks.
+AttackLog attackDummy(Battle& Fight, MoveButton Button, int Period, int Ticks, float Range) {
     AttackLog Log;
     const float RestLean = getTorsoLean(getRight(Fight));
     int AttackTick = 0;
@@ -73,8 +74,9 @@ AttackLog attackDummy(Battle& Fight, bool Kick, int Period, int Ticks, float Ran
             LeftCmd.MoveX = 1.0f;
         } else {
             const bool Press = AttackTick++ % Period < 3;
-            LeftCmd.Jab = Press && !Kick;
-            LeftCmd.BodyKick = Press && Kick;
+            LeftCmd.Jab = Press && Button == MoveButton::Jab;
+            LeftCmd.BodyKick = Press && Button == MoveButton::BodyKick;
+            LeftCmd.LowKick = Press && Button == MoveButton::LowKick;
         }
         Fight.update(LeftCmd, {}, Dt);
 
@@ -252,7 +254,8 @@ TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") 
     // Closer than JabRange: the fist lands while the arm still extends, so
     // the hit is strong enough to see the sway (at full reach it is a tap).
     constexpr float CloseJabRange = 0.72f;
-    const AttackLog Log = attackDummy(Fight, false, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, CloseJabRange);
+    const AttackLog Log =
+        attackDummy(Fight, MoveButton::Jab, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, CloseJabRange);
 
     REQUIRE_FALSE(Log.Hits.empty());
     for (const auto& Hit : Log.Hits) {
@@ -277,7 +280,7 @@ TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[com
     Battle Fight(Data.makeConfig());
     const float DummyStartX = getPelvisX(getRight(Fight));
 
-    const AttackLog Log = attackDummy(Fight, true, 2 * TicksPerSecond, 4 * TicksPerSecond, KickRange);
+    const AttackLog Log = attackDummy(Fight, MoveButton::BodyKick, 2 * TicksPerSecond, 4 * TicksPerSecond, KickRange);
     REQUIRE_FALSE(Log.Hits.empty());
     float Strongest = 0.0f;
     for (const auto& Hit : Log.Hits) {
@@ -302,7 +305,8 @@ TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[com
         Battle Fight(Config);
         // One kick; the dummy only moves when it is hit.
         const float StartX = getPelvisX(getRight(Fight));
-        const AttackLog Log = attackDummy(Fight, true, 10 * TicksPerSecond, 3 * TicksPerSecond, KickRange);
+        const AttackLog Log =
+            attackDummy(Fight, MoveButton::BodyKick, 10 * TicksPerSecond, 3 * TicksPerSecond, KickRange);
         REQUIRE(Log.FirstHitTick.has_value());
         return getPelvisX(getRight(Fight)) - StartX;
     };
@@ -329,9 +333,12 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     ScratchData Data("knockdown");
     Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
     Battle Fight(Data.makeConfig());
-    // One kick, then nothing: the dummy falls, lies and gets up.
+    // One kick, then nothing: the dummy falls, lies and gets up. A low kick:
+    // it sweeps the legs, so the body falls at once. (The body kick lands
+    // on the pelvis, close to the center of mass, which hardly turns the
+    // body: it sinks to its knees first and lies after about 1.1 s.)
     const int Ticks = 6 * TicksPerSecond;
-    const AttackLog Log = attackDummy(Fight, true, Ticks, Ticks, KickRange);
+    const AttackLog Log = attackDummy(Fight, MoveButton::LowKick, Ticks, Ticks, KickRange);
 
     REQUIRE(Log.FirstHitTick.has_value());
     REQUIRE(Log.DownTick.has_value());
@@ -340,31 +347,44 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     CHECK(isUpright(getLeft(Fight)));
 
     // It is up again within the configured time on the floor and getting up
-    // (plus a little for the upper body to straighten).
+    // (plus a little for the upper body to straighten), and stands on its
+    // feet when getting up is over (the feet come down from where they lay
+    // while the body straightens).
     Battle Again(Data.makeConfig());
     std::optional<int> UpTick;
     std::optional<int> HitTick;
-    for (int Tick = 0; Tick < Ticks && !UpTick; ++Tick) {
+    bool GotUp = false;
+    for (int Tick = 0; Tick < Ticks && !(UpTick && GotUp); ++Tick) {
         const bool InRange = getRight(Again).Position.X - getLeft(Again).Position.X <= KickRange;
-        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .BodyKick = InRange && !HitTick}, {}, Dt);
+        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .LowKick = InRange && !HitTick}, {}, Dt);
         if (!HitTick && !getHits(Again).empty()) HitTick = Tick;
-        if (HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
+        if (!UpTick && HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
+        GotUp = GotUp || std::ranges::any_of(Again.getEvents(), [](const BattleEvent& Event) {
+                    return std::holds_alternative<combat::GotUp>(Event);
+                });
     }
     REQUIRE(UpTick.has_value());
     const float UpSec = static_cast<float>(*UpTick - *HitTick) / TicksPerSecond;
     CHECK(UpSec > Control.KnockdownSec);
     CHECK(UpSec < Control.KnockdownSec + Control.GetUpSec + 0.5f);
+    REQUIRE(GotUp);
     CHECK(getRight(Again).Position.Y == Approx(0.0f).margin(0.005f));   // on its feet
 }
 
 TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
-    // Low thresholds, so that the scenario has every reaction level.
+    // Low thresholds, so that the scenario has every reaction level: the
+    // body kick on the pelvis (0.5-0.6 m/s) knocks down.
     ScratchData Data("determinism");
-    Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.02f, 0.05f, 0.3f, 0.6f, 0.75f},
+    Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.02f, 0.05f, 0.2f, 0.35f, 0.5f},
                                                     .BuildupPerStrength = 1.0f,
                                                     .ThresholdDrop = 0.1f}));
     Battle First(Data.makeConfig());
     Battle Second(Data.makeConfig());
+    // A little farther than KickRange: the body kick lands with the foot on
+    // the pelvis instead of meeting the front thigh (the posed legs collide
+    // and the foot stops there; the arms collide, so P2's guard stands
+    // differently than when they passed each other).
+    constexpr float PelvisKickRange = 1.05f;
     size_t HitCount = 0;
     bool KnockedDown = false;
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
@@ -373,11 +393,13 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
         // P1 walks into kicking range and kicks every 2.5 s, jabbing in between.
         const int Phase = Tick % 150;
         const PlayerCommands LeftCmd{
-            .MoveX = Distance > KickRange ? 1.0f : 0.0f,
+            .MoveX = Distance > PelvisKickRange ? 1.0f : 0.0f,
             .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .BodyKick = Distance <= KickRange && Phase < 3,
+            .BodyKick = Distance <= PelvisKickRange && Phase < 3,
         };
-        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 2 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
+        // P2 backs away now and then, but stands still while P1 kicks: a
+        // kick that meets the legs at close range is weak (legs collide).
+        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 1 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
         First.update(LeftCmd, RightCmd, Dt);
         Second.update(LeftCmd, RightCmd, Dt);
         REQUIRE(getHits(First).size() == getHits(Second).size());

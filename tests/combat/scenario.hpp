@@ -16,12 +16,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -29,6 +32,8 @@
 #include <vector>
 
 #include "combat/battle.hpp"
+#include "physics/world.hpp"
+#include "rig/rig_def.hpp"
 #include "stats/fighter_sheet.hpp"
 #include "stats/loading.hpp"
 
@@ -38,10 +43,28 @@ inline constexpr double Dt = 1.0 / 60.0;
 inline constexpr int TicksPerSecond = 60;
 /// Distance between the fighters' floor points at which the attacker stops
 /// walking and strikes, m: where the clips of task 2.2 land reliably on a
-/// standing fighter (the jab reaches out furthest at 0.8-0.9 m).
-inline constexpr float JabRange = 0.85f;
+/// standing fighter with the body of task 2.1. The arms collide, so the jab
+/// lands on the raised guard or, past it, on the torso up to 0.84 m between
+/// the pelvises (about 0.78 m between the floor points); a fighter pushed
+/// back keeps its feet planted a while, so its floor point lags behind its
+/// pelvis and the attacker must stop well inside the reach not to stall out
+/// of it.
+inline constexpr float JabRange = 0.72f;
 inline constexpr float HeavyRange = 0.8f;
-inline constexpr float KickRange = 0.95f;
+/// Distance between the floor points at which P1 stops walking and jabs
+/// into the raised guard (the arms collide): every jab lands on a forearm.
+/// Closer, P1 walking in presses its guard into the opponent's, the limb
+/// lets go (unjam) and passes through the opponent while they overlap.
+inline constexpr float GuardJabRange = 0.88f;
+/// The body kick lands with the foot, on the pelvis (legs hit legs, task
+/// 2.1). The walk stops at the steps' floor points (0.89, 0.90, 0.92, 0.94,
+/// 0.99 m from the default spawn): from 0.94 m the foot of the kick at full
+/// speed (no startup floor) grazes the top of the front thigh on its way up,
+/// the contact stop holds it there and it never reaches the pelvis; from
+/// the others it lands. This range stops the walk at 0.90 m.
+inline constexpr float KickRange = 0.92f;
+/// The body kick at close range: the shin lands on the torso.
+inline constexpr float CloseKickRange = 0.55f;
 
 inline BattleConfig makeConfig() {
     BattleConfig Config;
@@ -155,11 +178,67 @@ inline std::string makeReactionsJson(const ReactionSpec& Spec) {
                        Location, Levels, Spec.BuildupPerStrength, Spec.BuildupDecayPerSec, Spec.ThresholdDrop);
 }
 
-/// Thresholds so low that a clean kick knocks the fighter down.
-inline ReactionSpec makeKnockdownKicks() { return {.MinStrength = {0.05f, 0.1f, 0.15f, 0.2f, 0.3f}}; }
+/// Thresholds so low that a clean kick knocks the fighter down: a body kick
+/// (0.5-0.6 m/s on the pelvis) and a low kick (0.1-0.25 m/s on a shin).
+inline ReactionSpec makeKnockdownKicks() { return {.MinStrength = {0.01f, 0.02f, 0.04f, 0.06f, 0.08f}}; }
 
 /// Thresholds so high that nothing knocks the fighter down.
 inline ReactionSpec makeNoKnockdowns() { return {.MinStrength = {0.3f, 1.0f, 2.0f, 3.5f, 1000.0f}}; }
+
+inline rig::RigDef loadHumanoid() {
+    return rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json");
+}
+
+/// How deep \p Part of fighter \p Index overlaps the posed parts of the
+/// other fighter in the snapshot, m; 0 if it does not touch them. The
+/// shapes are rebuilt from the rig file at the parts' snapshot placements
+/// in a probe world (as the rig places them: mirrored for the facing,
+/// centered on their bounds).
+inline float getPosedPenetration(const Battle& Fight, uint8_t Index, BodyPart Part,
+                                 std::optional<BodyPart> OnlyOther = std::nullopt) {
+    const rig::RigDef Def = loadHumanoid();
+    physics::World Probe;
+    const auto addPart = [&](uint8_t Owner, BodyPart Which) {
+        const FighterView& View = Fight.getSnapshot().Fighters[Owner];
+        const PartTransform& Placed = View.Parts[static_cast<size_t>(Which)];
+        rig::PartDef Shape = Def.getPart(Which);
+        const float Facing = View.FacingRight ? 1.0f : -1.0f;
+        Shape.Begin.X *= Facing;
+        Shape.End.X *= Facing;
+        Shape.Center.X *= Facing;
+        Vec2 Low;
+        Vec2 High;
+        const Vec2 Radius{Shape.Radius, Shape.Radius};
+        if (Shape.Shape == physics::ShapeKind::Capsule) {
+            Low = Vec2{std::min(Shape.Begin.X, Shape.End.X), std::min(Shape.Begin.Y, Shape.End.Y)} - Radius;
+            High = Vec2{std::max(Shape.Begin.X, Shape.End.X), std::max(Shape.Begin.Y, Shape.End.Y)} + Radius;
+        } else if (Shape.Shape == physics::ShapeKind::Box) {
+            Low = Shape.Center - Shape.HalfExtents;
+            High = Shape.Center + Shape.HalfExtents;
+        } else {
+            Low = Shape.Center - Radius;
+            High = Shape.Center + Radius;
+        }
+        const Vec2 Origin = (Low + High) * 0.5f;
+        const physics::Body Handle = Probe.createBody({.Type = physics::BodyType::Kinematic,
+                                                       .Position = Placed.Position,
+                                                       .Angle = Placed.Angle,
+                                                       .Part = physics::PartRef{Owner, Which}});
+        Probe.addShape(Handle, {.Kind = Shape.Shape,
+                                .Center = Shape.Center - Origin,
+                                .Begin = Shape.Begin - Origin,
+                                .End = Shape.End - Origin,
+                                .HalfExtents = Shape.HalfExtents,
+                                .Radius = Shape.Radius});
+        return Handle;
+    };
+    const auto Other = static_cast<uint8_t>(1 - Index);
+    for (size_t Posed = 0; Posed < BodyPartCount; ++Posed) {
+        const auto Which = static_cast<BodyPart>(Posed);
+        if (Def.Kinematic.test(Posed) && (!OnlyOther || *OnlyOther == Which)) addPart(Other, Which);
+    }
+    return Probe.getPosedPenetration(addPart(Index, Part));
+}
 
 inline FighterConfig loadFighter(const std::string& Name) {
     const std::filesystem::path DataDir = FIGHTER_DATA_DIR;

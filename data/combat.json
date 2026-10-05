@@ -8,5 +8,9 @@
   "chainWindowSec": 0.3,
   "maxChainLength": 3,
   "blockWalkSpeedScale": 0.5,
-  "endSettleSec": 1.2
+  "endSettleSec": 1.2,
+  "contactStopDepth": 0.01,
+  "contactHoldSec": 0.08,
+  "contactRecoveryBlendSec": 0.15,
+  "contactStopInStartup": false
 }

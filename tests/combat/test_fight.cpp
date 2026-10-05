@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <iterator>
 #include <optional>
@@ -111,11 +112,30 @@ template <class Event> size_t countEvents(const std::vector<BattleEvent>& Log) {
 } // namespace
 
 TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
-    // The shipped data/reactions.json: a jab touches or flinches, never more.
-    Battle Fight(makeConfig());
-    const std::vector<StrikeLanded> Hits =
-        strike(Fight, {.Button = MoveButton::Jab, .Range = JabRange}, 6 * TicksPerSecond);
-    REQUIRE(Hits.size() >= 3);
+    // The shipped data/reactions.json: a jab at the end of its reach touches
+    // or flinches, never more. Each jab is thrown from a standstill at its
+    // own distance between the pelvises (the start distance), so that it
+    // lands with the arm fully out.
+    // The arms collide (the rig's "passThrough" is empty): from here the jab
+    // lands on the raised guard, a forearm.
+    ScratchData Data("light_hit");
+    std::string Spawn = "\"spawnDistance\": 2.4";
+    std::vector<StrikeLanded> Hits;
+    for (const float Distance : {0.8f, 0.82f, 0.84f}) {
+        const std::string Next = std::format("\"spawnDistance\": {}", Distance);
+        Data.replace("combat.json", Spawn, Next);
+        Spawn = Next;
+        Battle Fight(Data.makeConfig());
+        run(Fight, {}, {}, TicksPerSecond / 2);
+        Fight.update(press(MoveButton::Jab), {}, Dt);
+        for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
+            Fight.update({}, {}, Dt);
+            for (const BattleEvent& Event : Fight.getEvents()) {
+                if (const auto* Hit = std::get_if<StrikeLanded>(&Event)) Hits.push_back(*Hit);
+            }
+        }
+    }
+    REQUIRE(Hits.size() == 3);
     for (const StrikeLanded& Hit : Hits) {
         CHECK(Hit.MoveId == "jab");
         CHECK(Hit.Reaction >= ReactionLevel::Touch);   // the jab's min_reaction
@@ -126,12 +146,15 @@ TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
 
 TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][fight]") {
     // A jab alone stays below Flinch; the buildup of a series lowers the
-    // thresholds until jabs flinch.
-    ReactionSpec Spec{.MinStrength = {0.01f, 0.3f, 0.6f, 1.0f, 1000.0f},
+    // thresholds until jabs flinch. The arms collide, so a jab lands on the
+    // raised guard (a forearm) with 0.04-0.13 m/s. P1 jabs from where the
+    // guards do not rest on each other: pressed together, a limb lets go of
+    // the opponent (unjam) and passes through it, and no jab lands.
+    ReactionSpec Spec{.MinStrength = {0.01f, 0.3f, 1.4f, 2.0f, 1000.0f},
                       .BuildupPerStrength = 5.0f,
                       .BuildupDecayPerSec = 0.1f,
                       .ThresholdDrop = 0.5f};
-    const Attack Jabs{.Button = MoveButton::Jab, .Range = JabRange, .WaitForVictim = false};
+    const Attack Jabs{.Button = MoveButton::Jab, .Range = GuardJabRange, .WaitForVictim = false};
 
     ScratchData Data("series");
     Data.write("reactions.json", makeReactionsJson(Spec));
@@ -155,12 +178,20 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
     // both stay on their feet for the whole series.
     ScratchData Data("heavy");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.03f, 0.12f, 0.35f, 0.6f, 1000.0f}}));
+    // Only the kicks that land with the foot on the pelvis are compared: the
+    // fighters are pushed back by different amounts, so the later kicks of
+    // the series meet them at different distances, and a shin brushing a
+    // thigh is far weaker than a foot on the pelvis whoever is kicked.
     const auto kickAt = [&](const FighterConfig& Victim) {
         BattleConfig Config = Data.makeConfig();
         Config.Right = Victim;
         Battle Fight(Config);
-        const std::vector<StrikeLanded> Hits = strike(Fight, {}, 6 * TicksPerSecond);
+        std::vector<StrikeLanded> Hits = strike(Fight, {}, 6 * TicksPerSecond);
         REQUIRE(Hits.size() >= 3);
+        std::erase_if(Hits, [](const StrikeLanded& Hit) {
+            return Hit.Contact.Attacker.Part != BodyPart::FootL || Hit.Contact.Victim.Part != BodyPart::Pelvis;
+        });
+        REQUIRE(Hits.size() >= 2);
         return Hits;
     };
 
@@ -181,8 +212,10 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
 }
 
 TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat][fight]") {
-    // A kick staggers for 2 s; the jabs that follow are weaker (flinch) but
-    // neither lower the level nor keep the stagger going.
+    // A body kick staggers for 2 s; the low kicks that follow are weaker
+    // (flinch) but neither lower the level nor keep the stagger going. (Not
+    // jabs: they land on the raised guard, and a jab that reaches the torso
+    // is as strong as the body kick on the pelvis, 0.5-0.6 m/s.)
     constexpr float StaggerSec = 2.0f;
     ScratchData Data("no_drop");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.01f, 0.03f, 0.4f, 5.0f, 1000.0f},
@@ -196,7 +229,7 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
     REQUIRE(Kick.front().Reaction == ReactionLevel::Stagger);
     REQUIRE(getRight(Fight).State == FighterState::Reacting);
 
-    // Then jabs while the victim staggers.
+    // Then low kicks while the victim staggers.
     ReactionLevel Previous = ReactionLevel::Stagger;
     bool Dropped = false;
     std::optional<int> FreeTick;
@@ -212,23 +245,26 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
         Dropped = Dropped || Victim.Reaction < Previous;
         Previous = Victim.Reaction;
     };
-    const std::vector<StrikeLanded> Jabs = strike(
-        Fight, {.Button = MoveButton::Jab, .Range = JabRange, .WaitForVictim = false, .OnTick = Watch},
+    const std::vector<StrikeLanded> LowKicks = strike(
+        Fight, {.Button = MoveButton::LowKick, .Range = KickRange, .WaitForVictim = false, .OnTick = Watch},
         3 * TicksPerSecond);
 
     const auto IsWeaker = [](const StrikeLanded& Hit) { return Hit.Reaction < ReactionLevel::Stagger; };
-    REQUIRE(std::ranges::any_of(Jabs, IsWeaker));
+    REQUIRE(std::ranges::any_of(LowKicks, IsWeaker));
     CHECK_FALSE(Dropped);
-    // The stagger ends on time: the jabs' own stun is short.
+    // The stagger ends on time: the low kicks' own stun is short.
     REQUIRE(FreeTick.has_value());
     CHECK(static_cast<float>(*FreeTick) / TicksPerSecond < StaggerSec + 0.3f);
 }
 
 TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][data]") {
+    // Kicks at the torso: from close range, where the shin lands on it (from
+    // kicking range the foot meets the pelvis, which a low block covers).
     const auto kickAt = [](const PlayerCommands& Guard) {
         Battle Fight(makeConfig());
         run(Fight, {}, Guard, 1);
-        const std::vector<StrikeLanded> Hits = strike(Fight, {.VictimCmd = Guard}, 4 * TicksPerSecond);
+        const std::vector<StrikeLanded> Hits =
+            strike(Fight, {.Range = CloseKickRange, .VictimCmd = Guard}, 4 * TicksPerSecond);
         REQUIRE_FALSE(Hits.empty());
         return std::pair(Hits, getRight(Fight));
     };

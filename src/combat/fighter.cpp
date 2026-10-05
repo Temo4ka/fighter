@@ -61,9 +61,8 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
     if (isFree()) {
         Started = chooseFreeState(Cmd, Around);
-        // INTEGRATION(2.1): agent A adds a rig API to turn the body. Call it
-        // here, while the fighter is free, for example:
-        //   if (DesiredFacingRight != Body.isFacingRight()) Body.turn(DesiredFacingRight);
+        // The rig mirrors the body in the next applyControl().
+        if (DesiredFacingRight != Body.isFacingRight()) Body.setFacing(DesiredFacingRight);
     }
 
     const float Velocity = planWalking(Cmd, Dt);
@@ -117,13 +116,38 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
     Buildup += Outcome.BuildupAdded;
     if (Outcome.Blocked) spendStamina(Outcome.BlockStamina);
     LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome};
-    react(Outcome.Reaction, Hit.Impulse, Direction);
+    react(Outcome.Reaction, Hit.Impulse, Direction, Hit.Point);
     return Outcome;
 }
 
 void Fighter::onStrikeLanded(bool Clean) {
     AttackLanded = true;
     AttackHitClean = Clean;
+}
+
+void Fighter::stopAtContact() {
+    // In the startup only if the tuning says so: such a contact is not a
+    // hit, so it jams the attack.
+    if (!getMove()) return;
+    const CombatTuning& Tuning = Rules->Tuning;
+    const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
+    if (Contact == ContactStage::None && Startup && !Tuning.ContactStopInStartup) return;
+    const std::optional<float> Kept =
+        Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth, Contact != ContactStage::None);
+    if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
+
+    // The first stop: the clip goes back to the time of the contact (clip
+    // time advances evenly within a step) and holds there. A contact of the
+    // striking phase stays in it, so one that was too slow to be a hit can
+    // still land.
+    const float Stopped = AttackTimeBefore + (AttackTime - AttackTimeBefore) * *Kept;
+    AttackTime = Startup ? Stopped : std::clamp(Stopped, AttackClip->ActiveBeginSec, AttackClip->ActiveEndSec);
+    Contact = ContactStage::Holding;
+    ContactHoldLeftSec = Tuning.ContactHoldSec;
+    if constexpr (FIGHTER_DEBUG) {
+        debug::logEvent(std::format("P{} {} stopped at the opponent's posed parts (clip {:.2f} s)",
+                                    Body.getFighterIndex() + 1, Move->Id, AttackTime));
+    }
 }
 
 bool Fighter::takeExhaustedNotice() { return std::exchange(ExhaustedNotice, false); }
@@ -216,12 +240,15 @@ void Fighter::drawDebug(std::string_view Name) const {
         } else {
             debug::setPanel(std::format("{} last hit", Name), "-");
         }
-        const bool FacesRight = Body.isFacingRight();
-        debug::setPanel(std::format("{} facing", Name),
-                        DesiredFacingRight == FacesRight
-                            ? std::string(FacesRight ? "right" : "left")
-                            : std::format("{}, wants {} (turning: rig API pending, 2.1)", FacesRight ? "right" : "left",
-                                          DesiredFacingRight ? "right" : "left"));
+        std::string ContactText = "-";
+        if (getMove() && Contact == ContactStage::Holding) {
+            ContactText = std::format("{} holds the contact, {:.2f} s left", Move->Id, ContactHoldLeftSec);
+        } else if (getMove() && Contact == ContactStage::Recovering) {
+            ContactText = std::format("{} recovers from the contact", Move->Id);
+        }
+        if (Body.isStoppedAtContact()) ContactText += " (stopped this step)";
+        debug::setPanel(std::format("{} contact", Name), ContactText);
+        // "P1 facing" (and a pending turn) is the rig's panel line.
     }
 }
 
@@ -261,7 +288,21 @@ void Fighter::syncPosture() {
 }
 
 const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundings& Around, float Dt) {
-    AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
+    AttackTimeBefore = AttackTime;
+    if (Contact == ContactStage::Holding) {
+        // A posed strike stopped at the opponent holds the contact pose, then
+        // recovers: the clip jumps to its recovery, and the pose blends there
+        // from the contact pose instead of snapping to the recovery keys.
+        ContactHoldLeftSec -= Dt;
+        if (ContactHoldLeftSec <= 0.0f) {
+            Contact = ContactStage::Recovering;
+            AttackTime = std::max(AttackTime, AttackClip->ActiveEndSec);
+            AttackTimeBefore = AttackTime;
+            Fade.begin(Shown, Rules->Tuning.ContactRecoveryBlendSec);
+        }
+    } else {
+        AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
+    }
     // A press (not a held button) of a chain button asks for the next strike;
     // it is kept until the cancel window.
     for (const MoveButton Button : AttackButtons) {
@@ -325,6 +366,9 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     Move = &Next;
     AttackClip = &Clip;
     AttackTime = 0.0f;
+    AttackTimeBefore = 0.0f;
+    Contact = ContactStage::None;
+    ContactHoldLeftSec = 0.0f;
     AttackRate = Rate;
     TopRestarted = true;
     AttackLanded = false;
@@ -394,17 +438,20 @@ void Fighter::spendStamina(float Amount) {
     ExhaustedNotice = true;
 }
 
-void Fighter::react(ReactionLevel Level, float Impulse, float Direction) {
+void Fighter::react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point) {
+    const Vec2 Push{Direction, 0.0f};
     if (Hp <= 0.0f) {
         // Knocked out: it falls and stays down.
-        Body.applyHit(Impulse, Direction, true);
+        Body.applyHit(Impulse, Push, Point, true);
+        Body.setStayDown(true);
         setState(FighterState::KnockedOut);
         return;
     }
     const bool KnockDown = Level == ReactionLevel::Knockdown;
     // The rig sways the body (physics), pushes the pelvis back by
-    // impulse / mass and, for a knockdown, lets it fall.
-    Body.applyHit(Impulse, Direction, KnockDown);
+    // impulse / mass and, for a knockdown, lets it fall the way it was
+    // pushed, spun by where the hit landed.
+    Body.applyHit(Impulse, Push, Point, KnockDown);
     if (KnockDown) {
         setState(FighterState::KnockedDown);
         return;

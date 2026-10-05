@@ -19,6 +19,10 @@
 ///   Attacking -- the move's clip plays (startup, active, recovery); walking
 ///       only if the clip allows it. A clean hit may cancel the recovery into
 ///       a move of MoveDef::ChainTo (a short chain). Back to free at the end.
+///       A posed striker (a kick) that meets the opponent's posed parts
+///       (legs, pelvis) stops there: the clip holds that pose for
+///       CombatTuning::ContactHoldSec, then recovers, blending from the
+///       contact pose (stopAtContact).
 ///   Reacting -- a hit of level Flinch or stronger: no control for the
 ///       level's stun_sec; a new hit only raises the level.
 ///   KnockedDown, GettingUp -- the rig's ragdoll and getting up; no control.
@@ -30,6 +34,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -101,6 +106,17 @@ public:
     /// The current attack landed; it hits only once, later contacts are
     /// bumps. \p Clean: not blocked, so it may be chained.
     void onStrikeLanded(bool Clean);
+    /// Call after the physics step: a posed striking limb of an attack in or
+    /// past its striking phase that sank into the opponent's posed parts
+    /// goes back to the contact (rig::Rig::stopAtContact). The first stop of
+    /// an attack holds the clip at the contact pose for
+    /// CombatTuning::ContactHoldSec; then the recovery plays, blending from
+    /// the contact pose over CombatTuning::ContactRecoveryBlendSec. The hit
+    /// itself is the physics world's, as for any strike.
+    void stopAtContact();
+    /// Is the attack holding the pose of a posed strike stopped at the
+    /// opponent (stopAtContact)?
+    bool isHoldingContact() const { return getMove() && Contact == ContactStage::Holding; }
     /// True once after the stamina ran out (for the Exhausted event).
     bool takeExhaustedNotice();
 
@@ -144,6 +160,13 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
+    /// What a posed strike stopped at the opponent does (stopAtContact).
+    enum class ContactStage : uint8_t {
+        None,        ///< Not stopped in this attack.
+        Holding,     ///< The clip holds the contact pose.
+        Recovering,  ///< The recovery blends back from the contact pose.
+    };
+
     bool isFree() const;
     void setState(FighterState Next);
     void updateMeters(float Dt);
@@ -157,7 +180,7 @@ private:
     const anim::Clip* getTopClip() const;
     float getTopClipTime() const;
     void spendStamina(float Amount);
-    void react(ReactionLevel Level, float Impulse, float Direction);
+    void react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point);
 
     rig::Rig Body;
     const BattleRules* Rules = nullptr;
@@ -183,6 +206,9 @@ private:
     const MoveDef* Move = nullptr;         ///< The move being performed while Attacking.
     const anim::Clip* AttackClip = nullptr;
     float AttackTime = 0.0f;               ///< Clip time, s.
+    float AttackTimeBefore = 0.0f;         ///< Clip time before the last step, s.
+    ContactStage Contact = ContactStage::None;
+    float ContactHoldLeftSec = 0.0f;       ///< While Holding, real time.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
     bool AttackLanded = false;
     bool AttackHitClean = false;
