@@ -124,6 +124,10 @@ struct ControlParams {
     float KnockdownSpin = 1.0f;
     /// Motor stiffness of a fighter that stays down (knocked out).
     float KnockoutStiffness = 0.05f;
+    /// Multiplies the motor stiffness of the legs (the parts posed while
+    /// standing) of a knocked-down fighter: 0 lets them buckle, so the body
+    /// falls even if the push left it balanced on its spread feet.
+    float KnockdownLegStiffness = 0.0f;
     /// @}
 
     /// \name Two fighters and the walls (rig/spacing.hpp)

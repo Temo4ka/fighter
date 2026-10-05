@@ -915,16 +915,16 @@ void Rig::driveMotors(float Dt) {
     // A velocity motor whose speed is the clip's own joint speed
     // (feed-forward) plus the angle error times the gain follows a moving
     // pose without lag and closes an error like a critically damped spring,
-    // as long as its torque suffices. The torque limit has two parts:
-    //  - holding (getHoldTorque): enough for the inertia and the weight of
-    //    the child chain, whatever its mass, so a pose is always reached
-    //    without overshoot; it is scaled by the stiffness squared through
-    //    the gain, so a hit softens it;
-    //  - strength: the profile's torque (STR) times the joint's share, what
-    //    the body resists a hit with and strikes with.
-    // Stiffness scales both: a stiff joint snaps to its target, a weak one
-    // lags and gives way. A yielding limb is softer still. A ragdoll keeps
-    // only the strength part, scaled by its low stiffness.
+    // as long as its torque suffices. The torque limit is the larger of:
+    //  - strength: the profile's torque (STR) times the joint's share and
+    //    the stiffness, what the body resists a hit with and strikes with;
+    //  - holding (getHoldTorque): the floor that a pose is always reached
+    //    without overshoot and held, whatever the mass of the child chain
+    //    (CON, armour) and however weak the fighter; it falls with the
+    //    stiffness squared through the gain, so a hit softens it too.
+    // A stiff joint snaps to its target, a weak one lags and gives way; a
+    // yielding limb is softer still. A ragdoll keeps only the strength part,
+    // at its low stiffness.
     const bool Holding = CurrentPosture != Posture::KnockedDown;
     for (auto& Joint : Joints) {
         const float TargetSpeed = Dt > 0.0f ? (Joint.Target - Joint.PreviousTarget) / Dt : 0.0f;
@@ -935,13 +935,19 @@ void Rig::driveMotors(float Dt) {
             Joint.Handle.setMaxMotorTorque(0.0f);
             continue;
         }
-        const float JointStiffness = getPart(Joint.Child).Yielding ? Stiffness * Control.YieldStiffness : Stiffness;
+        // Knocked down, the legs (posed while standing) are softer still:
+        // a ragdoll standing on stiff legs spread in the stance could stay
+        // up as a trestle instead of falling.
+        const PartState& Child = getPart(Joint.Child);
+        const float JointStiffness = Child.Yielding               ? Stiffness * Control.YieldStiffness
+                                     : !Holding && Child.Kinematic ? Stiffness * Control.KnockdownLegStiffness
+                                                                   : Stiffness;
         const float Gain = MotorGain * JointStiffness;
         const float FeedForward = Holding ? Control.FeedForward * TargetSpeed : 0.0f;
         const float Speed = FeedForward + (Joint.Target - Joint.Handle.getAngle()) * Gain;
         Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
         Joint.HoldTorque = Holding ? getHoldTorque(Joint, Gain) : 0.0f;
-        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * JointStiffness + Joint.HoldTorque);
+        Joint.Handle.setMaxMotorTorque(std::max(MotorMaxTorque * Joint.Strength * JointStiffness, Joint.HoldTorque));
     }
 }
 

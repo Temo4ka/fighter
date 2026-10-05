@@ -56,6 +56,7 @@ constexpr std::array ControlFields = {
     ControlField{"knockdownStiffness", &ControlParams::KnockdownStiffness},
     ControlField{"knockdownSpin", &ControlParams::KnockdownSpin},
     ControlField{"knockoutStiffness", &ControlParams::KnockoutStiffness},
+    ControlField{"knockdownLegStiffness", &ControlParams::KnockdownLegStiffness},
     ControlField{"closeRange", &ControlParams::CloseRange},
     ControlField{"lyingClearance", &ControlParams::LyingClearance},
     ControlField{"wallTouchDistance", &ControlParams::WallTouchDistance},
@@ -73,11 +74,12 @@ constexpr std::array ControlFields = {
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 20> NonNegativeFields = {
+constexpr std::array<std::string_view, 21> NonNegativeFields = {
     "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight",     "footLockSlip",
     "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",            "jamSec",
     "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",      "minStiffness",
-    "yieldStiffness",  "yieldSec",           "holdGravityMargin", "dampedErrorAngle",    "yieldReturnClearance"};
+    "yieldStiffness",  "yieldSec",           "holdGravityMargin", "dampedErrorAngle",    "yieldReturnClearance",
+    "knockdownLegStiffness"};
 
 /// Parameters that are shares: from 0 to 1.
 constexpr std::array<std::string_view, 4> ShareFields = {"carrierTransfer", "knockbackTransfer", "feedForward",

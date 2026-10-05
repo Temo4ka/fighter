@@ -37,6 +37,9 @@ constexpr int TicksPerSecond = 60;
 /// the fighter walks, stops and turns: about 3 degrees. Without the smooth
 /// body a heavy and weak fighter's arms flailed by more than 2 rad.
 constexpr float MaxWalkPoseError = 0.05f;
+/// A body whose head comes this low (m) is down, as combat's scenario
+/// tests count it; standing it is about 1.6 m.
+constexpr float DownHeadHeight = 0.7f;
 
 const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 
@@ -263,7 +266,7 @@ TEST_CASE("Rig smooth body: a knocked-down body is not carried and falls", "[rig
             CHECK_FALSE(Body.isCarrying());
             LowestHead = std::min(LowestHead, Body.getPartPosition(BodyPart::Head).Y);
         }
-        CHECK(LowestHead < 0.6f);
+        CHECK(LowestHead < DownHeadHeight);
     }
 }
 
@@ -291,4 +294,26 @@ TEST_CASE("Rig smooth body: a guard that yielded stays tucked while the opponent
     // Each of the four guards may yield once (and return once), no more.
     CHECK(Changes <= 8);
     CHECK(Changes > 0);
+}
+
+TEST_CASE("Rig smooth body: a push from a still stance knocks the body down", "[rig][smooth]") {
+    // Standing still the upper body is carried without a sway, so nothing
+    // but the push topples a knocked-down body: its legs buckle, it does
+    // not stay up on its spread feet (a strong fighter's legs used to).
+    for (const Sheet& Fighter : getSheets()) {
+        CAPTURE(Fighter.Name);
+        Stage Scene(loadHumanoid());
+        Rig& Body = Scene.add(makeSetup(Fighter, 0.0f, false, 0));
+        for (int Tick = 0; Tick < TicksPerSecond; ++Tick) Scene.step();
+        // A body kick on the pelvis, pushing it back.
+        Body.applyHit(58.0f, {1.0f, 0.0f}, Body.getPartPosition(BodyPart::Pelvis), true);
+        REQUIRE(Body.getPosture() == Posture::KnockedDown);
+        float LowestHead = Body.getPartPosition(BodyPart::Head).Y;
+        const auto DownTicks = static_cast<int>(Scene.Def.Control.KnockdownSec / Dt) - 1;
+        for (int Tick = 0; Tick < DownTicks; ++Tick) {
+            Scene.step();
+            LowestHead = std::min(LowestHead, Body.getPartPosition(BodyPart::Head).Y);
+        }
+        CHECK(LowestHead < DownHeadHeight);
+    }
 }
