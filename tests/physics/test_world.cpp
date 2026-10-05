@@ -72,6 +72,28 @@ TEST_CASE("physics::Body: mass, position and velocity", "[physics]") {
     CHECK(Box.getWorldPoint({0.5f, 0.0f}).X == Approx(2.5f));
 }
 
+TEST_CASE("physics::Body: rotational inertia and gravity scale", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, -10.0f}});
+    Body Box = PhysWorld.createBody({.Position = {0.0f, 2.0f}});
+    PhysWorld.addShape(Box, {.Kind = ShapeKind::Box, .HalfExtents = {0.5f, 0.25f}});
+    Box.setMass(6.0f);
+    // A box of 1 x 0.5 m: m (w^2 + h^2) / 12.
+    CHECK(Box.getRotationalInertia() == Approx(6.0f * (1.0f + 0.25f) / 12.0f).epsilon(0.01));
+    CHECK(Box.getGravityScale() == 1.0f);
+
+    // A body without gravity floats; with it back it falls.
+    Box.setGravityScale(0.0f);
+    CHECK(Box.getGravityScale() == 0.0f);
+    PhysWorld.step(0.5f);
+    CHECK(Box.getPosition().Y == Approx(2.0f));
+    Box.setGravityScale(1.0f);
+    PhysWorld.step(0.1f);
+    CHECK(Box.getLinearVelocity().Y < -0.5f);
+
+    PhysWorld.setBodyType(Box, BodyType::Kinematic);
+    CHECK(Box.getRotationalInertia() == 0.0f);
+}
+
 TEST_CASE("physics::RevoluteJoint: the limits hold", "[physics]") {
     World PhysWorld;   // gravity pulls the arm down past its lower limit
     const Body Anchor = PhysWorld.createBody({.Type = BodyType::Static});
