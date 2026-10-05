@@ -106,6 +106,12 @@ struct ExtentX {
     float Max = 0.0f;
 };
 
+/// How far the physical parts are from the target pose (Rig::getPoseError).
+struct PoseError {
+    float Angle = 0.0f;               ///< Largest turn of a part away from the target pose, rad.
+    BodyPart Part = BodyPart::Torso;  ///< The part that is furthest off.
+};
+
 /// Where a part of a rig is going to be (Rig::predictBody).
 struct PartPlacement {
     physics::Body Handle;
@@ -323,13 +329,23 @@ public:
     float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
+    /// How far the physical parts (torso, head, arms) are from the target
+    /// pose posed from where the pelvis is now (the ghost of the debug
+    /// draw): the largest difference of a part's angle in the world.
+    PoseError getPoseError() const;
+    /// Did the last applyControl() carry the physical parts along with the
+    /// pelvis (ControlParams::CarrierTransfer)? Only a standing fighter is
+    /// carried: knocked down or getting up, the body is a ragdoll.
+    bool isCarrying() const { return Carrying; }
     /// @}
 
     /// Hurtboxes come from the physics world's debug draw; the rig draws
     /// joint limits, the target pose ghost, motors, velocities (with the
     /// pelvis controller), the center of mass, planted feet, wall contact,
-    /// freed limbs, posed strikers stopped at a contact and the weapon, and
+    /// freed limbs, posed strikers stopped at a contact and the weapon, the
+    /// physical parts away from the ghost (a line to it with the angle), and
     /// fills the panel lines "P1 facing", "P1 wall", "P1 feet", "P1 limbs",
+    /// "P1 body" (pose error, carrier transfer, holding torque),
     /// "P1 posed overlap". Does nothing in the release build.
     void drawDebug() const;
 
@@ -339,6 +355,7 @@ private:
         physics::Body Handle;
         Vec2 Size;                ///< Bounds of the shape in the body frame.
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
+        float Inertia = 0.0f;     ///< About the center of mass, kg*m^2, also while kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
         bool Unjam = false;       ///< May yield when stuck in the opponent (RigDef::Unjam).
         BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
@@ -357,6 +374,8 @@ private:
         float Wish = 0.0f;        ///< The clip's angle, mirrored and clamped to the limits, rad.
         float Target = 0.0f;      ///< What the motor drives to: Wish, or the yield pose, rad.
         float YieldWish = 0.0f;   ///< Wish when the limb started to yield, rad.
+        float PreviousTarget = 0.0f; ///< Target in the last step: the clip's joint speed, rad.
+        float HoldTorque = 0.0f;  ///< Torque limit for the inertia and the weight of the last step, N*m.
         Vec2 AnchorInParent;      ///< Hinge in the parent's body frame (reference pose).
         Vec2 ChildFromAnchor;     ///< Child body origin relative to the hinge (reference pose).
         float RestDirection = 0.0f; ///< Direction of the child from the hinge in the reference pose, rad.
@@ -433,7 +452,15 @@ private:
     void rewindLimb(BodyPart Top, float Fraction);
     /// How far a planted foot is from where it should stand still.
     static float getRestepDistance(const Leg& Limb);
-    void driveMotors();
+    /// Gives the physical parts the change of the pelvis motion of this
+    /// step (\p OldVelocity, \p OldSpin: the pelvis motion before it).
+    void carryPhysicalParts(Vec2 OldVelocity, float OldSpin);
+    /// Gravity scale of the physical parts in the current posture.
+    float getCarriedGravityScale() const;
+    void driveMotors(float Dt);
+    /// The torque \p Joint needs to move its child chain without overshoot
+    /// at motor gain \p Gain and to hold its weight, N*m.
+    float getHoldTorque(const JointState& Joint, float Gain) const;
     void updateJams(float Dt);
     void setLimbYielding(BodyPart Limb, bool Yielding);
     /// Would the limb whose topmost part is \p Limb, posed at the clip's
@@ -498,6 +525,11 @@ private:
     Vec2 KnockdownPoint;
     Vec2 KnockdownVelocity;
     float KnockdownSpinRate = 0.0f;
+    /// Carrier transfer: on in the last applyControl(), and the knockback of
+    /// the pelvis plan (planMotion()) and of the step before.
+    bool Carrying = false;
+    float PlannedKnockback = 0.0f;
+    float CarriedKnockback = 0.0f;
 };
 
 } // namespace fighter::rig

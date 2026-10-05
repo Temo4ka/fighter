@@ -50,9 +50,9 @@ constexpr uint64_t PassThroughBit = uint64_t{1} << 3;
 constexpr uint64_t CollideWithAll = ~uint64_t{0};
 /// @}
 
-/// A yielding limb returns to the clip only when the clip's pose of it is
-/// this far clear of the opponent, m.
-constexpr float YieldClearance = 0.01f;
+/// A physical part this far (rad) from the target pose is marked in the
+/// debug draw.
+constexpr float MinDrawnPoseError = 0.05f;
 /// A foot offset smaller than this needs no leg correction, m.
 constexpr float MinFootOffset = 1e-4f;
 /// Knockback slower than this lets a standing fighter step its feet back, m/s.
@@ -73,6 +73,7 @@ float wrapAngle(float Angle);
 float smoothStep(float T);
 Vec2 getDirection(float Angle);
 float getHeading(Vec2 Vector);
+float getRealizedShare(float Part, float Realized);
 void drawShape(debug::Cat Category, const PartDef& Shape, Vec2 Position, float Angle);
 
 } // namespace
@@ -122,18 +123,6 @@ void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
         const float Angle = Angles[static_cast<size_t>(Joint.Child)] * Facing;
         Joint.Wish = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
     }
-    // A yielding limb that the clip asks for something new (a strike) tries
-    // again.
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const auto LimbPart = static_cast<BodyPart>(Index);
-        const PartState& Limb = Parts[Index];
-        if (!Limb.Unjam || Limb.Limb != LimbPart || !Limb.Yielding) continue;
-        const bool NewWish = std::ranges::any_of(Joints, [&](const JointState& Joint) {
-            const PartState& Part = getPart(Joint.Child);
-            return Part.Unjam && Part.Limb == LimbPart && std::abs(Joint.Wish - Joint.YieldWish) > Control.JamAngle;
-        });
-        if (NewWish) setLimbYielding(LimbPart, false);
-    }
     refreshTargets();
 }
 
@@ -150,6 +139,7 @@ void Rig::snapToTargets() {
         Part.Handle.setLinearVelocity({});
         Part.Handle.setAngularVelocity(0.0f);
     }
+    for (auto& Joint : Joints) Joint.PreviousTarget = Joint.Target;
 }
 
 void Rig::setFacing(bool FacingRight) { RequestedFacing = FacingRight ? 1.0f : -1.0f; }
@@ -163,6 +153,8 @@ void Rig::setStayDown(bool Stay) {
 void Rig::planMotion(float Dt) {
     // A ragdoll on the floor goes where physics takes it.
     if (CurrentPosture == Posture::KnockedDown) return;
+    // The knockback the plan moves the pelvis with (it decays in plan()).
+    PlannedKnockback = Controller.getKnockback();
     Controller.plan(Dt);
 }
 
@@ -175,12 +167,27 @@ void Rig::applyControl(float Dt) {
     // A turn waits until the fighter stands: a body getting up is blended
     // from where it lay.
     if (CurrentPosture == Posture::Standing && isTurnPending()) turnAround();
+    const physics::Body Pelvis = getPart(Root).Handle;
+    const Vec2 OldVelocity = Pelvis.getLinearVelocity();
+    const float OldSpin = Pelvis.getAngularVelocity();
     if (CurrentPosture != Posture::KnockedDown) {
         Controller.commit(Dt);
         moveKinematicParts(Dt);
     }
+    // A standing fighter carries its upper body along with the pelvis; a
+    // ragdoll (and a body getting up from one) moves by physics alone.
+    Carrying = CurrentPosture == Posture::Standing;
+    if (Carrying) {
+        carryPhysicalParts(OldVelocity, OldSpin);
+    } else {
+        CarriedKnockback = 0.0f;
+    }
+    const float GravityScale = getCarriedGravityScale();
+    for (auto& Part : Parts) {
+        if (!Part.Kinematic) Part.Handle.setGravityScale(GravityScale);
+    }
     updateJams(Dt);
-    driveMotors();
+    driveMotors(Dt);
 }
 
 void Rig::applyHit(float Impulse, float Direction) { applyHit(Impulse, {Direction, 0.0f}, getCenterOfMass()); }
@@ -483,6 +490,7 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
         // it becomes kinematic.
         State.Handle.setMass(Setup.MassKg[Index]);
         State.Mass = State.Handle.getMass();
+        State.Inertia = State.Handle.getRotationalInertia();
         TotalMass += State.Mass;
     }
 }
@@ -503,6 +511,7 @@ void Rig::createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSe
         Joint.RestDirection = getHeading(Joint.ChildFromAnchor);
         Joint.Wish = std::clamp(0.0f, Joint.LowerAngle, Joint.UpperAngle);
         Joint.Target = Joint.Wish;
+        Joint.PreviousTarget = Joint.Target;
         Joint.Handle = PhysWorld.createRevoluteJoint({
             .BodyA = getPart(Source.Parent).Handle,
             .BodyB = getPart(Source.Child).Handle,
@@ -866,25 +875,118 @@ void Rig::releaseFeet() {
     }
 }
 
-void Rig::driveMotors() {
+void Rig::carryPhysicalParts(Vec2 OldVelocity, float OldSpin) {
+    // A passenger in a bus swings when the bus starts, stops or turns: the
+    // joints drag the physical parts after the pelvis only once it has
+    // moved. Instead the parts take the change of the pelvis motion at once,
+    // as if they were rigidly on it, and keep their motion relative to it:
+    // a hit's push and the motors' work stay. The rigid motion of the
+    // pelvis is a velocity field v(p) = V + W x (p - C).
+    const physics::Body Pelvis = getPart(Root).Handle;
+    const Vec2 Center = Pelvis.getWorldCenterOfMass();
+    Vec2 Change = Pelvis.getLinearVelocity() - OldVelocity;
+    float SpinChange = Pelvis.getAngularVelocity() - OldSpin;
+
+    // The knockback that really moved the pelvis (a wall or the opponent may
+    // have stopped it) is carried only by its share: without it the upper
+    // body lags behind the push and shows the hit.
+    const float Realized = getRealizedShare(PlannedKnockback, Controller.getVelocity() - Controller.getWalkVelocity());
+    Change.X -= (1.0f - Control.KnockbackTransfer) * (Realized - CarriedKnockback);
+    CarriedKnockback = Realized;
+
+    Change *= Control.CarrierTransfer;
+    SpinChange *= Control.CarrierTransfer;
+    for (auto& Part : Parts) {
+        if (Part.Kinematic) continue;
+        const Vec2 FromCenter = Part.Handle.getWorldCenterOfMass() - Center;
+        Part.Handle.setLinearVelocity(Part.Handle.getLinearVelocity() + Change + perp(FromCenter) * SpinChange);
+        Part.Handle.setAngularVelocity(Part.Handle.getAngularVelocity() + SpinChange);
+    }
+}
+
+float Rig::getCarriedGravityScale() const {
+    // Standing, the pelvis carries the weight of the upper body: the motors
+    // only pose it. A ragdoll and a body getting up from one feel it all.
+    return CurrentPosture == Posture::Standing ? 1.0f - Control.GravityCompensation : 1.0f;
+}
+
+void Rig::driveMotors(float Dt) {
     const float Stiffness = getStiffness();
-    // PD-style motors: a velocity motor whose speed is proportional to the
-    // angle error behaves like a stiff spring with damping, and its torque
-    // limit is the "strength" of the joint. A kinematic child needs none.
+    // A velocity motor whose speed is the clip's own joint speed
+    // (feed-forward) plus the angle error times the gain follows a moving
+    // pose without lag and closes an error like a critically damped spring,
+    // as long as its torque suffices. The torque limit has two parts:
+    //  - holding (getHoldTorque): enough for the inertia and the weight of
+    //    the child chain, whatever its mass, so a pose is always reached
+    //    without overshoot; it is scaled by the stiffness squared through
+    //    the gain, so a hit softens it;
+    //  - strength: the profile's torque (STR) times the joint's share, what
+    //    the body resists a hit with and strikes with.
+    // Stiffness scales both: a stiff joint snaps to its target, a weak one
+    // lags and gives way. A yielding limb is softer still. A ragdoll keeps
+    // only the strength part, scaled by its low stiffness.
+    const bool Holding = CurrentPosture != Posture::KnockedDown;
     for (auto& Joint : Joints) {
+        const float TargetSpeed = Dt > 0.0f ? (Joint.Target - Joint.PreviousTarget) / Dt : 0.0f;
+        Joint.PreviousTarget = Joint.Target;
         if (isKinematic(Joint.Child)) {
+            Joint.HoldTorque = 0.0f;
             Joint.Handle.setMotorSpeed(0.0f);
             Joint.Handle.setMaxMotorTorque(0.0f);
             continue;
         }
-        // Stiffness scales both the response speed and the torque limit: a
-        // stiff joint snaps to its target, a weak one lags and gives way. A
-        // yielding limb is softer still.
         const float JointStiffness = getPart(Joint.Child).Yielding ? Stiffness * Control.YieldStiffness : Stiffness;
-        const float Speed = (Joint.Target - Joint.Handle.getAngle()) * MotorGain * JointStiffness;
+        const float Gain = MotorGain * JointStiffness;
+        const float FeedForward = Holding ? Control.FeedForward * TargetSpeed : 0.0f;
+        const float Speed = FeedForward + (Joint.Target - Joint.Handle.getAngle()) * Gain;
         Joint.Handle.setMotorSpeed(std::clamp(Speed, -Control.MaxJointSpeed, Control.MaxJointSpeed));
-        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * JointStiffness);
+        Joint.HoldTorque = Holding ? getHoldTorque(Joint, Gain) : 0.0f;
+        Joint.Handle.setMaxMotorTorque(MotorMaxTorque * Joint.Strength * JointStiffness + Joint.HoldTorque);
     }
+}
+
+float Rig::getHoldTorque(const JointState& Joint, float Gain) const {
+    // The child chain: the child and every part below it. Parents come
+    // before children, so one pass finds it.
+    std::bitset<BodyPartCount> Chain;
+    Chain.set(static_cast<size_t>(Joint.Child));
+    for (const auto& Other : Joints) {
+        if (Chain.test(static_cast<size_t>(Other.Parent))) Chain.set(static_cast<size_t>(Other.Child));
+    }
+    // The moment of its mass and its inertia of the chain about the hinge, as the
+    // chain stands now.
+    const Vec2 Hinge = Joint.Handle.getAnchor();
+    Vec2 MassMoment;
+    float Inertia = 0.0f;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (!Chain.test(Index)) continue;
+        const PartState& Part = Parts[Index];
+        const Vec2 FromHinge = Part.Handle.getWorldCenterOfMass() - Hinge;
+        MassMoment += FromHinge * Part.Mass;
+        Inertia += Part.Inertia + Part.Mass * FromHinge.getLengthSquared();
+    }
+    // A velocity motor at gain G decelerates the chain from the speed G * e
+    // over the time 1/G: it needs the angular acceleration G^2 * e to stop
+    // at the target without overshoot. The weight is the worst case, the
+    // chain held out sideways (its lever is the distance to its center).
+    const float Damping = Inertia * Gain * Gain * Control.DampedErrorAngle;
+    const float Weight = Control.HoldGravityMargin * getCarriedGravityScale() * Physics->getGravity().getLength() *
+                         MassMoment.getLength();
+    return Damping + Weight;
+}
+
+PoseError Rig::getPoseError() const {
+    const PartState& Pelvis = getPart(Root);
+    const PerBodyPart<Placement> Pose =
+        computeTargetPose({.Position = Pelvis.Handle.getPosition(), .Angle = Pelvis.Handle.getAngle()});
+    PoseError Worst;
+    for (auto&& [Index, Part, Target] : std::views::zip(std::views::iota(size_t{0}), Parts, Pose)) {
+        if (Part.Kinematic) continue;
+        const float Error = std::abs(wrapAngle(Part.Handle.getAngle() - Target.Angle));
+        if (Error <= Worst.Angle) continue;
+        Worst = {.Angle = Error, .Part = static_cast<BodyPart>(Index)};
+    }
+    return Worst;
 }
 
 void Rig::updateJams(float Dt) {
@@ -911,8 +1013,21 @@ void Rig::updateJams(float Dt) {
             Error = std::max(Error, std::abs(Joint.Wish - Joint.Handle.getAngle()));
         }
         if (Limb.Yielding) {
+            // An attack that asks the limb for something new (a strike)
+            // tries again at once. Anything else (a step, a guard) waits
+            // until the clip's pose of the limb is clear of the opponent by
+            // more than a touch: a guard does not come back into a fighter
+            // that is still close and jam again (hysteresis).
             Limb.YieldSec += Dt;
-            if (Limb.YieldSec >= Control.YieldSec && !isWishBlocked(LimbPart)) setLimbYielding(LimbPart, false);
+            const bool NewStrike = std::ranges::any_of(Joints, [&](const JointState& Joint) {
+                const auto Child = static_cast<size_t>(Joint.Child);
+                const PartState& Part = Parts[Child];
+                return Part.Unjam && Part.Limb == LimbPart && AttackingParts.test(Child) &&
+                       std::abs(Joint.Wish - Joint.YieldWish) > Control.JamAngle;
+            });
+            if (NewStrike || (Limb.YieldSec >= Control.YieldSec && !isWishBlocked(LimbPart))) {
+                setLimbYielding(LimbPart, false);
+            }
             continue;
         }
         Limb.StuckSec = Touching && Error > Control.JamAngle ? Limb.StuckSec + Dt : 0.0f;
@@ -931,6 +1046,12 @@ void Rig::setLimbYielding(BodyPart Limb, bool Yielding) {
         if (Part.Unjam && Part.Limb == Limb) Joint.YieldWish = Joint.Wish;
     }
     refreshTargets();
+    // A limb that starts or stops yielding eases to its new target: the
+    // jump of the target is not a joint speed of the clip.
+    for (auto& Joint : Joints) {
+        const PartState& Part = getPart(Joint.Child);
+        if (Part.Unjam && Part.Limb == Limb) Joint.PreviousTarget = Joint.Target;
+    }
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} {} {}", FighterIndex + 1, getBodyPartName(Limb),
                                     Yielding ? "stuck in the opponent: yields" : "stops yielding"));
@@ -955,7 +1076,7 @@ bool Rig::isWishBlocked(BodyPart Limb) const {
         const auto ChildIndex = static_cast<size_t>(Joint.Child);
         Pose[ChildIndex] = {.Position = Anchor + rotate(Joint.ChildFromAnchor, Angle), .Angle = Angle};
         Placed.set(ChildIndex);
-        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, YieldClearance,
+        if (Physics->isOverlappingOtherFighterAt(Child.Handle, Pose[ChildIndex].Position, Angle, Control.YieldReturnClearance,
                                                  UnjamParts)) {
             return true;
         }
@@ -1040,6 +1161,8 @@ void Rig::turnAround() {
     Weapon.Tip.X = -Weapon.Tip.X;
     Facing = RequestedFacing;
     setTargetAngles(TargetAngles);
+    // The targets are mirrored, not moved: no joint speed for the motors.
+    for (auto& Joint : Joints) Joint.PreviousTarget = Joint.Target;
     releaseFeet();
 
     // The arms now reach to the other side, maybe into the opponent behind:
@@ -1068,6 +1191,14 @@ void Rig::drawTargetPose() const {
     const PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         drawShape(debug::Cat::TargetPose, Part.Shape, Target.Position, Target.Angle);
+        // A physical part away from its ghost: a line from where it is to
+        // where the motors pull it, with the angle off.
+        if (Part.Kinematic) continue;
+        const float Error = wrapAngle(Part.Handle.getAngle() - Target.Angle);
+        if (std::abs(Error) < MinDrawnPoseError) continue;
+        debug::drawLine(debug::Cat::TargetPose, Part.Handle.getPosition(), Target.Position);
+        debug::drawText(debug::Cat::TargetPose, Part.Handle.getPosition(),
+                        std::format("{:+.0f} deg", Error * 180.0f / Pi));
     }
 }
 
@@ -1189,6 +1320,20 @@ void Rig::fillPanel() const {
     }
     if (StayDown) Limbs += Limbs.empty() ? "stays down" : ", stays down";
     debug::setPanel(Name + " limbs", Limbs);
+
+    // How closely the physical upper body follows the clip, and the largest
+    // holding part of a motor's torque limit.
+    const PoseError Error = getPoseError();
+    float Hold = 0.0f;
+    BodyPart HoldPart = Root;
+    for (const auto& Joint : Joints) {
+        if (Joint.HoldTorque <= Hold) continue;
+        Hold = Joint.HoldTorque;
+        HoldPart = Joint.Child;
+    }
+    debug::setPanel(Name + " body", std::format("pose error {:.0f} deg ({}), carried: {}, hold {} {:.0f} N*m",
+                                                Error.Angle * 180.0f / Pi, getBodyPartName(Error.Part),
+                                                Carrying ? "yes" : "no", getBodyPartName(HoldPart), Hold));
 
     // Posed parts sinking into the opponent's posed parts: nothing in
     // physics keeps them apart (only a stopped strike and the pelvis spacing).
@@ -1322,6 +1467,14 @@ ExtentX getShapeExtentX(const PartDef& Shape, Vec2 Position, float Angle) {
 }
 
 float wrapAngle(float Angle) { return std::remainder(Angle, 2.0f * Pi); }
+
+/// The part of \p Part (a velocity, signed) that \p Realized (the velocity
+/// that really happened, signed) contains: none if they point apart, at
+/// most all of \p Realized.
+float getRealizedShare(float Part, float Realized) {
+    if (Part * Realized <= 0.0f) return 0.0f;
+    return Part > 0.0f ? std::min(Part, Realized) : std::max(Part, Realized);
+}
 
 /// Eases a 0..1 progress in and out: no jerk at the start and the end.
 float smoothStep(float T) { return T * T * (3.0f - 2.0f * T); }
