@@ -99,6 +99,14 @@ public:
     /// Does a shape of \p Target overlap a body part of another fighter,
     /// whatever their collision filters say?
     bool isOverlappingOtherFighter(Body Target) const;
+    /// Would \p Target, placed with its origin at \p Position and turned by
+    /// \p Angle, come closer than \p Margin (m) to a body part of another
+    /// fighter, whatever their collision filters say? Nothing moves.
+    bool isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin) const;
+    /// The deepest overlap between any body parts of different fighters,
+    /// whatever their types and collision filters: the measure of "nothing
+    /// passes through the opponent". Nullopt if no two parts overlap.
+    std::optional<PartOverlap> findDeepestOverlap() const;
     /// @}
 
     /// \name Posed parts of different fighters

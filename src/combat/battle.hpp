@@ -70,6 +70,10 @@ public:
     /// one per attack; bumps are not events.
     std::span<const BattleEvent> getEvents() const { return Events; }
     const BattleConfig& getConfig() const { return Cfg; }
+    /// The deepest overlap of a part of one fighter with a part of the
+    /// other one now, whatever moves them (physics::World::findDeepestOverlap):
+    /// nothing should pass through the opponent. Nullopt if nothing overlaps.
+    std::optional<physics::PartOverlap> findDeepestOverlap() const;
 
 private:
     struct Simulation;
@@ -81,6 +85,9 @@ private:
     Surroundings getSurroundings(size_t Index) const;
     void publishSnapshot();
     void drawDebug() const;
+    /// The panel line "overlap" (now and the deepest so far) and a mark at
+    /// the deepest overlap of the fighters. Does nothing in the release build.
+    void drawOverlap();
 
     BattleConfig Cfg;
     std::unique_ptr<Simulation> Sim;   ///< Physics world, fighters, clips.

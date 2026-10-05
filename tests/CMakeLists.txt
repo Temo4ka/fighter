@@ -20,6 +20,7 @@ add_executable(fighter_tests
     stats/test_loading.cpp
     combat/test_battle.cpp
     combat/test_contact.cpp
+    combat/test_no_passthrough.cpp
     combat/test_clip_library.cpp
     combat/test_fight.cpp
     combat/test_commands.cpp

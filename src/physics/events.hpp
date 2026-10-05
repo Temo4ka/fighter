@@ -6,8 +6,9 @@
 ///
 /// \file
 /// This file defines the physics -> combat contract (docs/DEVELOPMENT_PLAN.md,
-/// section 4): HitEvent, emitted when one body part strikes another, and
-/// PartRef, which names a body part of a particular fighter.
+/// section 4): HitEvent, emitted when one body part strikes another,
+/// PartRef, which names a body part of a particular fighter, and
+/// PartOverlap, how deep parts of two fighters sink into each other.
 ///
 /// The contract changes only through review.
 ///
@@ -36,6 +37,15 @@ struct HitEvent {
     Vec2 Point;                 ///< Contact point, m.
     float ApproachSpeed = 0.0f; ///< Closing speed at the moment of impact, m/s.
     float Impulse = 0.0f;       ///< Contact impulse, N*s.
+};
+
+/// The deepest overlap of two body parts of different fighters
+/// (World::findDeepestOverlap).
+struct PartOverlap {
+    PartRef First;
+    PartRef Second;
+    float Depth = 0.0f;   ///< How far the surfaces sink into each other, m.
+    Vec2 Point;           ///< Midway between the surfaces.
 };
 
 } // namespace fighter::physics

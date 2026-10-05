@@ -222,6 +222,10 @@ bool World::isTouchingOtherFighter(Body Target) const {
 }
 
 bool World::isOverlappingOtherFighter(Body Target) const {
+    return isOverlappingOtherFighterAt(Target, Target.getPosition(), Target.getAngle(), 0.0f);
+}
+
+bool World::isOverlappingOtherFighterAt(Body Target, Vec2 Position, float Angle, float Margin) const {
     const b2BodyId BodyId = loadBody(Target.Id);
     const auto Slot = detail::decodePartSlot(b2Body_GetUserData(BodyId));
     if (!Slot) return false;
@@ -238,16 +242,40 @@ bool World::isOverlappingOtherFighter(Body Target) const {
         return !Query->Found;   // stop at the first one
     };
 
-    const b2Transform Transform = b2Body_GetTransform(BodyId);
+    const b2Transform Transform{toBox2D(Position), b2MakeRot(Angle)};
     std::array<b2ShapeId, MaxShapesPerBody> Storage{};
     for (const auto& Shape : getShapes(BodyId, Storage)) {
         const b2ShapeProxy Local = makeLocalProxy(Shape);
         const b2ShapeProxy Placed =
-            b2MakeOffsetProxy(Local.points, Local.count, Local.radius, Transform.p, Transform.q);
+            b2MakeOffsetProxy(Local.points, Local.count, Local.radius + Margin, Transform.p, Transform.q);
         b2World_OverlapShape(loadWorld(Id), &Placed, b2DefaultQueryFilter(), onOverlap, &State);
         if (State.Found) return true;
     }
     return false;
+}
+
+std::optional<PartOverlap> World::findDeepestOverlap() const {
+    std::optional<PartOverlap> Deepest;
+    std::array<b2ShapeId, MaxShapesPerBody> StorageA{};
+    std::array<b2ShapeId, MaxShapesPerBody> StorageB{};
+    for (size_t SlotA = 0; SlotA < PartBodies.size(); ++SlotA) {
+        const PartBody& PartA = PartBodies[SlotA];
+        const std::span<b2ShapeId> ShapesA = getShapes(loadBody(PartA.Handle.Id), StorageA);
+        for (size_t SlotB = SlotA + 1; SlotB < PartBodies.size(); ++SlotB) {
+            const PartBody& PartB = PartBodies[SlotB];
+            if (PartA.Part.Fighter == PartB.Part.Fighter) continue;
+            const std::span<b2ShapeId> ShapesB = getShapes(loadBody(PartB.Handle.Id), StorageB);
+            for (const auto& ShapeA : ShapesA) {
+                for (const auto& ShapeB : ShapesB) {
+                    const ShapeGap Gap = measureGap(ShapeA, getTransform(ShapeA), ShapeB, getTransform(ShapeB));
+                    if (Gap.Distance >= 0.0f || (Deepest && -Gap.Distance <= Deepest->Depth)) continue;
+                    Deepest = PartOverlap{.First = PartA.Part, .Second = PartB.Part, .Depth = -Gap.Distance,
+                                          .Point = Gap.Point};
+                }
+            }
+        }
+    }
+    return Deepest;
 }
 
 float World::getPosedPenetration(Body Target) const {

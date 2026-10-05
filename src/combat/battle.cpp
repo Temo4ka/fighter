@@ -45,6 +45,10 @@ constexpr float HitDisplaySec = 0.5f;
 constexpr float HitArrowScale = 0.04f;   // m per N*s
 /// Radius of the circle drawn around a striking part, m.
 constexpr float HitboxRadius = 0.16f;
+/// Overlaps of the fighters shallower than this are not marked, m (Box2D
+/// lets touching bodies sink into each other by a few millimetres).
+constexpr float MinDrawnOverlap = 0.005f;
+constexpr float OverlapMarkRadius = 0.04f;   // m
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 // Only the debug build draws the panel.
@@ -68,6 +72,10 @@ struct Battle::Simulation {
     BattleRules Rules;               ///< Moves, clips, tuning and reactions; the fighters point here.
     std::vector<Fighter> Fighters;   ///< [0] left, [1] right; never resized after creation.
     std::vector<RecentHit> RecentHits;
+    /// The deepest overlap of the fighters seen so far and when, for the
+    /// panel (debug build only).
+    std::optional<physics::PartOverlap> WorstOverlap;
+    double WorstOverlapSec = 0.0;
 };
 
 Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
@@ -234,6 +242,7 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
 
     publishSnapshot();
     drawDebug();
+    drawOverlap();
 }
 
 void Battle::finish(Winner Outcome, BattleEnd End) {
@@ -260,7 +269,10 @@ void Battle::settle(float Dt) {
     ++Tick;
     publishSnapshot();
     drawDebug();
+    drawOverlap();
 }
+
+std::optional<physics::PartOverlap> Battle::findDeepestOverlap() const { return Sim->PhysWorld.findDeepestOverlap(); }
 
 Surroundings Battle::getSurroundings(size_t Index) const {
     const Fighter& Opponent = Sim->Fighters[1 - Index];
@@ -333,6 +345,30 @@ void Battle::drawDebug() const {
         std::string Round = std::format("{:.1f} s left", Snapshot.TimeLeftSec);
         if (Result) Round += std::format(", over: {}", Result->End == BattleEnd::Knockout ? "knockout" : "time up");
         debug::setPanel("round", Round);
+    }
+}
+
+void Battle::drawOverlap() {
+    if constexpr (FIGHTER_DEBUG) {
+        const std::optional<physics::PartOverlap> Now = findDeepestOverlap();
+        if (Now && (!Sim->WorstOverlap || Now->Depth > Sim->WorstOverlap->Depth)) {
+            Sim->WorstOverlap = Now;
+            Sim->WorstOverlapSec = ElapsedSec;
+        }
+        const auto describe = [](const physics::PartOverlap& Overlap) {
+            return std::format("{:.3f} m {} {} / {} {}", Overlap.Depth, PlayerNames[Overlap.First.Fighter],
+                               getBodyPartName(Overlap.First.Part), PlayerNames[Overlap.Second.Fighter],
+                               getBodyPartName(Overlap.Second.Part));
+        };
+        std::string Text = Now ? describe(*Now) : "-";
+        if (Sim->WorstOverlap) {
+            Text += std::format(" (deepest {} at {:.1f} s)", describe(*Sim->WorstOverlap), Sim->WorstOverlapSec);
+        }
+        debug::setPanel("overlap", Text);
+        if (Now && Now->Depth >= MinDrawnOverlap) {
+            debug::drawCircle(debug::Cat::Contacts, Now->Point, OverlapMarkRadius);
+            debug::drawText(debug::Cat::Contacts, Now->Point, std::format("overlap {:.3f}", Now->Depth));
+        }
     }
 }
 

@@ -248,6 +248,14 @@ TEST_CASE("physics::World: touching and overlapping another fighter", "[physics]
     CHECK_FALSE(PhysWorld.isTouchingOtherFighter(Ghost));
     CHECK(PhysWorld.isOverlappingOtherFighter(Ghost));
     CHECK(PhysWorld.isOverlappingOtherFighter(Chest));
+
+    // Placed elsewhere, with a margin; nothing moves.
+    CHECK_FALSE(PhysWorld.isOverlappingOtherFighterAt(Far, {1.0f, 1.0f}, 0.0f, 0.0f));
+    CHECK(PhysWorld.isOverlappingOtherFighterAt(Far, {0.1f, 1.0f}, 0.0f, 0.0f));
+    // 0.25 m from the fist: 0.05 m between the surfaces.
+    CHECK_FALSE(PhysWorld.isOverlappingOtherFighterAt(Far, {-0.25f, 1.0f}, 0.0f, 0.04f));
+    CHECK(PhysWorld.isOverlappingOtherFighterAt(Far, {-0.25f, 1.0f}, 0.0f, 0.06f));
+    CHECK(Far.getPosition().X == Approx(3.0f));
 }
 
 TEST_CASE("physics::World: mirroring shapes and joints", "[physics]") {
@@ -369,4 +377,29 @@ TEST_CASE("physics::World: a posed part goes back to where it met the other figh
     Shin.moveTo({0.25f, 0.0f}, 0.0f, Dt);
     PhysWorld.step(Dt);
     CHECK_FALSE(PhysWorld.findPosedStop(Strikers, Depth, true).has_value());
+}
+
+TEST_CASE("physics::World: the deepest overlap of two fighters' parts", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    addBall(PhysWorld, 0, {0.0f, 1.0f}, {});
+    CHECK_FALSE(PhysWorld.findDeepestOverlap().has_value());
+    // Parts of one fighter do not count.
+    Body Own = addBall(PhysWorld, 0, {0.05f, 1.0f}, {});
+    CHECK_FALSE(PhysWorld.findDeepestOverlap().has_value());
+    Own.setTransform({0.0f, 3.0f}, 0.0f);
+
+    // Radii 0.1 + 0.1: 0.15 apart is 0.05 deep, 0.12 apart 0.08 deep.
+    Body Chest = addBall(PhysWorld, 1, {0.15f, 1.0f}, {});
+    Body Shin = addBall(PhysWorld, 1, {-0.12f, 1.0f}, {});
+    PhysWorld.setBodyType(Shin, BodyType::Kinematic);
+    // Whatever the filters say.
+    Chest.setCollisionMask(0);
+    const auto Deepest = PhysWorld.findDeepestOverlap();
+    REQUIRE(Deepest.has_value());
+    CHECK(Deepest->Depth == Approx(0.08f).margin(1e-4f));
+    CHECK(Deepest->First.Fighter == 0);
+    CHECK(Deepest->Second.Fighter == 1);
+    CHECK(Deepest->Point.X == Approx(-0.06f).margin(1e-3f));
+    Shin.setTransform({-0.5f, 1.0f}, 0.0f);
+    CHECK(PhysWorld.findDeepestOverlap()->Depth == Approx(0.05f).margin(1e-4f));
 }
