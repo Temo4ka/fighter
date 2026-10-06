@@ -789,33 +789,56 @@ TEST_CASE("Rig: pushBody moves the planted feet with the pelvis", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: slideFeet slides the planted feet to the clip at footSlideSpeed", "[rig]") {
-    Solo Stage(makeSetup(0.0f, true));
-    Rig& Body = Stage.Body;
-    const ControlParams& Control = Body.getControl();
-    Stage.run(10);
-    const float StanceOffset = Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body);
-    // A push leaves the planted feet behind the pelvis (within the slip).
-    Body.addPush(0.08f);
-    Stage.run(20);
-    REQUIRE(Body.isFootLocked(BodyPart::FootL));
-    REQUIRE(Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body) < StanceOffset - 0.03f);
-
-    // Sliding, a foot moves no faster than footSlideSpeed relative to the
-    // pelvis and ends in the clip's pose.
-    const auto getOffset = [&] { return Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body); };
-    float Fastest = 0.0f;
-    for (int Step = 0; Step < 30; ++Step) {
-        const float Before = getOffset();
-        Body.planMotion(Dt);
-        Body.slideFeet();
-        Body.applyControl(Dt);
-        Stage.PhysWorld.step(Dt);
-        Fastest = std::max(Fastest, std::abs(getOffset() - Before));
+TEST_CASE("Rig: measureLegs tells where the feet of a pose stand", "[rig]") {
+    for (const bool FacingRight : {true, false}) {
+        INFO("facing right " << FacingRight);
+        Solo Stage(makeSetup(0.3f, FacingRight));
+        const Rig& Body = Stage.Body;
+        Stage.run(5);
+        // The pose measured and the body standing in it agree.
+        const LegStance Posed = Body.measureLegs(loadStance());
+        const LegStance Now = Body.measureLegsNow();
+        CHECK(Posed.PelvisHeight == Approx(Now.PelvisHeight).margin(1e-3f));
+        for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
+            INFO(getBodyPartName(Foot));
+            CHECK(Posed.getFoot(Foot).Ankle.X == Approx(Now.getFoot(Foot).Ankle.X).margin(1e-3f));
+            CHECK(Posed.getFoot(Foot).Ankle.Y == Approx(Now.getFoot(Foot).Ankle.Y).margin(1e-3f));
+            CHECK(Posed.getFoot(Foot).Angle == Approx(Now.getFoot(Foot).Angle).margin(1e-3f));
+            CHECK(Now.getFoot(Foot).SoleHeight == Approx(Posed.getFoot(Foot).SoleHeight).margin(0.006f));
+        }
+        // The stance: the left foot in front, both on the floor.
+        CHECK(Posed.getFrontFoot() == BodyPart::FootL);
+        CHECK(Posed.getSpread() > 0.1f);
+        CHECK(std::min(Posed.Left.SoleHeight, Posed.Right.SoleHeight) == Approx(0.0f).margin(1e-4f));
     }
-    CHECK(Fastest <= Control.FootSlideSpeed * Dt + 1e-3f);
-    CHECK(Fastest > 0.0f);
-    CHECK(getOffset() == Approx(StanceOffset).margin(0.005f));
+}
+
+TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
+    for (const bool FacingRight : {true, false}) {
+        INFO("facing right " << FacingRight);
+        Solo Stage(makeSetup(0.0f, FacingRight));
+        const Rig& Body = Stage.Body;
+        const PerBodyPart<float> Stance = loadStance();
+        const LegStance Before = Body.measureLegs(Stance);
+        // The left ankle 10 cm further forward and 6 cm up, the foot level.
+        PerBodyPart<float> Angles = Stance;
+        const Vec2 Target = Before.Left.Ankle + Vec2{0.1f, 0.06f};
+        Body.reachFoot(Angles, BodyPart::FootL, Before.PelvisHeight, Target, 0.0f);
+        const LegStance After = Body.measureLegs(Angles);
+        // The right leg did not change and still carries the body.
+        CHECK(After.PelvisHeight == Approx(Before.PelvisHeight).margin(1e-4f));
+        CHECK(After.Right.Ankle.X == Approx(Before.Right.Ankle.X).margin(1e-4f));
+        CHECK(After.Left.Ankle.X == Approx(Target.X).margin(1e-3f));
+        CHECK(After.Left.Ankle.Y == Approx(Target.Y).margin(1e-3f));
+        CHECK(After.Left.Angle == Approx(0.0f).margin(1e-3f));
+        CHECK(After.Left.SoleHeight > 0.03f);
+        // The knee bends the way a knee bends (negative facing right).
+        CHECK(Angles[static_cast<size_t>(BodyPart::ShinL)] < 0.0f);
+        // Out of reach: the leg stretches towards the point.
+        PerBodyPart<float> Far = Stance;
+        Body.reachFoot(Far, BodyPart::FootR, Before.PelvisHeight, {-1.5f, 0.0f}, 0.0f);
+        CHECK(Body.measureLegs(Far).Right.Ankle.X < Before.Right.Ankle.X - 0.2f);
+    }
 }
 
 TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {

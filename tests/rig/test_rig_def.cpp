@@ -157,13 +157,6 @@ TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]"
     CHECK(Humanoid.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] > 2.0f);
 }
 
-TEST_CASE("parseRigDef: how fast the feet slide to the clip", "[rig]") {
-    const RigDef Sliding = parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 1.5 })"));
-    CHECK(Sliding.Control.FootSlideSpeed == 1.5f);
-    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 0 })")), std::runtime_error);
-    CHECK(loadRigDef(HumanoidPath).Control.FootSlideSpeed > 0.0f);
-}
-
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
     CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);

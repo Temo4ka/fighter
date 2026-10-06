@@ -565,7 +565,7 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
         // step too (buildTargetPose()).
         const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive()) || (WasPlaying && !Cycle.isPlaying());
         if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
-            Body.slideFeet();
+            Body.keepFeetPlanted();
         } else {
             Body.keepFeetPlanted();
             const bool Settled = !Cycle.isStopping() && !Crossing;

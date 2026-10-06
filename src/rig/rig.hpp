@@ -132,6 +132,29 @@ struct PartPlacement {
     float PosedAngle = 0.0f;
 };
 
+/// Where a foot stands, as for a fighter facing right, relative to the
+/// floor point under the pelvis: X forward, Y up from the floor.
+struct FootPlacement {
+    Vec2 Ankle;               ///< The ankle hinge, m.
+    float Angle = 0.0f;       ///< The foot's angle in the world, rad.
+    float SoleHeight = 0.0f;  ///< The lowest point of the foot above the floor, m.
+};
+
+/// How a body stands on its legs (Rig::measureLegs, Rig::measureLegsNow).
+struct LegStance {
+    float PelvisHeight = 0.0f;  ///< The pelvis body origin above the floor, m.
+    FootPlacement Left;
+    FootPlacement Right;
+
+    /// The placement of \p Foot: FootL or FootR (any other part: Right).
+    const FootPlacement& getFoot(BodyPart Foot) const { return Foot == BodyPart::FootL ? Left : Right; }
+    FootPlacement& getFoot(BodyPart Foot) { return Foot == BodyPart::FootL ? Left : Right; }
+    /// How far apart the ankles are along the floor, m.
+    float getSpread() const;
+    /// The foot whose ankle is further forward: FootL or FootR.
+    BodyPart getFrontFoot() const { return Right.Ankle.X > Left.Ankle.X ? BodyPart::FootR : BodyPart::FootL; }
+};
+
 /// The physics world owns the bodies and joints: a rig must not outlive it.
 class Rig {
 public:
@@ -164,11 +187,6 @@ public:
     /// off the clip by the walk do not take an extra step. Lifting a foot
     /// forgets it.
     void keepFeetPlanted();
-    /// For this step the feet slide towards the clip's pose along the floor
-    /// instead of holding their place: a planted foot lets go and closes on
-    /// the clip at ControlParams::FootSlideSpeed at most, with no jump. Combat calls it while a walk plays on quickly to a stop, so
-    /// that the stop ends in the clip's pose.
-    void slideFeet() { SlidingFeet = true; }
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -325,6 +343,21 @@ public:
     /// that carries the body. Combat finds the phases of a walk cycle where
     /// both feet stand with it; it is the same lift as standing.
     float getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const;
+    /// How the body would stand in the pose \p Angles (as for
+    /// setTargetAngles(), clamped to the joint limits) with its lowest posed
+    /// part on the floor: the pelvis height and where the feet are. Nothing
+    /// moves.
+    LegStance measureLegs(const PerBodyPart<float>& Angles) const;
+    /// How the body stands now: the pelvis height and the feet where their
+    /// bodies are (planted feet held off the clip included).
+    LegStance measureLegsNow() const;
+    /// Bends the leg of \p Foot in \p Angles (as for setTargetAngles()) so
+    /// that, with the pelvis \p PelvisHeight above the floor, its ankle is
+    /// at \p Ankle and the foot at \p FootAngle in the world (both as in
+    /// FootPlacement). Two-bone IK: the knee bends the way it bends in
+    /// \p Angles; a point out of reach gets the nearest the leg can do. The
+    /// other joints are left as they are. Nothing moves.
+    void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
@@ -476,8 +509,14 @@ private:
     void followTravel();
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
+    /// The knee takes the solution closer to \p KneeHint (rad, mirrored).
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                    PerBodyPart<float>& Corrections) const;
+                    PerBodyPart<float>& Corrections, float KneeHint) const;
+    /// The joint targets of the pose \p Angles (as for setTargetAngles(),
+    /// clamped to the limits) as corrections to the current targets.
+    PerBodyPart<float> getAngleCorrections(const PerBodyPart<float>& Angles) const;
+    /// Where the ankle hinge of \p Limb is in \p Pose.
+    Vec2 getAnkleInPose(const Leg& Limb, const PerBodyPart<Placement>& Pose) const;
     void releaseFeet();
     /// The topmost part of the limb of \p Part below the root (a thigh for
     /// a foot); the part itself if its parent is the root.
@@ -531,7 +570,6 @@ private:
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.
     std::vector<Leg> Legs;
-    bool SlidingFeet = false;         ///< slideFeet() for the next applyControl().
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
     PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
     std::bitset<BodyPartCount> YieldPosed;

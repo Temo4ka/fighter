@@ -395,13 +395,7 @@ bool Rig::isFootLocked(BodyPart Foot) const {
 }
 
 float Rig::getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const {
-    // The joint targets of Angles as corrections to the current ones.
-    PerBodyPart<float> Corrections{};
-    for (const auto& Joint : Joints) {
-        const float Angle = std::clamp(Angles[static_cast<size_t>(Joint.Child)] * Facing, Joint.LowerAngle,
-                                       Joint.UpperAngle);
-        Corrections[static_cast<size_t>(Joint.Child)] = Angle - Joint.Target;
-    }
+    const PerBodyPart<float> Corrections = getAngleCorrections(Angles);
     const Placement OnFloor{.Position = {}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
     const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
     float Lowest = std::numeric_limits<float>::max();
@@ -410,6 +404,61 @@ float Rig::getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const 
     }
     const Placement& Sole = Pose[static_cast<size_t>(Foot)];
     return getLowestPoint(getPart(Foot).Shape, Sole.Position, Sole.Angle) - Lowest;
+}
+
+float LegStance::getSpread() const { return std::abs(Right.Ankle.X - Left.Ankle.X); }
+
+LegStance Rig::measureLegs(const PerBodyPart<float>& Angles) const {
+    const Placement OnFloor{.Position = {}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
+    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, getAngleCorrections(Angles));
+    float Lowest = std::numeric_limits<float>::max();
+    for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
+        if (Part.Kinematic) Lowest = std::min(Lowest, getLowestPoint(Part.Shape, Target.Position, Target.Angle));
+    }
+    // Lifted so that the lowest posed part touches the floor.
+    LegStance Result{.PelvisHeight = -Lowest};
+    for (const auto& Limb : Legs) {
+        const Vec2 Ankle = getAnkleInPose(Limb, Pose);
+        const Placement& Foot = Pose[static_cast<size_t>(Limb.Foot)];
+        Result.getFoot(Limb.Foot) = {
+            .Ankle = {Ankle.X * Facing, Ankle.Y - Lowest},
+            .Angle = Foot.Angle * Facing,
+            .SoleHeight = getLowestPoint(getPart(Limb.Foot).Shape, Foot.Position, Foot.Angle) - Lowest};
+    }
+    return Result;
+}
+
+LegStance Rig::measureLegsNow() const {
+    const Vec2 Pelvis = getPart(Root).Handle.getPosition();
+    LegStance Result{.PelvisHeight = Pelvis.Y};
+    for (const auto& Limb : Legs) {
+        const JointState& Ankle = Joints[Limb.Ankle];
+        const Vec2 Hinge = getPart(Ankle.Parent).Handle.getWorldPoint(Ankle.AnchorInParent);
+        const PartState& Foot = getPart(Limb.Foot);
+        const Vec2 Position = Foot.Handle.getPosition();
+        const float Angle = Foot.Handle.getAngle();
+        Result.getFoot(Limb.Foot) = {.Ankle = {(Hinge.X - Pelvis.X) * Facing, Hinge.Y},
+                                     .Angle = Angle * Facing,
+                                     .SoleHeight = getLowestPoint(Foot.Shape, Position, Angle)};
+    }
+    return Result;
+}
+
+void Rig::reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle,
+                    float FootAngle) const {
+    const auto Limb = std::ranges::find(Legs, Foot, &Leg::Foot);
+    if (Limb == Legs.end()) return;
+    PerBodyPart<float> Corrections = getAngleCorrections(Angles);
+    const Placement OnFloor{.Position = {0.0f, PelvisHeight}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
+    PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
+    Pose[static_cast<size_t>(Foot)].Angle = FootAngle * Facing;
+    const JointState& Knee = Joints[Limb->Knee];
+    reachAnkle(*Limb, Pose, {Ankle.X * Facing, Ankle.Y}, Corrections,
+               Knee.Target + Corrections[static_cast<size_t>(Knee.Child)]);
+    for (const size_t Index : {Limb->Hip, Limb->Knee, Limb->Ankle}) {
+        const auto Child = static_cast<size_t>(Joints[Index].Child);
+        Angles[Child] = (Joints[Index].Target + Corrections[Child]) * Facing;
+    }
 }
 
 void Rig::keepFeetPlanted() {
@@ -648,7 +697,6 @@ void Rig::advancePosture() {
 void Rig::moveKinematicParts(float Dt) {
     if (CurrentPosture != Posture::Standing) releaseFeet();
     const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec, {});
-    SlidingFeet = false;
     for (auto&& [Part, Goal] : std::views::zip(Parts, Pose)) {
         if (Part.Kinematic) Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
     }
@@ -779,12 +827,8 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         // stepping back plants when it is there.
         const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
         if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
-        if (SlidingFeet && Limb.Locked) {
-            Limb.Locked = false;   // slides from where it stood (slideFeet())
-            Limb.KeptOffsetX = 0.0f;
-        }
 
-        if (Planted && !Limb.Locked && !Limb.Stepping && !SlidingFeet) {
+        if (Planted && !Limb.Locked && !Limb.Stepping) {
             Limb.Locked = true;
             Limb.LockX = ClipAnkle.X + Limb.OffsetX;
         } else if (!Planted && Limb.Locked) {
@@ -806,24 +850,20 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
                                     std::min(ClipAnkle.X + Slip, std::max(HipPoint.X + Span, ClipAnkle.X)));
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
-            if (SlidingFeet) {
-                const float MaxSlide = Control.FootSlideSpeed * Dt;
-                Limb.OffsetX -= std::clamp(Limb.OffsetX, -MaxSlide, MaxSlide);
-            } else {
-                Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
-            }
+            Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
         if (std::abs(Limb.OffsetX) > MinFootOffset) {
-            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections);
+            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections,
+                       Joints[Limb.Knee].Target);
         }
     }
     return Corrections;
 }
 
 void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                     PerBodyPart<float>& Corrections) const {
+                     PerBodyPart<float>& Corrections, float KneeHint) const {
     const JointState& Hip = Joints[Limb.Hip];
     const JointState& Knee = Joints[Limb.Knee];
     const JointState& AnkleJoint = Joints[Limb.Ankle];
@@ -852,7 +892,7 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     };
     const float KneeA = clampKnee(Opening - RestBend);
     const float KneeB = clampKnee(-Opening - RestBend);
-    const float KneeAngle = std::abs(KneeA - Knee.Target) <= std::abs(KneeB - Knee.Target) ? KneeA : KneeB;
+    const float KneeAngle = std::abs(KneeA - KneeHint) <= std::abs(KneeB - KneeHint) ? KneeA : KneeB;
 
     // Body angles, then joint angles.
     const float ThighAngle = getHeading(ToAnkle) - getHeading(ThighBone + rotate(ShinBone, KneeAngle));
@@ -864,6 +904,22 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     setCorrection(Hip, ThighAngle - Pelvis.Angle);
     setCorrection(Knee, KneeAngle);
     setCorrection(AnkleJoint, Foot.Angle - ShinAngle);   // the foot keeps its angle to the floor
+}
+
+PerBodyPart<float> Rig::getAngleCorrections(const PerBodyPart<float>& Angles) const {
+    PerBodyPart<float> Corrections{};
+    for (const auto& Joint : Joints) {
+        const float Angle = std::clamp(Angles[static_cast<size_t>(Joint.Child)] * Facing, Joint.LowerAngle,
+                                       Joint.UpperAngle);
+        Corrections[static_cast<size_t>(Joint.Child)] = Angle - Joint.Target;
+    }
+    return Corrections;
+}
+
+Vec2 Rig::getAnkleInPose(const Leg& Limb, const PerBodyPart<Placement>& Pose) const {
+    const JointState& Ankle = Joints[Limb.Ankle];
+    const Placement& Shin = Pose[static_cast<size_t>(Ankle.Parent)];
+    return Shin.Position + rotate(Ankle.AnchorInParent, Shin.Angle);
 }
 
 float Rig::getRestepDistance(const Leg& Limb) { return std::abs(Limb.OffsetX - Limb.KeptOffsetX); }
