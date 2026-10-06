@@ -4,6 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <ranges>
+#include <utility>
 #include <vector>
 
 #include "anim/clip.hpp"
@@ -28,8 +29,12 @@ float getTwoSpanLift(float TimeSec) {
     return Down ? 0.0f : 0.1f;
 }
 
+/// The first span has the left foot in front, the second the right one.
 LegCycle makeTwoSpanCycle() {
-    return LegCycle(0.8f, findSupportSpans(0.8f, getTwoSpanLift, 0.01f, 0.01f), 0);
+    std::vector<SupportSpan> Spans = findSupportSpans(0.8f, getTwoSpanLift, 0.01f, 0.01f);
+    REQUIRE(Spans.size() == 2);
+    Spans[1].FrontFoot = BodyPart::FootR;
+    return LegCycle(0.8f, std::move(Spans));
 }
 
 /// Walks \p Cycle forwards at rate 1 until its phase is about \p TimeSec.
@@ -73,7 +78,7 @@ TEST_CASE("findSupportSpans: runs of both feet down, also across the end", "[com
 TEST_CASE("LegCycle: stops at once with both feet down, else plays on to the nearest span", "[combat]") {
     LegCycle Cycle = makeTwoSpanCycle();
     CHECK_FALSE(Cycle.isPlaying());
-    CHECK(Cycle.getVariant() == StanceVariant::Normal);
+    CHECK(Cycle.getFrontFoot() == BodyPart::FootL);
     CHECK(Cycle.getTime() == Approx(0.15f).margin(0.01f));
 
     SECTION("inside a span: holds there") {
@@ -81,7 +86,7 @@ TEST_CASE("LegCycle: stops at once with both feet down, else plays on to the nea
         Cycle.stop(Dt, 3.0f);
         CHECK(Cycle.getMode() == LegCycle::Mode::Still);
         CHECK(Cycle.getTime() == Approx(0.55f).margin(0.006f));
-        CHECK(Cycle.getVariant() == StanceVariant::Switched);
+        CHECK(Cycle.getFrontFoot() == BodyPart::FootR);
         CHECK(Cycle.isEngaged());
     }
     SECTION("a foot in the air: forwards to the nearer span, quickly") {
@@ -93,13 +98,15 @@ TEST_CASE("LegCycle: stops at once with both feet down, else plays on to the nea
         CHECK_FALSE(Cycle.isPlaying());
         CHECK(Cycle.getTime() >= 0.5f);
         CHECK(Cycle.getTime() <= 0.6f);
-        CHECK(Cycle.getVariant() == StanceVariant::Switched);
+        CHECK(Cycle.getFrontFoot() == BodyPart::FootR);
+        // Resting there: it stays engaged (the legs rest in its pose).
+        CHECK(Cycle.isEngaged());
     }
     SECTION("or backwards, when the span behind is nearer") {
         walkTo(Cycle, 0.24f);
         for (int Step = 0; Step < 10 && Cycle.isPlaying(); ++Step) Cycle.stop(Dt, 3.0f);
         CHECK(Cycle.getTime() <= 0.2f);
-        CHECK(Cycle.getVariant() == StanceVariant::Normal);
+        CHECK(Cycle.getFrontFoot() == BodyPart::FootL);
     }
     SECTION("walking again continues from the held phase") {
         walkTo(Cycle, 0.55f);
@@ -108,45 +115,59 @@ TEST_CASE("LegCycle: stops at once with both feet down, else plays on to the nea
         Cycle.walk(0.01f, 1.0f, 1.0f);
         CHECK(Cycle.getTime() == Approx(Held + 0.01f).margin(1e-4f));
     }
-    SECTION("settle goes back to the normal stance and disengages") {
+    SECTION("settle goes to the span with the front foot asked for and disengages") {
         walkTo(Cycle, 0.55f);
         Cycle.stop(Dt, 3.0f);
         Cycle.settle();
-        CHECK(Cycle.getVariant() == StanceVariant::Normal);
-        CHECK(Cycle.getTime() == Approx(Cycle.getNormalTime()));
+        CHECK(Cycle.getFrontFoot() == BodyPart::FootL);
+        CHECK(Cycle.getTime() == Approx(Cycle.getRestTime(BodyPart::FootL)));
         CHECK_FALSE(Cycle.isEngaged());
+        Cycle.settle(BodyPart::FootR);
+        CHECK(Cycle.getFrontFoot() == BodyPart::FootR);
+        CHECK(Cycle.getTime() == Approx(0.55f).margin(0.011f));
     }
 }
 
-TEST_CASE("makeLegCycle: the walk has two support phases, the normal one like the stance", "[combat]") {
+TEST_CASE("makeLegCycle: the walk rests in two wide double supports, one per front foot", "[combat]") {
     physics::World PhysWorld;
     const std::filesystem::path Data = FIGHTER_DATA_DIR;
     const rig::Rig Body(PhysWorld, rig::loadRigDef(Data / "rigs" / "humanoid.json"), makeSetup());
     const anim::Clip Walk = anim::loadClip(Data / "poses" / "walk.json");
     const anim::Pose Stance = anim::sampleClip(anim::loadClip(Data / "poses" / "stance.json"), 0.0f);
-    const LegCycle Cycle = makeLegCycle(Walk, Stance, Body);
+    constexpr float MinSpread = 0.25f;
+    const LegCycle Cycle = makeLegCycle(Walk, Stance, Body, MinSpread);
     REQUIRE(Cycle.getSpans().size() == 2);
 
-    // In the normal one the left foot is in front, in the other the right.
-    anim::Pose Normal = anim::sampleClip(Walk, Cycle.getNormalTime());
-    CHECK(Normal.getAngle(BodyPart::ThighL) > Normal.getAngle(BodyPart::ThighR));
-    for (const SupportSpan& Span : Cycle.getSpans()) {
+    // One with the left foot in front, one with the right; in both the feet
+    // are down and wide apart all through the span.
+    CHECK(Cycle.getSpans()[0].FrontFoot != Cycle.getSpans()[1].FrontFoot);
+    const auto measure = [&](float TimeSec) {
         anim::Pose Pose = Stance;
-        anim::layerPose(Pose, anim::sampleClip(Walk, (Span.BeginSec + Span.EndSec) * 0.5f));
-        CHECK(Body.getSoleHeight(Pose.Angles, BodyPart::FootL) <= Body.getControl().FootPlantHeight);
-        CHECK(Body.getSoleHeight(Pose.Angles, BodyPart::FootR) <= Body.getControl().FootPlantHeight);
+        anim::layerPose(Pose, anim::sampleClip(Walk, TimeSec));
+        return Body.measureLegs(Pose.Angles);
+    };
+    for (const SupportSpan& Span : Cycle.getSpans()) {
+        const float Width = Span.EndSec >= Span.BeginSec ? Span.EndSec - Span.BeginSec
+                                                         : Span.EndSec + Walk.DurationSec - Span.BeginSec;
+        for (float Into = 0.0f; Into <= Width; Into += SupportSampleSec) {
+            const rig::LegStance Legs = measure(std::fmod(Span.BeginSec + Into, Walk.DurationSec));
+            INFO("t=" << Span.BeginSec + Into);
+            CHECK(Legs.Left.SoleHeight <= Body.getControl().FootPlantHeight);
+            CHECK(Legs.Right.SoleHeight <= Body.getControl().FootPlantHeight);
+            CHECK(Legs.getSpread() >= MinSpread);
+            CHECK(Legs.getFrontFoot() == Span.FrontFoot);
+        }
     }
+    // Where the feet pass each other they are not wide: a larger spread
+    // leaves fewer (or narrower) spans, never more.
+    const LegCycle Narrow = makeLegCycle(Walk, Stance, Body, 0.0f);
+    CHECK(Narrow.getSpans().size() >= Cycle.getSpans().size());
 
     // The crouch walk too, over the crouch.
     anim::Pose Crouched = Stance;
     anim::layerPose(Crouched, anim::sampleClip(anim::loadClip(Data / "poses" / "crouch.json"), 0.0f));
-    const LegCycle Crouch = makeLegCycle(anim::loadClip(Data / "poses" / "crouch_walk.json"), Crouched, Body);
+    const LegCycle Crouch = makeLegCycle(anim::loadClip(Data / "poses" / "crouch_walk.json"), Crouched, Body, 0.0f);
     CHECK(Crouch.getSpans().size() == 2);
-}
-
-TEST_CASE("getStanceVariantName: both variants have names", "[combat]") {
-    CHECK(getStanceVariantName(StanceVariant::Normal) == "normal");
-    CHECK(getStanceVariantName(StanceVariant::Switched) == "switched");
 }
 
 TEST_CASE("LegCycle: follow keeps the share of the last step", "[combat]") {

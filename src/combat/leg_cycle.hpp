@@ -7,21 +7,22 @@
 /// \file
 /// This file declares LegCycle, the phase of a looping leg clip (the walk,
 /// the crouch walk) and how it stops, and the search for the phases where
-/// both feet stand on the floor (support spans).
+/// both feet stand on the floor wide apart (support spans).
 ///
-/// A walk cycle has two double-support phases: one with the left (lead) foot
-/// in front, as in the stance, and one with the right foot in front. When
+/// A walk cycle has two wide double-support phases: one with the left foot
+/// in front and one with the right foot in front (where the feet pass each
+/// other they are both down too, but too close together to rest on). When
 /// the move key is released the cycle does not play on to its start; it
-/// stops at the nearest support phase, played there quickly if a foot is in
-/// the air, and holds it. The fighter then stands in the normal stance or in
-/// the "switched" one (right foot forward), and walking again continues
-/// from that phase. The spans are found from the clip and the body (the
-/// sole heights the rig computes), not written into the clip.
+/// plays on (or back) to the nearest such phase, quickly if a foot is in the
+/// air, and holds it: that leg pose is the rest pose of the legs until an
+/// action needs them, and walking again continues from that phase. The
+/// spans are found from the clip and the body (the sole heights and the
+/// ankles the rig computes), not written into the clip.
 ///
 /// Played on quickly, the cycle also moves the foot that stands on the
-/// floor: the fighter lets it slide meanwhile (rig::Rig::slideFeet), so that
-/// the stop ends in the clip's support pose with both feet down, and keeps
-/// the feet where they are from then on (rig::Rig::keepFeetPlanted).
+/// floor relative to the pelvis: the rig holds it where it stands (a planted
+/// foot, the leg bends to it) and the fighter keeps the feet there from then
+/// on (rig::Rig::keepFeetPlanted), so nothing slides.
 ///
 /// The file is internal to the combat module.
 ///
@@ -41,19 +42,13 @@
 
 namespace fighter::combat {
 
-/// Which foot is in front while the fighter stands still.
-enum class StanceVariant : uint8_t {
-    Normal,     ///< The left (lead) foot forward, as in the stance clip.
-    Switched,   ///< The right foot forward: the other support phase.
-};
-
-std::string_view getStanceVariantName(StanceVariant Variant);
-
 /// A part of a cycle where both feet stand on the floor, s of clip time in
 /// [0, period). BeginSec > EndSec: the span wraps through 0.
 struct SupportSpan {
     float BeginSec = 0.0f;
     float EndSec = 0.0f;
+    /// The foot in front in the middle of the span: FootL or FootR.
+    BodyPart FrontFoot = BodyPart::FootL;
 };
 
 /// Sampling step of the support span search, s of clip time.
@@ -72,14 +67,14 @@ public:
     enum class Mode : uint8_t {
         Still,      ///< Holds its phase.
         Walking,    ///< Follows the walking speed.
-        Stopping,   ///< Plays on to the nearest support span, then holds.
+        Stopping,   ///< Plays on to the nearest support span, then rests there.
         Held,       ///< Keeps a mid-step pose: the opponent is in the way (hold()).
     };
 
     LegCycle() = default;
-    /// A cycle of \p PeriodSec with its support spans; \p NormalSpan indexes
-    /// \p Spans: the normal stance. It starts held in the normal stance.
-    LegCycle(float PeriodSec, std::vector<SupportSpan> Spans, size_t NormalSpan);
+    /// A cycle of \p PeriodSec with its support spans. It starts settled
+    /// with the left foot in front (settle()).
+    LegCycle(float PeriodSec, std::vector<SupportSpan> Spans);
 
     /// Walks for \p Dt: the phase runs \p Rate clip seconds per second,
     /// forwards for \p Direction > 0, backwards (a step back) otherwise.
@@ -102,9 +97,11 @@ public:
     void hold();
     /// Holds its walk pose in mid-step (hold()).
     bool isHeld() const { return CurrentMode == Mode::Held; }
-    /// Jumps to the middle of the normal span and holds it; the cycle is
-    /// not engaged any more (another clip took the legs over).
-    void settle();
+    /// Jumps to the middle of the first span with \p FrontFoot in front (the
+    /// first span if none) and holds it; the cycle is not engaged any more
+    /// (another clip took the legs over and left them in a stance with that
+    /// foot in front).
+    void settle(BodyPart FrontFoot = BodyPart::FootL);
 
     Mode getMode() const { return CurrentMode; }
     /// Walking or stopping: the clip must be shown (also while held, isHeld()).
@@ -117,10 +114,10 @@ public:
     float getPeriod() const { return PeriodSec; }
     /// The phase a stop heads to (the current one when held).
     float getStopTarget() const;
-    /// The stance of the span the phase is in or nearest to.
-    StanceVariant getVariant() const;
-    /// The middle of the normal span, s.
-    float getNormalTime() const;
+    /// The front foot of the span the phase is in or a stop heads to.
+    BodyPart getFrontFoot() const;
+    /// The middle of the first span with \p FrontFoot in front, s.
+    float getRestTime(BodyPart FrontFoot) const;
     const std::vector<SupportSpan>& getSpans() const { return Spans; }
 
 private:
@@ -135,7 +132,6 @@ private:
 
     float PeriodSec = 1.0f;
     std::vector<SupportSpan> Spans{SupportSpan{}};
-    size_t NormalSpan = 0;
     float TimeSec = 0.0f;
     float StepSec = 0.0f;     ///< How far the last walk() moved the phase (signed); 0 after stop(), settle().
     float Direction = 1.0f;   ///< Of the last walk: a tie is broken that way.
@@ -144,9 +140,9 @@ private:
 };
 
 /// The leg cycle of the looping clip \p Cycle played over \p Base (the
-/// stance or the crouch): the support spans come from the sole heights of
-/// \p Body (rig::Rig::getSoleHeight, below the rig's foot plant height);
-/// the normal stance is the span whose pose is closest to \p Base.
-LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body);
+/// stance or the crouch): the support spans are where both soles of
+/// \p Body are below the rig's foot plant height (rig::Rig::measureLegs)
+/// and the ankles at least \p MinSpread apart, m.
+LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread);
 
 } // namespace fighter::combat

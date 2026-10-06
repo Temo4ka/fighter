@@ -9,6 +9,7 @@
 #include <string>
 #include <utility>
 
+#include "anim/layers.hpp"
 #include "debug/draw.hpp"
 
 namespace fighter::combat {
@@ -28,9 +29,7 @@ constexpr std::array AttackButtons = {MoveButton::Jab, MoveButton::HeavyPunch, M
                                       MoveButton::LowKick};
 
 std::string_view getWeaponClass(const std::optional<stats::WeaponProps>& Weapon);
-bool coversLegs(const anim::Clip& Source);
-bool isLedByLeftSide(const anim::Clip& Source);
-anim::Pose getMasked(const anim::Pose& Source, const anim::Pose& Mask);
+bool hasUpperJoints(const anim::Clip& Source);
 
 } // namespace
 
@@ -44,12 +43,13 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
-    const anim::Clip& WalkClip = NewRules.Clips.get(clips::Walk);
-    Walk = makeLegCycle(WalkClip, Shown, Body);
+    const float MinSpread = NewRules.Tuning.RestMinFootSpread;
+    Walk = makeLegCycle(NewRules.Clips.get(clips::Walk), Shown, Body, MinSpread);
     anim::Pose Crouched = Shown;
     anim::layerPose(Crouched, anim::sampleClip(NewRules.Clips.get(clips::Crouch), 0.0f));
-    CrouchWalk = makeLegCycle(NewRules.Clips.get(clips::CrouchWalk), Crouched, Body);
-    ShownLegs = getMasked(Shown, WalkClip.Keys.front().Target);
+    CrouchWalk = makeLegCycle(NewRules.Clips.get(clips::CrouchWalk), Crouched, Body, MinSpread);
+    ShownLegs = anim::selectJoints(Shown, anim::getLegJoints());
+    ShownLegsStill = ShownLegs;
 }
 
 const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& Around, float Dt) {
@@ -83,18 +83,37 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     if (State == FighterState::Idle && Walk.isPlaying()) setState(FighterState::Walking);
     if (State == FighterState::Walking && !Walk.isPlaying()) setState(FighterState::Idle);
 
+    // A crouch or a low block that starts now plays with the foot in front
+    // the legs have (an attack chose in startMove()).
+    if (State == FighterState::Crouching || State == FighterState::Blocking) {
+        const ClipLibrary& Clips = Rules->Clips;
+        const anim::Clip& Authored = State == FighterState::Crouching ? Clips.get(clips::Crouch)
+                                                                      : Clips.getBlock(Guard);
+        const bool Continues = ShownTop && &Clips.getAuthored(*ShownTop) == &Authored;
+        if (anim::usesLegs(Authored) && !Continues) LegsMirrored = shouldMirrorLegs();
+    }
     const anim::Clip* Top = getTopClip();
-    // A clip that takes both legs over (crouch, low block, a stagger) ends
-    // the walk and the stance it held: the legs come back to the normal one.
-    if (Top && coversLegs(*Top)) Walk.settle();
-    const TargetPoses Target = buildTargetPose(Top, Dt);
+    const bool TopChanged = Top != ShownTop || TopRestarted;
+    // A leg action ends the walk where it rested: afterwards the legs rest
+    // in the stance it leaves them in.
+    if (Top && anim::usesLegs(*Top)) {
+        RestFront = LegsMirrored ? BodyPart::FootR : BodyPart::FootL;
+        Walk.settle(RestFront);
+    }
+    const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
     // A clip that starts fades in, one that ends fades out: the clip's own
     // time or the blend table's for the change.
-    if (Top != ShownTop || TopRestarted) beginTopFade(Top);
+    if (TopChanged) beginTopFade(Top);
     ShownTop = Top;
     TopRestarted = false;
     Shown = Fade.step(Target.Moving, Dt);
     ShownStill = Fade.peek(Target.Still);
+    // Legs that step into the action's pose are not faded: the steps are
+    // the transition.
+    if (LegsStepped) {
+        anim::layerPose(Shown, anim::selectJoints(Target.Moving, anim::getLegJoints()));
+        anim::layerPose(ShownStill, anim::selectJoints(Target.Still, anim::getLegJoints()));
+    }
 
     Body.setTargetAngles(Shown.Angles);
     if (Stride.FollowsTravel) Body.setTravelPose(ShownStill.Angles, Stride.Travel);
@@ -291,6 +310,8 @@ void Fighter::drawDebug(std::string_view Name) const {
         if (Body.isStoppedAtContact()) ContactText += " (stopped this step)";
         debug::setPanel(std::format("{} contact", Name), ContactText);
         debug::setPanel(std::format("{} legs", Name), describeLegs());
+        debug::setPanel(std::format("{} upper", Name), describeUpper());
+        if (Step.isActive()) Step.drawDebug(LegTarget, Body);
         debug::setPanel(std::format("{} blend", Name), describeBlends());
         // "P1 facing" (and a pending turn) is the rig's panel line.
     }
@@ -305,7 +326,6 @@ void Fighter::setState(FighterState Next) {
     if (Next == State) return;
     if (State == FighterState::Attacking) {
         Move = nullptr;
-        SwitchStep = false;
         AttackFromCrouch = false;
     }
     if (State == FighterState::Reacting) Reaction = ReactionLevel::None;
@@ -365,7 +385,7 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
                               RecoverySec <= Tuning.ChainWindowSec;
         if (CanChain) {
             if (const MoveDef* Next = findMove(Rules->Moves, *ChainRequest, getWeaponClass(Weapon))) {
-                startMove(*Next, Around, Cmd, ChainLength + 1);
+                startMove(*Next, Around, ChainLength + 1);
                 return Next;
             }
         }
@@ -389,7 +409,7 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         if (StandUpLeftSec > 0.0f) return nullptr;
         const MoveButton Button = *std::exchange(PendingAttack, std::nullopt);
         if (const MoveDef* Next = findMove(Rules->Moves, Button, getWeaponClass(Weapon))) {
-            startMove(*Next, Around, Cmd, 1);
+            startMove(*Next, Around, 1);
             return Next;
         }
     }
@@ -406,7 +426,7 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
             setState(FighterState::Idle);
             return nullptr;
         }
-        startMove(*Next, Around, Cmd, 1);
+        startMove(*Next, Around, 1);
         return Next;
     }
     if (isCrouching(Cmd)) {
@@ -418,10 +438,12 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
     return nullptr;
 }
 
-void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, const PlayerCommands& Cmd,
-                        int ChainPosition) {
+void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int ChainPosition) {
     const float Distance = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
-    const anim::Clip& Clip = Rules->Clips.get(Next.getClip(Distance));
+    // A strike with the legs plays with the foot in front the legs have.
+    const anim::Clip& Authored = Rules->Clips.get(Next.getClip(Distance));
+    if (anim::usesLegs(Authored)) LegsMirrored = shouldMirrorLegs();
+    const anim::Clip& Clip = getPlayed(Authored);
     // A move always starts; without enough stamina it empties it and the
     // fighter is exhausted, so the move itself is already slow.
     spendStamina(Next.Stamina);
@@ -434,18 +456,6 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, const P
     setState(FighterState::Attacking);
     StateSec = 0.0f;
     AttackFromCrouch = FromCrouch;
-    // A strike led by the left side starts from the normal stance: from the
-    // switched one, or from a walk that does not go on during it, the legs
-    // step back into the stance during its startup. The clip and its rate
-    // stay as they are, so the strike starts no sooner (and no later) than
-    // without the step.
-    const bool WalksOn = Clip.AllowMove && std::abs(Cmd.MoveX) > MoveDeadZone;
-    SwitchStep = isLedByLeftSide(Clip) && Walk.isEngaged() && !WalksOn;
-    if (SwitchStep) {
-        Walk.settle();
-        LegFade.begin(ShownLegs, anim::getStartupAtRate(Clip, Rate) * Rules->Tuning.SwitchStepShare);
-        ShownSource = LegSource::Stance;
-    }
     Move = &Next;
     AttackClip = &Clip;
     AttackTime = 0.0f;
@@ -466,7 +476,9 @@ float Fighter::planWalking(const PlayerCommands& Cmd) {
     const CombatTuning& Tuning = Rules->Tuning;
     Stride = {};
     if (Body.getPosture() != rig::Posture::Standing) {
-        Walk.settle();
+        // Down or getting up, the legs come back into the stance.
+        RestFront = BodyPart::FootL;
+        Walk.settle(RestFront);
         CrouchWalk.settle();
         return 0.0f;
     }
@@ -540,7 +552,6 @@ void Fighter::advanceLegs(float Dt) {
 void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
     const CombatTuning& Tuning = Rules->Tuning;
     if (Cycle.getMode() == LegCycle::Mode::Walking) FeetSettling = true;
-    const bool WasPlaying = Cycle.isPlaying();
     // A walk the opponent holds back stops where it is (LegCycle::hold):
     // playing the step on without travel would set the swing foot down on
     // the opponent's, and the spacing would shove them apart.
@@ -550,80 +561,47 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
         Cycle.stop(Dt, Tuning.WalkStopRate);
     }
     if (!Cycle.isPlaying() && !Cycle.isHeld()) WalkHeld = false;
-    // Stopped in the normal stance: the legs cross over to the stance
-    // clip's (or the crouch's); the switched one holds the cycle's pose.
-    if (FeetSettling && !Cycle.isPlaying() && Cycle.isEngaged() && Cycle.getVariant() == StanceVariant::Normal) {
-        Cycle.settle();
-    }
     if (FeetSettling) {
-        // Played on quickly, the cycle moves the planted foot too, and so
-        // does the cross-over: it slides into the pose instead of being
-        // held off it. Then the feet stay where they stand, also when the
-        // pelvis glides on a little, instead of stepping under the body
-        // once more (rig::Rig::keepFeetPlanted).
-        // A cycle that stopped in this step starts its cross-over in this
-        // step too (buildTargetPose()).
-        const bool Crossing = LegFade.isActive() || (Crouched && Fade.isActive()) || (WasPlaying && !Cycle.isPlaying());
-        if (Tuning.StopSlidesFeet && (Cycle.isStopping() || Crossing)) {
-            Body.keepFeetPlanted();
-        } else {
-            Body.keepFeetPlanted();
-            const bool Settled = !Cycle.isStopping() && !Crossing;
-            if (Settled && Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
-        }
+        // Played on quickly, the cycle moves the planted foot relative to the
+        // pelvis: the rig holds it where it stands (the leg bends to it), and
+        // from then on the feet stay where they stand, also when the pelvis
+        // glides on a little, instead of stepping under the body once more
+        // (rig::Rig::keepFeetPlanted). The legs rest in the cycle's pose.
+        Body.keepFeetPlanted();
+        const bool Settled = !Cycle.isStopping() && !LegFade.isActive() && !(Crouched && Fade.isActive());
+        if (Settled && Body.getController().getWalkVelocity() == 0.0f) FeetSettling = false;
     }
 }
 
-Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
-    const anim::Clip& WalkClip = Rules->Clips.get(clips::Walk);
-    anim::Pose Target = anim::sampleClip(Rules->Clips.get(clips::Stance), 0.0f);
+Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt) {
+    const ClipLibrary& Clips = Rules->Clips;
+    const anim::Pose Stance = anim::sampleClip(Clips.get(clips::Stance), 0.0f);
+    const bool LegAction = Top && anim::usesLegs(*Top);
+    updateRestLegs(LegAction, Dt);
 
-    // The legs below the clip on top: the walk cycle while it plays; the
-    // switched stance once it stopped there (until another clip takes the
-    // legs over, LegCycle::settle()); else the stance clip's legs (the
-    // normal stance). A change crosses over (legs only).
-    LegSource Source = LegSource::Stance;
-    if (Walk.isPlaying() || Walk.isHeld()) {
-        Source = LegSource::Walk;
-    } else if (Walk.isEngaged() && Walk.getVariant() == StanceVariant::Switched) {
-        Source = LegSource::SwitchedStance;
+    // Below a leg action: the stance (the crouch for an attack from it),
+    // with the legs swapped when the action plays mirrored.
+    anim::Pose Base = Stance;
+    if (LegAction && LegsMirrored) Base = anim::joinLayers(Stance, anim::mirrorLegs(Stance));
+    if (State == FighterState::Attacking && AttackFromCrouch) {
+        anim::layerPose(Base, anim::sampleClip(getPlayed(Clips.get(clips::Crouch)), 0.0f));
     }
-    anim::Pose Legs;
-    anim::Pose LegsStill;
-    switch (Source) {
-        case LegSource::Walk:
-            Legs = anim::sampleClip(WalkClip, Walk.getTime());
-            LegsStill = anim::sampleClip(WalkClip, Walk.getStepFromTime());
-            break;
-        case LegSource::SwitchedStance: Legs = getSwitchedStanceLegs(); break;
-        case LegSource::Stance: Legs = getMasked(Target, WalkClip.Keys.front().Target); break;
-    }
-    if (Source != LegSource::Walk) LegsStill = Legs;
-    if (Source != ShownSource) {
-        const auto getKind = [](LegSource Legs) { return Legs == LegSource::Walk ? PoseKind::Walk : PoseKind::Stance; };
-        beginBlend(LegFade, ShownLegs, LegBlend, getKind(ShownSource), getKind(Source));
-    }
-    ShownSource = Source;
-    ShownLegs = LegFade.step(Legs, Dt);
-    ShownLegsStill = LegFade.peek(LegsStill);
-    if (SwitchStep && !LegFade.isActive()) SwitchStep = false;
-
-    // The same layers over the legs of the step and over those without its
-    // travel.
+    // Crouched, the crouch walk sets the legs once it has played, and holds
+    // where it stopped.
     const bool WithCrouchWalk = State == FighterState::Crouching && CrouchWalk.isEngaged();
-    const auto compose = [&](const anim::Pose& ShownLegPose, float CrouchWalkTime) {
-        anim::Pose Result = Target;
-        anim::layerPose(Result, ShownLegPose);
-        if (State == FighterState::Attacking && AttackFromCrouch) {
-            anim::layerPose(Result, anim::sampleClip(Rules->Clips.get(clips::Crouch), 0.0f));
+    const anim::Clip& CrouchWalkClip = getPlayed(Clips.get(clips::CrouchWalk));
+    // The two layers, over the legs of the step and over those without its
+    // travel: the upper body plays the clip on top over the base; the legs
+    // play the leg action, or rest (or walk) as they are.
+    const auto compose = [&](const anim::Pose& RestLegs, float CrouchWalkTime) {
+        anim::Pose Upper = Base;
+        anim::Pose Legs = RestLegs;
+        if (Top) anim::layerPose(Upper, anim::sampleClip(*Top, getTopClipTime()));
+        if (LegAction) {
+            Legs = Upper;
+            if (WithCrouchWalk) anim::layerPose(Legs, anim::sampleClip(CrouchWalkClip, CrouchWalkTime));
         }
-        if (Top) anim::layerPose(Result, anim::sampleClip(*Top, getTopClipTime()));
-        // Crouched, the crouch walk sets the legs once it has played, and
-        // holds where it stopped.
-        if (WithCrouchWalk) {
-            anim::layerPose(Result, anim::sampleClip(Rules->Clips.get(clips::CrouchWalk), CrouchWalkTime));
-        }
-        return Result;
+        return anim::joinLayers(Upper, Legs);
     };
     TargetPoses Result{.Moving = compose(ShownLegs, CrouchWalk.getTime()),
                        .Still = compose(ShownLegsStill, CrouchWalk.getStepFromTime())};
@@ -632,52 +610,126 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
                    WithCrouchWalk ? PoseKind::CrouchWalk : PoseKind::Crouch);
     }
     ShowsCrouchWalk = WithCrouchWalk;
+
+    // A leg action takes the legs by real steps (LegStep); any other clip
+    // leaves them alone.
+    if (!LegAction) {
+        Step.cancel();
+        LegsStepped = false;
+        return Result;
+    }
+    if (TopChanged) startLegStep(*Top, Result.Moving);
+    const bool Stepping = Step.isActive();
+    Step.advance(Dt);
+    LegTarget = Body.measureLegs(Result.Moving.Angles);
+    Step.apply(Result.Moving.Angles, Body);
+    Step.apply(Result.Still.Angles, Body);
+    // The rig would take a planted foot held off its old pose for one left
+    // behind by a push and step it back: the feet stay where the steps put
+    // them.
+    if (Stepping) Body.keepFeetPlanted();
     return Result;
 }
 
-anim::Pose Fighter::getSwitchedStanceLegs() const {
+void Fighter::updateRestLegs(bool LegAction, float Dt) {
     const anim::Clip& WalkClip = Rules->Clips.get(clips::Walk);
-    if (const anim::Clip* Drawn = Rules->Clips.find(clips::StanceSwitched)) {
-        return getMasked(anim::sampleClip(*Drawn, 0.0f), WalkClip.Keys.front().Target);
-    }
-    // The stance mirrored: each leg takes the other one's angles.
-    const anim::Pose Stance = anim::sampleClip(Rules->Clips.get(clips::Stance), 0.0f);
-    constexpr std::array Pairs = {std::pair(BodyPart::ThighL, BodyPart::ThighR),
-                                  std::pair(BodyPart::ShinL, BodyPart::ShinR),
-                                  std::pair(BodyPart::FootL, BodyPart::FootR)};
+    const LegSource Source = Walk.isEngaged() ? LegSource::Walk : LegSource::Stance;
     anim::Pose Legs;
-    for (const auto& [Left, Right] : Pairs) {
-        Legs.setAngle(Left, Stance.getAngle(Right));
-        Legs.setAngle(Right, Stance.getAngle(Left));
+    anim::Pose LegsStill;
+    if (Source == LegSource::Walk) {
+        Legs = anim::sampleClip(WalkClip, Walk.getTime());
+        LegsStill = anim::sampleClip(WalkClip, Walk.getStepFromTime());
+    } else {
+        Legs = getStanceLegs(RestFront);
+        LegsStill = Legs;
     }
-    return Legs;
+    if (LegAction) {
+        // The action has the legs; these are the legs it leaves.
+        LegFade.cancel();
+    } else if (Source != ShownSource) {
+        const auto getKind = [](LegSource Legs) { return Legs == LegSource::Walk ? PoseKind::Walk : PoseKind::Stance; };
+        beginBlend(LegFade, ShownLegs, LegBlend, getKind(ShownSource), getKind(Source));
+    }
+    ShownSource = Source;
+    ShownLegs = LegFade.step(Legs, Dt);
+    ShownLegsStill = LegFade.peek(LegsStill);
+}
+
+void Fighter::startLegStep(const anim::Clip& Top, const anim::Pose& Target) {
+    const LegStepTuning& Tuning = Rules->Tuning.LegStep;
+    // A strike steps within its startup, so it comes on the same tick as
+    // from the stance; an action without one takes the tuning's time.
+    const bool Strike = State == FighterState::Attacking && Top.ActiveBeginSec > 0.0f;
+    const float Sec = Strike ? anim::getStartupAtRate(Top, AttackRate) * Tuning.StartupShare : Tuning.Sec;
+    const anim::Pose& Mask = Top.Keys.front().Target;
+    const bool ClipLeft = Mask.hasJoint(BodyPart::ThighL) || Mask.hasJoint(BodyPart::ShinL);
+    const bool ClipRight = Mask.hasJoint(BodyPart::ThighR) || Mask.hasJoint(BodyPart::ShinR);
+    Step = LegStep::plan(Body.measureLegsNow(), Body.measureLegs(Target.Angles), ClipLeft, ClipRight, Sec, Tuning);
+    LegsStepped = Step.isActive();
+    if constexpr (FIGHTER_DEBUG) {
+        if (Step.isActive()) {
+            debug::logEvent(std::format("P{} steps into {} in {:.2f} s: {}", Body.getFighterIndex() + 1, Top.Name, Sec,
+                                        Step.describe()));
+        }
+    }
+}
+
+const anim::Clip& Fighter::getPlayed(const anim::Clip& Authored) const {
+    return LegsMirrored && anim::usesLegs(Authored) ? Rules->Clips.getMirrored(Authored) : Authored;
+}
+
+bool Fighter::shouldMirrorLegs() const {
+    return Rules->Tuning.LegStep.Stance == StanceAfterStop::Mirror &&
+           Body.measureLegsNow().getFrontFoot() == BodyPart::FootR;
+}
+
+anim::Pose Fighter::getStanceLegs(BodyPart FrontFoot) const {
+    const anim::Pose Legs = anim::selectJoints(anim::sampleClip(Rules->Clips.get(clips::Stance), 0.0f),
+                                               anim::getLegJoints());
+    return FrontFoot == BodyPart::FootR ? anim::mirrorLegs(Legs) : Legs;
 }
 
 std::string Fighter::describeLegs() const {
     if (PendingAttack) {
         return std::format("standing up {:.2f} s -> {}", StandUpLeftSec, getMoveButtonName(*PendingAttack));
     }
+    const std::string Steps = Step.isActive() ? ", " + Step.describe() : "";
     if (State == FighterState::Crouching) {
-        if (CrouchWalk.isStopping()) return std::format("crouch walk {:.2f} stopping", CrouchWalk.getTime());
-        if (CrouchWalk.isPlaying()) return std::format("crouch walk {:.2f}", CrouchWalk.getTime());
-        return CrouchWalk.isEngaged() ? std::format("crouch, held at {:.2f}", CrouchWalk.getTime()) : "crouch";
+        const std::string_view Side = LegsMirrored ? " (mirrored)" : "";
+        if (CrouchWalk.isStopping()) {
+            return std::format("crouch walk{} {:.2f} stopping{}", Side, CrouchWalk.getTime(), Steps);
+        }
+        if (CrouchWalk.isPlaying()) return std::format("crouch walk{} {:.2f}{}", Side, CrouchWalk.getTime(), Steps);
+        if (CrouchWalk.isEngaged()) return std::format("crouch{}, held at {:.2f}{}", Side, CrouchWalk.getTime(), Steps);
+        return std::format("crouch{}{}", Side, Steps);
     }
-    if (SwitchStep) return std::format("step -> normal stance, blend {:.2f}", LegFade.getWeight());
-    const StanceVariant Variant = Walk.getVariant();
+    if (const anim::Clip* Top = getTopClip(); Top && anim::usesLegs(*Top)) {
+        return std::format("action {}{}", Top->Name, Step.isActive() ? ": " + Step.describe() : "");
+    }
     switch (Walk.getMode()) {
         case LegCycle::Mode::Walking:
-            return std::format("walk {:.2f}{}", Walk.getTime(),
+            return std::format("walking {:.2f}{}", Walk.getTime(),
                                Stride.Held     ? ", held by the opponent"
                                : Stride.Pushed ? ", pushed back"
                                                : "");
         case LegCycle::Mode::Held:
             return std::format("held in mid-step at {:.2f} (opponent in the way)", Walk.getTime());
         case LegCycle::Mode::Stopping:
-            return std::format("stopping {:.2f} -> {:.2f} ({})", Walk.getTime(), Walk.getStopTarget(),
-                               getStanceVariantName(Variant));
+            return std::format("stopping {:.2f} -> phase {:.2f} (front {})", Walk.getTime(), Walk.getStopTarget(),
+                               getBodyPartName(Walk.getFrontFoot()));
         case LegCycle::Mode::Still: break;
     }
-    return std::format("stance {} at {:.2f}", getStanceVariantName(Variant), Walk.getTime());
+    if (Walk.isEngaged()) {
+        return std::format("resting at phase {:.2f} (front {})", Walk.getTime(), getBodyPartName(Walk.getFrontFoot()));
+    }
+    return std::format("resting in the stance (front {})", getBodyPartName(RestFront));
+}
+
+std::string Fighter::describeUpper() const {
+    const anim::Clip* Top = getTopClip();
+    if (!Top || !hasUpperJoints(*Top)) return "stance";
+    const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
+    return anim::describePlayback(*Top, getTopClipTime(), Rate, Fade);
 }
 
 void Fighter::beginTopFade(const anim::Clip* Top) {
@@ -708,8 +760,9 @@ void Fighter::beginBlend(anim::PoseTransition& Transition, const anim::Pose& Fro
     Info = {.From = FromKind, .To = ToKind, .Sec = Sec};
 }
 
-PoseKind Fighter::getClipKind(const anim::Clip& Source) const {
+PoseKind Fighter::getClipKind(const anim::Clip& Played) const {
     const ClipLibrary& Clips = Rules->Clips;
+    const anim::Clip& Source = Clips.getAuthored(Played);
     if (&Source == &Clips.get(clips::Crouch)) return PoseKind::Crouch;
     if (&Source == &Clips.get(clips::CrouchWalk)) return PoseKind::CrouchWalk;
     for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
@@ -733,8 +786,8 @@ std::string Fighter::describeBlends() const {
 const anim::Clip* Fighter::getTopClip() const {
     switch (State) {
         case FighterState::Attacking: return AttackClip;
-        case FighterState::Crouching: return &Rules->Clips.get(clips::Crouch);
-        case FighterState::Blocking: return &Rules->Clips.getBlock(Guard);
+        case FighterState::Crouching: return &getPlayed(Rules->Clips.get(clips::Crouch));
+        case FighterState::Blocking: return &getPlayed(Rules->Clips.getBlock(Guard));
         case FighterState::Reacting: return Rules->Clips.findReaction(Reaction);
         default: return nullptr;
     }
@@ -792,27 +845,9 @@ std::string_view getWeaponClass(const std::optional<stats::WeaponProps>& Weapon)
     return Weapon ? std::string_view(Weapon->Class) : std::string_view();
 }
 
-/// Does the clip pose both legs (crouch, low block, a stagger)?
-bool coversLegs(const anim::Clip& Source) {
-    const anim::Pose& Mask = Source.Keys.front().Target;
-    return Mask.hasJoint(BodyPart::ThighL) && Mask.hasJoint(BodyPart::ThighR);
-}
-
-/// Does the clip strike with the left side (the lead side of the normal
-/// stance): the jab, the kicks?
-bool isLedByLeftSide(const anim::Clip& Source) {
-    constexpr std::array LeftParts = {BodyPart::UpperArmL, BodyPart::ForearmL, BodyPart::ThighL, BodyPart::ShinL,
-                                      BodyPart::FootL};
-    return std::ranges::any_of(LeftParts, [&](BodyPart Part) { return Source.isStriker(Part); });
-}
-
-/// The joints of \p Source that \p Mask sets.
-anim::Pose getMasked(const anim::Pose& Source, const anim::Pose& Mask) {
-    anim::Pose Result;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        if (Mask.Mask.test(Index)) Result.setAngle(static_cast<BodyPart>(Index), Source.Angles[Index]);
-    }
-    return Result;
+/// Does the clip pose a joint of the upper body (not only the legs)?
+bool hasUpperJoints(const anim::Clip& Source) {
+    return (Source.Keys.front().Target.Mask & ~anim::getLegJoints()).any();
 }
 
 } // namespace

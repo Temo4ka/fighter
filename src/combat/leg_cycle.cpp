@@ -19,14 +19,6 @@ float getMiddle(const SupportSpan& Span, float PeriodSec);
 
 } // namespace
 
-std::string_view getStanceVariantName(StanceVariant Variant) {
-    switch (Variant) {
-        case StanceVariant::Normal: return "normal";
-        case StanceVariant::Switched: return "switched";
-    }
-    return "?";
-}
-
 std::vector<SupportSpan> findSupportSpans(float PeriodSec, const std::function<float(float)>& GetLift, float MaxLift,
                                           float SampleSec) {
     const auto Count = static_cast<size_t>(std::max(1.0f, std::ceil(PeriodSec / SampleSec)));
@@ -68,10 +60,9 @@ std::vector<SupportSpan> findSupportSpans(float PeriodSec, const std::function<f
     return Spans;
 }
 
-LegCycle::LegCycle(float NewPeriodSec, std::vector<SupportSpan> NewSpans, size_t NewNormalSpan)
-    : PeriodSec(NewPeriodSec), Spans(std::move(NewSpans)), NormalSpan(NewNormalSpan) {
+LegCycle::LegCycle(float NewPeriodSec, std::vector<SupportSpan> NewSpans)
+    : PeriodSec(NewPeriodSec), Spans(std::move(NewSpans)) {
     if (Spans.empty()) Spans.push_back({});
-    NormalSpan = std::min(NormalSpan, Spans.size() - 1);
     settle();
 }
 
@@ -114,23 +105,24 @@ void LegCycle::playStop(const StopPlan& Plan, float Dt, float Rate) {
     CurrentMode = Mode::Stopping;
 }
 
-void LegCycle::settle() {
+void LegCycle::settle(BodyPart FrontFoot) {
     StepSec = 0.0f;
-    TimeSec = getNormalTime();
+    TimeSec = getRestTime(FrontFoot);
     CurrentMode = Mode::Still;
     Engaged = false;
 }
 
 float LegCycle::getStopTarget() const { return wrapTime(TimeSec + planStop().Offset, PeriodSec); }
 
-StanceVariant LegCycle::getVariant() const {
-    return planStop().Span == NormalSpan ? StanceVariant::Normal : StanceVariant::Switched;
+BodyPart LegCycle::getFrontFoot() const { return Spans[planStop().Span].FrontFoot; }
+
+float LegCycle::getRestTime(BodyPart FrontFoot) const {
+    const auto Found = std::ranges::find(Spans, FrontFoot, &SupportSpan::FrontFoot);
+    return getMiddle(Found != Spans.end() ? *Found : Spans.front(), PeriodSec);
 }
 
-float LegCycle::getNormalTime() const { return getMiddle(Spans[NormalSpan], PeriodSec); }
-
 LegCycle::StopPlan LegCycle::planStop() const {
-    StopPlan Best{.Offset = std::numeric_limits<float>::max(), .Span = NormalSpan};
+    StopPlan Best{.Offset = std::numeric_limits<float>::max(), .Span = 0};
     for (size_t Index = 0; Index < Spans.size(); ++Index) {
         const SupportSpan& Span = Spans[Index];
         if (isInside(Span, TimeSec, PeriodSec)) return {.Offset = 0.0f, .Span = Index};
@@ -148,38 +140,23 @@ LegCycle::StopPlan LegCycle::planStop() const {
     return Best;
 }
 
-LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body) {
-    const auto getPose = [&](float TimeSec) {
+LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread) {
+    const auto measure = [&](float TimeSec) {
         anim::Pose Pose = Base;
         anim::layerPose(Pose, anim::sampleClip(Cycle, TimeSec));
-        return Pose;
+        return Body.measureLegs(Pose.Angles);
     };
+    // Feet too close together (passing each other) count as a foot in the
+    // air: the legs do not rest there.
+    const float NotWide = std::numeric_limits<float>::max();
     const auto getLift = [&](float TimeSec) {
-        const anim::Pose Pose = getPose(TimeSec);
-        return std::max(Body.getSoleHeight(Pose.Angles, BodyPart::FootL),
-                        Body.getSoleHeight(Pose.Angles, BodyPart::FootR));
+        const rig::LegStance Legs = measure(TimeSec);
+        if (Legs.getSpread() < MinSpread) return NotWide;
+        return std::max(Legs.Left.SoleHeight, Legs.Right.SoleHeight);
     };
-    std::vector<SupportSpan> Spans =
-        findSupportSpans(Cycle.DurationSec, getLift, Body.getControl().FootPlantHeight);
-
-    // The normal stance: the support pose closest to the base pose.
-    const anim::Pose& Mask = Cycle.Keys.front().Target;
-    size_t Normal = 0;
-    float NormalDistance = std::numeric_limits<float>::max();
-    for (size_t Index = 0; Index < Spans.size(); ++Index) {
-        const anim::Pose Pose = getPose(getMiddle(Spans[Index], Cycle.DurationSec));
-        float Distance = 0.0f;
-        for (size_t Part = 0; Part < BodyPartCount; ++Part) {
-            if (!Mask.Mask.test(Part)) continue;
-            const float Difference = Pose.Angles[Part] - Base.Angles[Part];
-            Distance += Difference * Difference;
-        }
-        if (Distance < NormalDistance) {
-            NormalDistance = Distance;
-            Normal = Index;
-        }
-    }
-    return LegCycle(Cycle.DurationSec, std::move(Spans), Normal);
+    std::vector<SupportSpan> Spans = findSupportSpans(Cycle.DurationSec, getLift, Body.getControl().FootPlantHeight);
+    for (SupportSpan& Span : Spans) Span.FrontFoot = measure(getMiddle(Span, Cycle.DurationSec)).getFrontFoot();
+    return LegCycle(Cycle.DurationSec, std::move(Spans));
 }
 
 namespace {

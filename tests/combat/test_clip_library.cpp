@@ -50,3 +50,26 @@ TEST_CASE("ClipLibrary: a missing clip names its file", "[combat][clips]") {
     CHECK_THROWS_WITH(ClipLibrary::load(Moves.getDir() / "poses", loadMoveSet(Moves.getDir() / "moves")),
                       ContainsSubstring("jab_close.json"));
 }
+
+TEST_CASE("ClipLibrary: the clips that pose the legs have a mirrored copy", "[combat][clips][data]") {
+    const std::vector<MoveDef> Moves = loadMoveSet(DataDir / "moves");
+    const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", Moves);
+    for (const char* Name : {"kick", "low_kick", "crouch", "crouch_walk", "block_low"}) {
+        INFO(Name);
+        const anim::Clip& Authored = Clips.get(Name);
+        const anim::Clip& Mirrored = Clips.getMirrored(Authored);
+        CHECK(&Mirrored != &Authored);
+        CHECK(Clips.isMirrored(Mirrored));
+        CHECK_FALSE(Clips.isMirrored(Authored));
+        CHECK(&Clips.getAuthored(Mirrored) == &Authored);
+        CHECK(&Clips.getAuthored(Authored) == &Authored);
+        CHECK(Mirrored.ActiveBeginSec == Authored.ActiveBeginSec);
+    }
+    // The kick strikes with the right leg when mirrored.
+    CHECK(Clips.getMirrored(Clips.get("kick")).isStriker(BodyPart::FootR));
+    CHECK_FALSE(Clips.getMirrored(Clips.get("kick")).isStriker(BodyPart::FootL));
+    // A punch has no legs to mirror: it is its own copy.
+    const anim::Clip& Jab = Clips.get("jab");
+    CHECK(&Clips.getMirrored(Jab) == &Jab);
+    CHECK_FALSE(Clips.isMirrored(Jab));
+}

@@ -28,7 +28,7 @@ namespace fighter::combat {
 /// What sets the pose of a fighter, for the blend times of the changes
 /// between them (BlendTable).
 enum class PoseKind : uint8_t {
-    Stance,      ///< Standing (the normal or the switched stance).
+    Stance,      ///< Standing still: the stance, or the legs where a walk stopped.
     Walk,        ///< The walk cycle.
     Crouch,      ///< Crouched, holding still.
     CrouchWalk,  ///< The crouch walk cycle.
@@ -64,6 +64,33 @@ struct BlendTable {
     /// the one with \p To and any from, else the one with \p From and any
     /// to, else the default, s.
     float getSec(PoseKind From, PoseKind To) const;
+};
+
+/// Which way round a leg action plays when the legs rest with the other
+/// foot in front than the clip was authored for (a walk stopped mid-stride).
+enum class StanceAfterStop : uint8_t {
+    Mirror,    ///< The action's legs are swapped (anim::mirrorClipLegs): no step to switch feet.
+    Authored,  ///< As authored: the legs step into the authored stance first.
+};
+
+/// "mirror", "authored".
+std::string_view getStanceAfterStopName(StanceAfterStop Choice);
+
+/// How the legs move into the pose of an action that needs them (a kick, a
+/// crouch, the low block) from where they rest: real steps, see
+/// combat/leg_step.hpp.
+struct LegStepTuning {
+    /// A foot this far or less from where the action puts it does not
+    /// step (the rig's planted foot takes up the difference), m.
+    float MinDistance = 0.03f;
+    /// How high a stepping foot is lifted in the middle of its step, m.
+    float LiftHeight = 0.06f;
+    /// The steps of a strike take this share of its startup (0..1]; the
+    /// startup itself does not change.
+    float StartupShare = 0.8f;
+    /// The steps into an action without a startup (crouch, low block), s.
+    float Sec = 0.15f;
+    StanceAfterStop Stance = StanceAfterStop::Mirror;
 };
 
 struct CombatTuning {
@@ -132,19 +159,16 @@ struct CombatTuning {
     /// share of the walking speed (the walk cycle plays backwards, slowly).
     float BlockBackSpeedScale = 0.3f;
     /// The move key released, a foot in the air: the walk cycle plays on to
-    /// the nearest phase with both feet down this many times faster than
-    /// walking (clip seconds per second).
+    /// the nearest wide double support (both feet down, apart) this many
+    /// times faster than walking (clip seconds per second) and the legs
+    /// rest there.
     float WalkStopRate = 3.0f;
-    /// While a walk plays on to its stop and the legs settle into the
-    /// stance, the planted foot slides along with the clip (true): the
-    /// fighter ends in the exact stance, but that foot may slide up to about
-    /// 20 cm. False: it stays where it stood, the leg bends to it (the rig's
-    /// footLockSlip), and the stance comes out uneven.
-    bool StopSlidesFeet = true;
-    /// From the switched stance a jab or a kick (lead side left) steps the
-    /// legs back into the normal stance during its startup: in this share of
-    /// it (0..1]. The startup itself does not change.
-    float SwitchStepShare = 0.8f;
+    /// A phase of the walk where both feet are down counts as a rest pose
+    /// only if the ankles are at least this far apart (not where the feet
+    /// pass each other), m.
+    float RestMinFootSpread = 0.25f;
+    /// Into the pose of an action that needs the legs.
+    LegStepTuning LegStep;
     /// The legs step when the pelvis moves faster than this, m/s: walking,
     /// a pelvis held slower than this by the opponent stops the walk cycle
     /// on both feet (no marching on the spot); not walking, a pelvis pushed

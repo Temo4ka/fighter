@@ -14,8 +14,14 @@
   "maxChainLength": 3,
   "blockBackSpeedScale": 0.3,
   "walkStopRate": 3.0,
-  "stopSlidesFeet": true,
-  "switchStepShare": 0.8,
+  "restMinFootSpread": 0.25,
+  "legStep": {
+    "minDistance": 0.03,
+    "liftHeight": 0.06,
+    "startupShare": 0.8,
+    "sec": 0.15,
+    "stanceAfterStop": "mirror"
+  },
   "crouchWalkSpeedScale": 0.5,
   "crouchStandUpSec": 0.12,
   "endSettleSec": 1.2,

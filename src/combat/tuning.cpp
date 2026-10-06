@@ -35,7 +35,7 @@ constexpr std::array TuningFields = {
     TuningField{"chainWindowSec", &CombatTuning::ChainWindowSec},
     TuningField{"blockBackSpeedScale", &CombatTuning::BlockBackSpeedScale},
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
-    TuningField{"switchStepShare", &CombatTuning::SwitchStepShare},
+    TuningField{"restMinFootSpread", &CombatTuning::RestMinFootSpread},
     TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
     TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
@@ -60,16 +60,23 @@ constexpr std::array CountFields = {
     CountField{"physicsSteps", &CombatTuning::PhysicsSteps},
     CountField{"physicsSubSteps", &CombatTuning::PhysicsSubSteps},
 };
-/// The yes/no parameters.
-constexpr std::string_view StopSlidesFeetKey = "stopSlidesFeet";
 constexpr std::string_view BlendsKey = "blends";
+constexpr std::string_view LegStepKey = "legStep";
+
+constexpr std::array StanceAfterStopNames = {"mirror", "authored"};
 
 constexpr std::array PoseKindNames = {"stance", "walk", "crouch", "crouchWalk", "block", "strike", "reaction"};
 static_assert(PoseKindNames.size() == static_cast<size_t>(PoseKind::Count));
 
 BlendTable parseBlends(const Json& Value);
+LegStepTuning parseLegStep(const Json& Value);
 
 } // namespace
+
+std::string_view getStanceAfterStopName(StanceAfterStop Choice) {
+    const auto Index = static_cast<size_t>(Choice);
+    return Index < StanceAfterStopNames.size() ? StanceAfterStopNames[Index] : "?";
+}
 
 std::string_view getPoseKindName(PoseKind Kind) {
     const auto Index = static_cast<size_t>(Kind);
@@ -110,11 +117,8 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
                 Tuning.Blends = parseBlends(Value);
                 continue;
             }
-            if (Key == StopSlidesFeetKey) {
-                if (!Value.is_boolean()) {
-                    throw std::runtime_error(std::format("{} must be true or false, not {}", Key, Value.dump()));
-                }
-                Tuning.StopSlidesFeet = Value.get<bool>();
+            if (Key == LegStepKey) {
+                Tuning.LegStep = parseLegStep(Value);
                 continue;
             }
             const auto Found = std::ranges::find(TuningFields, Key, &TuningField::Key);
@@ -143,9 +147,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
         throw std::runtime_error("blockBackSpeedScale must be in [0, 1]");
     }
     if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
-    if (Tuning.SwitchStepShare <= 0.0f || Tuning.SwitchStepShare > 1.0f) {
-        throw std::runtime_error("switchStepShare must be in (0, 1]");
-    }
+    if (Tuning.RestMinFootSpread < 0.0f) throw std::runtime_error("restMinFootSpread must not be negative");
     if (Tuning.StepMinSpeed < 0.0f) throw std::runtime_error("stepMinSpeed must not be negative");
     if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {
         throw std::runtime_error("crouchWalkSpeedScale must be in (0, 1]");
@@ -213,6 +215,41 @@ BlendTable parseBlends(const Json& Value) {
         throw std::runtime_error("blends.strikeStartupShare must be in [0, 1]");
     }
     return Table;
+}
+
+/// "legStep": { "minDistance": m, "liftHeight": m, "startupShare": share, "sec": s,
+/// "stanceAfterStop": "mirror" | "authored" }.
+LegStepTuning parseLegStep(const Json& Value) {
+    if (!Value.is_object()) throw std::runtime_error("legStep must be an object");
+    LegStepTuning Step;
+    for (const auto& [Key, Item] : Value.items()) {
+        if (Key == "minDistance") {
+            Step.MinDistance = Item.get<float>();
+        } else if (Key == "liftHeight") {
+            Step.LiftHeight = Item.get<float>();
+        } else if (Key == "startupShare") {
+            Step.StartupShare = Item.get<float>();
+        } else if (Key == "sec") {
+            Step.Sec = Item.get<float>();
+        } else if (Key == "stanceAfterStop") {
+            const std::string Name = Item.get<std::string>();
+            const auto Found = std::ranges::find(StanceAfterStopNames, Name);
+            if (Found == StanceAfterStopNames.end()) {
+                throw std::runtime_error(
+                    std::format("legStep.stanceAfterStop must be \"mirror\" or \"authored\", not '{}'", Name));
+            }
+            Step.Stance = static_cast<StanceAfterStop>(Found - StanceAfterStopNames.begin());
+        } else {
+            throw std::runtime_error(std::format("legStep: unknown key '{}'", Key));
+        }
+    }
+    if (Step.MinDistance < 0.0f) throw std::runtime_error("legStep.minDistance must not be negative");
+    if (Step.LiftHeight <= 0.0f) throw std::runtime_error("legStep.liftHeight must be positive");
+    if (Step.StartupShare <= 0.0f || Step.StartupShare > 1.0f) {
+        throw std::runtime_error("legStep.startupShare must be in (0, 1]");
+    }
+    if (Step.Sec <= 0.0f) throw std::runtime_error("legStep.sec must be positive");
+    return Step;
 }
 
 } // namespace

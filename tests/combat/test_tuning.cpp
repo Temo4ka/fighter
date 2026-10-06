@@ -53,24 +53,49 @@ TEST_CASE("parseCombatTuning: the stop of a posed strike at a contact", "[combat
 
 TEST_CASE("parseCombatTuning: movement polish parameters", "[combat]") {
     const CombatTuning Tuning = parseCombatTuning(R"({ "walkStopRate": 4, "stepMinSpeed": 0.2,
-        "switchStepShare": 0.5, "crouchWalkSpeedScale": 0.4, "crouchStandUpSec": 0.1, "stopSlidesFeet": false })");
+        "restMinFootSpread": 0.3, "crouchWalkSpeedScale": 0.4, "crouchStandUpSec": 0.1 })");
     CHECK(Tuning.WalkStopRate == 4.0f);
     CHECK(Tuning.StepMinSpeed == 0.2f);
-    CHECK(Tuning.SwitchStepShare == 0.5f);
+    CHECK(Tuning.RestMinFootSpread == 0.3f);
     CHECK(Tuning.CrouchWalkSpeedScale == 0.4f);
     CHECK(Tuning.CrouchStandUpSec == 0.1f);
-    CHECK_FALSE(Tuning.StopSlidesFeet);
-    CHECK(CombatTuning{}.StopSlidesFeet);
-    CHECK_THROWS_AS(parseCombatTuning(R"({ "stopSlidesFeet": 1 })"), std::runtime_error);
+    // The stop no longer slides the feet, and the switched stance is gone
+    // (the layered walk).
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "stopSlidesFeet": true })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "switchStepShare": 0.8 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "restMinFootSpread": -0.1 })"), std::runtime_error);
 
     CHECK_THROWS_AS(parseCombatTuning(R"({ "blockWalkSpeedScale": 0.5 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "walkStopRate": 0 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "stepMinSpeed": -1 })"), std::runtime_error);
     // The cross-over of the legs moved into the blend table.
     CHECK_THROWS_AS(parseCombatTuning(R"({ "stanceSettleSec": 0.15 })"), std::runtime_error);
-    CHECK_THROWS_AS(parseCombatTuning(R"({ "switchStepShare": 0 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "crouchWalkSpeedScale": 1.5 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "crouchStandUpSec": -0.1 })"), std::runtime_error);
+}
+
+TEST_CASE("parseCombatTuning: the steps into an action that needs the legs", "[combat]") {
+    const CombatTuning Tuning = parseCombatTuning(R"({ "legStep": { "minDistance": 0.02, "liftHeight": 0.08,
+        "startupShare": 0.6, "sec": 0.2, "stanceAfterStop": "authored" } })");
+    CHECK(Tuning.LegStep.MinDistance == 0.02f);
+    CHECK(Tuning.LegStep.LiftHeight == 0.08f);
+    CHECK(Tuning.LegStep.StartupShare == 0.6f);
+    CHECK(Tuning.LegStep.Sec == 0.2f);
+    CHECK(Tuning.LegStep.Stance == StanceAfterStop::Authored);
+    // The user's decision: mirrored by default.
+    CHECK(CombatTuning{}.LegStep.Stance == StanceAfterStop::Mirror);
+    CHECK(parseCombatTuning(R"({ "legStep": { "stanceAfterStop": "mirror" } })").LegStep.Stance ==
+          StanceAfterStop::Mirror);
+    CHECK(getStanceAfterStopName(StanceAfterStop::Authored) == "authored");
+
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "stanceAfterStop": "switched" } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "lift": 0.1 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "liftHeight": 0 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "startupShare": 0 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "startupShare": 1.5 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "sec": 0 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "minDistance": -1 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": 1 })"), std::runtime_error);
 }
 
 TEST_CASE("loadCombatTuning: data/combat.json loads", "[combat]") {
