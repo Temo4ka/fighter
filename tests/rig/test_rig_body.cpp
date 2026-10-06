@@ -867,6 +867,35 @@ TEST_CASE("Rig: kept feet hold their place, the knee and the pelvis give only so
     CHECK(Dragged.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
 }
 
+TEST_CASE("Rig: dropLiftedFootOffsets puts a lifted foot where the pose has it", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    Rig& Body = Stage.Body;
+    Stage.run(10);
+    // A push leaves the planted feet behind the pelvis; a lifted foot then
+    // returns to the pose from where it stood, over time.
+    Body.addPush(0.1f);
+    Stage.run(15);
+    PerBodyPart<float> Lifted = loadStance();
+    Lifted[static_cast<size_t>(BodyPart::ThighL)] = 1.2f;
+    Lifted[static_cast<size_t>(BodyPart::ShinL)] = -1.6f;
+    const auto lift = [&](bool Drop) {
+        Body.setTargetAngles(Lifted);
+        Body.planMotion(Dt);
+        if (Drop) Body.dropLiftedFootOffsets();
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+    };
+    lift(false);   // lifted: unlocked, with its offset
+    REQUIRE_FALSE(Body.isFootLocked(BodyPart::FootL));
+    const float Posed = Body.measureLegs(Lifted).Left.Ankle.X;
+    lift(false);
+    const float Kept = Body.measureLegsNow().Left.Ankle.X;
+    lift(true);
+    const float Dropped = Body.measureLegsNow().Left.Ankle.X;
+    CHECK(std::abs(Dropped - Posed) < 0.005f);
+    CHECK(std::abs(Kept - Posed) > std::abs(Dropped - Posed));
+}
+
 TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
     for (const bool FacingRight : {true, false}) {
         INFO("facing right " << FacingRight);

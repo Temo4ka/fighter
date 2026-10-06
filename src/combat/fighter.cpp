@@ -166,6 +166,8 @@ void Fighter::applyControl(float Dt) {
         const float Share = Body.getTravelShare();
         (Stride.Crouched ? CrouchWalk : Walk).follow(Share);
         WalkOdometer += Stride.Travel * Share * (Body.isFacingRight() ? 1.0f : -1.0f);
+        // The step made only that share of the travel it assumed.
+        if (!Stride.Crouched) StepTravel = std::max(StepTravel - std::abs(Stride.Travel) * (1.0f - Share), 0.0f);
         Shown = anim::blendPoses(ShownStill, Shown, Share);
         ShownLegs = anim::blendPoses(ShownLegsStill, ShownLegs, Share);
     }
@@ -1155,7 +1157,13 @@ std::string Fighter::describeStride() const {
         Text = std::format("coast {:.3f} m (max {:.2f}), {}", CoastDone, MaxCoast,
                            CoastToSpan ? "to the span" : "short step");
     } else if (Walk.getMode() == LegCycle::Mode::Walking) {
-        Text = std::format("step {:.2f} of {:.2f} m", StepTravel, StepLength);
+        // A full step of the cycle against what this one has made so far.
+        float Planned = StepLength;
+        if (const std::optional<size_t> Current = Walk.findStep(Walk.getTime())) {
+            const CycleStep& Each = Walk.getSteps()[*Current];
+            Planned = (Each.EndSec - Each.BeginSec) * Body.getWalkSpeed();
+        }
+        Text = std::format("step planned {:.2f} m, made {:.2f} m", Planned, StepTravel);
     } else {
         Text = std::format("rest{}, last coast {:.3f} m (max {:.2f})",
                            RestLanding && RestLanding->SetDown
