@@ -16,9 +16,12 @@
 /// LegStepTuning::MinDistance away from where the action puts it, or is in
 /// the air, steps: it lifts, travels on an arc LegStepTuning::LiftHeight
 /// high in the middle and lands at its target, while the other foot stays
-/// planted where it stood. Two feet that must move step one after the other
-/// (a foot the clip itself moves, the kicking one, goes last: its step ends
-/// in the clip's pose of that moment). The pelvis does not move: the step
+/// planted where it stood. The steps go one after the other, so that one
+/// foot always stands: first a foot caught in the air (by an action started
+/// mid-stride) lands where the action's start pose has it, then the
+/// supporting foot steps, and last the foot the clip itself moves (the
+/// kicking one) steps into the clip's pose of that moment. The pelvis does
+/// not move: the step
 /// works on the legs only (rig::Rig::reachFoot), its height alone goes
 /// from the resting legs' to the action's over the steps.
 ///
@@ -55,8 +58,16 @@ struct FootStep {
     BodyPart Foot = BodyPart::FootL;
     float BeginSec = 0.0f;       ///< Since the LegStep began, real time.
     float EndSec = 0.0f;
-    rig::FootPlacement From;     ///< Where it stood when the LegStep began.
+    rig::FootPlacement From;     ///< Where the step starts.
+    /// Where it lands: a fixed place (a foot caught in the air lands where
+    /// the action's start pose has it), or, without one, where the action
+    /// has the foot at the moment.
+    std::optional<rig::FootPlacement> To;
 };
+
+/// The most steps a LegStep makes: a foot lands, the other one steps, the
+/// first one steps into the clip.
+inline constexpr size_t MaxFootSteps = 3;
 
 class LegStep {
 public:
@@ -72,8 +83,13 @@ public:
 
     /// Are the steps going on?
     bool isActive() const { return Active; }
-    /// Advances the steps by \p Dt; they end at the planned duration.
-    void advance(float Dt);
+    /// Advances the steps by \p Dt; they end at the planned duration. \p Now:
+    /// how the legs stand now. A planted foot that does not step stays where
+    /// it stands in it, and a step that begins starts there (the pelvis may
+    /// have moved on since the plan: a walk slowing down, a push), so the
+    /// rig holds the planted feet with no offset to make up. A foot that
+    /// landed and is not planted yet stays where its step put it.
+    void advance(float Dt, const rig::LegStance& Now);
     /// Drops the steps (the action ended).
     void cancel() { Active = false; }
 
@@ -92,8 +108,8 @@ public:
     std::optional<BodyPart> getSteppingFoot() const;
     /// How far the stepping foot is in its step, 0..1 (0 without one).
     float getStepProgress() const;
-    /// The planned steps (one or two), in order.
-    const std::array<std::optional<FootStep>, 2>& getSteps() const { return Steps; }
+    /// The planned steps, in order.
+    const std::array<std::optional<FootStep>, MaxFootSteps>& getSteps() const { return Steps; }
     float getDurationSec() const { return DurationSec; }
     float getElapsedSec() const { return ElapsedSec; }
 
@@ -105,12 +121,18 @@ public:
     void drawDebug(const rig::LegStance& Target, const rig::Rig& Body) const;
 
 private:
-    const FootStep* findStep(BodyPart Foot) const;
+    /// The step going on now, if any.
+    const FootStep* findCurrentStep() const;
+    /// Where \p Foot is at \p TimeSec for the action's leg stance \p Target.
+    rig::FootPlacement placeFoot(BodyPart Foot, float TimeSec, const rig::LegStance& Target) const;
     /// Where \p Step has its foot at \p Share (0..1) of it, towards \p To.
     rig::FootPlacement placeOnArc(const FootStep& Step, const rig::FootPlacement& To, float Share) const;
 
-    std::array<std::optional<FootStep>, 2> Steps;
+    std::array<std::optional<FootStep>, MaxFootSteps> Steps;
     rig::LegStance Start;
+    /// Where the feet that do not step stand: as planted at the last
+    /// advance(), or where their step put them.
+    rig::LegStance Standing;
     float DurationSec = 0.0f;
     float ElapsedSec = 0.0f;
     float LiftHeight = 0.0f;

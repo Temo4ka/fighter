@@ -620,7 +620,7 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     }
     if (TopChanged) startLegStep(*Top, Result.Moving);
     const bool Stepping = Step.isActive();
-    Step.advance(Dt);
+    Step.advance(Dt, Body.measureLegsNow());
     LegTarget = Body.measureLegs(Result.Moving.Angles);
     Step.apply(Result.Moving.Angles, Body);
     Step.apply(Result.Still.Angles, Body);

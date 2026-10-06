@@ -439,7 +439,8 @@ LegStance Rig::measureLegsNow() const {
         const float Angle = Foot.Handle.getAngle();
         Result.getFoot(Limb.Foot) = {.Ankle = {(Hinge.X - Pelvis.X) * Facing, Hinge.Y},
                                      .Angle = Angle * Facing,
-                                     .SoleHeight = getLowestPoint(Foot.Shape, Position, Angle)};
+                                     .SoleHeight = getLowestPoint(Foot.Shape, Position, Angle),
+                                     .Planted = Limb.Locked};
     }
     return Result;
 }
@@ -452,9 +453,10 @@ void Rig::reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeigh
     const Placement OnFloor{.Position = {0.0f, PelvisHeight}, .Angle = Angles[static_cast<size_t>(Root)] * Facing};
     PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
     Pose[static_cast<size_t>(Foot)].Angle = FootAngle * Facing;
+    // The knee bends the way a knee bends (the middle of its range), also
+    // when the pose has it straight: a straight knee would not lift a foot.
     const JointState& Knee = Joints[Limb->Knee];
-    reachAnkle(*Limb, Pose, {Ankle.X * Facing, Ankle.Y}, Corrections,
-               Knee.Target + Corrections[static_cast<size_t>(Knee.Child)]);
+    reachAnkle(*Limb, Pose, {Ankle.X * Facing, Ankle.Y}, Corrections, (Knee.LowerAngle + Knee.UpperAngle) * 0.5f);
     for (const size_t Index : {Limb->Hip, Limb->Knee, Limb->Ankle}) {
         const auto Child = static_cast<size_t>(Joints[Index].Child);
         Angles[Child] = (Joints[Index].Target + Corrections[Child]) * Facing;

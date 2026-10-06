@@ -138,6 +138,8 @@ struct FootPlacement {
     Vec2 Ankle;               ///< The ankle hinge, m.
     float Angle = 0.0f;       ///< The foot's angle in the world, rad.
     float SoleHeight = 0.0f;  ///< The lowest point of the foot above the floor, m.
+    /// The rig holds it planted on the floor (measureLegsNow() only).
+    bool Planted = false;
 };
 
 /// How a body stands on its legs (Rig::measureLegs, Rig::measureLegsNow).
@@ -354,8 +356,8 @@ public:
     /// Bends the leg of \p Foot in \p Angles (as for setTargetAngles()) so
     /// that, with the pelvis \p PelvisHeight above the floor, its ankle is
     /// at \p Ankle and the foot at \p FootAngle in the world (both as in
-    /// FootPlacement). Two-bone IK: the knee bends the way it bends in
-    /// \p Angles; a point out of reach gets the nearest the leg can do. The
+    /// FootPlacement). Two-bone IK: the knee bends the way a knee bends (into
+    /// its joint range); a point out of reach gets the nearest the leg can do. The
     /// other joints are left as they are. Nothing moves.
     void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
