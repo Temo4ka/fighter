@@ -8,28 +8,18 @@
   "keys": [
     { "t": 0.00, "pose": {
         "Torso": -8, "Head": 8,
-        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135,
-        "ThighL": 25, "ShinL": -20, "FootL": -5,
-        "ThighR": -15, "ShinR": -5, "FootR": 20 } },
+        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135 } },
     { "t": 0.12, "pose": {
         "Torso": 22, "Head": 32,
-        "UpperArmL": 90, "ForearmL": 40, "UpperArmR": 70, "ForearmR": 50,
-        "ThighL": 40, "ShinL": -40, "FootL": 0,
-        "ThighR": -12, "ShinR": -5, "FootR": 17 } },
+        "UpperArmL": 90, "ForearmL": 40, "UpperArmR": 70, "ForearmR": 50 } },
     { "t": 0.32, "pose": {
         "Torso": 16, "Head": 20,
-        "UpperArmL": 60, "ForearmL": 60, "UpperArmR": 50, "ForearmR": 70,
-        "ThighL": 12, "ShinL": -22, "FootL": 10,
-        "ThighR": -22, "ShinR": -12, "FootR": 34 } },
+        "UpperArmL": 60, "ForearmL": 60, "UpperArmR": 50, "ForearmR": 70 } },
     { "t": 0.58, "pose": {
         "Torso": 2, "Head": 12,
-        "UpperArmL": 50, "ForearmL": 100, "UpperArmR": 30, "ForearmR": 120,
-        "ThighL": 25, "ShinL": -20, "FootL": -5,
-        "ThighR": -15, "ShinR": -5, "FootR": 20 } },
+        "UpperArmL": 50, "ForearmL": 100, "UpperArmR": 30, "ForearmR": 120 } },
     { "t": 0.78, "pose": {
         "Torso": -8, "Head": 8,
-        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135,
-        "ThighL": 25, "ShinL": -20, "FootL": -5,
-        "ThighR": -15, "ShinR": -5, "FootR": 20 } }
+        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135 } }
   ]
 }
