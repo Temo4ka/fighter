@@ -52,7 +52,7 @@ constexpr float MaxPlantedSlipTotal = 0.05f;
 /// within about 2.8x everywhere in the step, m/m and m. (Before the stride
 /// work a 4 cm tap swung the feet 0.76 m.)
 constexpr float MaxFootPerTravel = 3.0f;
-constexpr float FootMotionSlack = 0.05f;
+constexpr float FootMotionSlack = 0.06f;
 
 const CombatTuning& getTuning() {
     static const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");

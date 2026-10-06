@@ -38,6 +38,10 @@ constexpr float FootDownHeight = 0.015f;
 /// A sole this close to the floor has landed: from then on a foot that
 /// moves slides, m.
 constexpr float LandedHeight = 0.005f;
+/// A sole this high is clearly off the floor, m.
+constexpr float ClearlyLiftedM = 0.02f;
+/// Walking again, a foot lifts within this much travel, m.
+constexpr float ResumeStepTravelM = 0.15f;
 /// Feet that moved less than this did not move, m.
 constexpr float StillM = 0.001f;
 /// A walk released after this many ticks and those up to a cycle later
@@ -148,7 +152,24 @@ struct StrikeTrace {
     /// A foot moved along the floor in the startup and was lifted while it
     /// did: the lowest sole of a moving foot, m (none: no foot moved).
     std::optional<float> LowestMovingSole;
+    /// The debug draw showed the arc of a stepping foot (debug build).
+    bool ArcDrawn = false;
 };
+
+/// Did the last step draw the arc of a stepping foot (its "step FootX"
+/// label in the TargetPose category)? Always false in the release build.
+bool isStepArcDrawn() {
+#if FIGHTER_DEBUG
+    const debug::DrawList& List = debug::getDrawList();
+    for (const debug::Primitive& Prim : List.getPrimitives()) {
+        if (Prim.Kind == debug::PrimitiveKind::Text && Prim.Category == debug::Cat::TargetPose &&
+            List.getText(Prim).starts_with("step Foot")) {
+            return true;
+        }
+    }
+#endif
+    return false;
+}
 
 /// P1 presses \p Button once and holds it until the attack starts.
 StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
@@ -175,6 +196,7 @@ StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
             Trace.Reach = std::max(Trace.Reach, (getFootX(Now, Foot) - getPelvisX(Now)) * Facing);
         }
         for (const auto& Hit : getHits(Fight)) Trace.Striker = Hit.Attacker.Part;
+        Trace.ArcDrawn = Trace.ArcDrawn || isStepArcDrawn();
         Before = Now;
     }
     return Trace;
@@ -182,7 +204,7 @@ StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
 
 } // namespace
 
-TEST_CASE("Movement: a walk stopped in any phase rests on both feet wide apart, no foot slides",
+TEST_CASE("Movement: a walk stopped in any phase rests on both feet apart, no foot slides",
           "[combat][movement]") {
     int Tried = 0;
     bool RestedLeft = false;
@@ -214,12 +236,14 @@ TEST_CASE("Movement: a walk stopped in any phase rests on both feet wide apart, 
             run(Fight, {}, {}, 1);
             watch(getLeft(Fight));
         }
-        // No extra step, no blend to the stance: the feet stay, wide apart.
+        // No extra step, no blend to the stance: the feet stay apart (a step
+        // that ended short may leave them closer than a span's rest pose,
+        // but not closer than shortStepMinSpread).
         const FighterView& Rest = getLeft(Fight);
         CHECK(areFeetDown(Rest));
         CHECK(Rest.State == FighterState::Idle);
         CHECK(std::abs(getAnkleX(Rest, BodyPart::FootL) - getAnkleX(Rest, BodyPart::FootR)) >=
-              getTuning().RestMinFootSpread);
+              getTuning().ShortStepMinSpread - 0.01f);
         (getFrontFoot(Rest) == BodyPart::FootL ? RestedLeft : RestedRight) = true;
     }
     CHECK(Tried >= CycleTicks / 2);
@@ -238,12 +262,21 @@ TEST_CASE("Movement: walking again goes on from the phase the legs rest at", "[c
         CHECK(getFrontFoot(getLeft(Fight)) == Front);
         CHECK(getFeetMove(Stopped, getLeft(Fight)) < StillM);
 
-        // The cycle goes on from the rest phase: the rear foot steps first,
-        // the front one stays planted at first.
-        const float FrontX = getFootX(getLeft(Fight), Front);
-        run(Fight, {.MoveX = 1.0f}, {}, 6);
-        CHECK(std::abs(getFootX(getLeft(Fight), Front) - FrontX) < 0.02f);
-        CHECK_FALSE(isFootDown(getLeft(Fight), getOtherFoot(Front)));
+        // The cycle goes on from the rest phase (the step it rested in, or
+        // the next one): within a short walk one foot lifts and steps while
+        // the other one stays planted where it stood.
+        const FighterView Rest = getLeft(Fight);
+        std::optional<BodyPart> Lifted;
+        for (int Tick = 0; Tick < TicksPerSecond && !Lifted; ++Tick) {
+            run(Fight, {.MoveX = 1.0f}, {}, 1);
+            for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
+                if (getSoleHeight(getLeft(Fight), Foot) > ClearlyLiftedM) Lifted = Foot;
+            }
+            if (getPelvisX(getLeft(Fight)) - getPelvisX(Rest) > ResumeStepTravelM) break;
+        }
+        REQUIRE(Lifted);
+        const BodyPart Standing = getOtherFoot(*Lifted);
+        CHECK(std::abs(getAnkleX(getLeft(Fight), Standing) - getAnkleX(Rest, Standing)) < 0.02f);
     }
 }
 
@@ -293,6 +326,8 @@ TEST_CASE("Movement: a kick after a stop steps into its pose and strikes on time
         CHECK(*Trace.LowestMovingSole > 0.0f);
         CHECK(Trace.GroundedSlide < StillM);
         CHECK(Trace.PelvisMove < StillM);
+        // The step is drawn: its arc and where the foot lands.
+        CHECK(Trace.ArcDrawn == static_cast<bool>(FIGHTER_DEBUG));
     }
 }
 
@@ -443,6 +478,9 @@ TEST_CASE("Movement: the debug panel shows the leg layer and the upper body", "[
     run(Fight, {}, {}, 1);
     const std::string Stopping = getLine("P1 legs");
     CHECK((Stopping.starts_with("stopping") || Stopping.starts_with("resting at phase")));
+    // The stride line tells the coast (or the rest it ended in).
+    const std::string Stride = getLine("P1 stride");
+    CHECK((Stride.starts_with("coast") || Stride.starts_with("rest")));
     run(Fight, {}, {}, TicksPerSecond);
     CHECK(getLine("P1 legs").starts_with("resting at phase"));
     CHECK(getLine("P1 upper") == "stance");
@@ -451,21 +489,12 @@ TEST_CASE("Movement: the debug panel shows the leg layer and the upper body", "[
     CHECK(getLine("P1 upper").starts_with("jab"));
     CHECK(getLine("P1 legs").starts_with("resting at phase"));
     run(Fight, {}, {}, TicksPerSecond);
-    // A kick steps into its pose: the step on the panel, its arc drawn.
-    // (The steps start the tick after the press.)
+    // A kick takes the legs: the action on the panel (its steps, when the
+    // feet are off its pose, and their arc: "a kick after a stop ...").
     Fight.update(press(MoveButton::BodyKick), {}, Dt);
     Fight.update({}, {}, Dt);
     CHECK(getLine("P1 legs").starts_with("action kick"));
-    CHECK(getLine("P1 legs").find("step Foot") != std::string::npos);
-    bool Drawn = false;
-    const debug::DrawList& List = debug::getDrawList();
-    for (const debug::Primitive& Prim : List.getPrimitives()) {
-        if (Prim.Kind == debug::PrimitiveKind::Text && Prim.Category == debug::Cat::TargetPose &&
-            List.getText(Prim).starts_with("step Foot")) {
-            Drawn = true;
-        }
-    }
-    CHECK(Drawn);
+    CHECK_FALSE(getLine("P1 stride").empty());
     run(Fight, {}, {}, TicksPerSecond);
     run(Fight, {.MoveX = 1.0f, .Down = true}, {}, 20);
     CHECK(getLine("P1 legs").starts_with("crouch walk"));

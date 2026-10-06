@@ -185,7 +185,7 @@ struct CombatTuning {
     /// Walking again from a rest pose, the legs go from it into the walk
     /// cycle over this much pelvis travel (a short press, a little of the
     /// way), m.
-    float StopResumeDistance = 0.15f;
+    float StopResumeDistance = 0.05f;
     /// Into the pose of an action that needs the legs.
     LegStepTuning LegStep;
     /// The legs step when the pelvis moves faster than this, m/s: walking,

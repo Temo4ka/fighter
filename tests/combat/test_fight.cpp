@@ -276,15 +276,20 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
 }
 
 TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][data]") {
+    constexpr float TorsoKickSpawn = 1.04f;   // m between the pelvises
     // A kick at the torso: from a little further than kicking range, where
     // the foot lands on it (from kicking range it meets the pelvis, which a
-    // low block covers). One kick: the knockback of the first one changes
-    // where the next ones land.
-    const auto kickAt = [](const PlayerCommands& Guard) {
-        Battle Fight(makeConfig());
+    // low block covers). One kick, from the stance at a start distance (a
+    // walk rests where its last step ended, so walking up would not stop
+    // at a known distance): the knockback of the first one changes where
+    // the next ones land.
+    ScratchData Data("block_zone");
+    Data.replace("combat.json", "\"spawnDistance\": 2.4", std::format("\"spawnDistance\": {}", TorsoKickSpawn));
+    const auto kickAt = [&](const PlayerCommands& Guard) {
+        Battle Fight(Data.makeConfig());
         run(Fight, {}, Guard, 1);
         const std::vector<StrikeLanded> Hits =
-            strike(Fight, {.Range = TorsoKickRange, .VictimCmd = Guard, .MaxLanded = 1}, 4 * TicksPerSecond);
+            strike(Fight, {.Range = 10.0f, .VictimCmd = Guard, .MaxLanded = 1}, 4 * TicksPerSecond);
         REQUIRE_FALSE(Hits.empty());
         return std::pair(Hits, getRight(Fight));
     };

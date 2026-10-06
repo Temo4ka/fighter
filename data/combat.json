@@ -17,7 +17,7 @@
   "restMinFootSpread": 0.25,
   "stopMaxCoast": 0.06,
   "shortStepMinSpread": 0.1,
-  "stopResumeDistance": 0.15,
+  "stopResumeDistance": 0.05,
   "legStep": {
     "minDistance": 0.03,
     "liftHeight": 0.06,
