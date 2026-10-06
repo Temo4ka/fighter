@@ -94,7 +94,16 @@ float LegCycle::getStepFromTime() const { return wrapTime(TimeSec - StepSec, Per
 void LegCycle::stop(float Dt, float Rate) {
     StepSec = 0.0f;
     if (CurrentMode == Mode::Still) return;
-    const StopPlan Plan = planStop();
+    playStop(planStop(), Dt, Rate);
+}
+
+void LegCycle::hold() {
+    StepSec = 0.0f;
+    if (CurrentMode == Mode::Still) return;
+    CurrentMode = planStop().Offset == 0.0f ? Mode::Still : Mode::Held;
+}
+
+void LegCycle::playStop(const StopPlan& Plan, float Dt, float Rate) {
     const float Step = Dt * std::max(Rate, anim::MinPlaybackRate);
     if (std::abs(Plan.Offset) <= Step) {
         TimeSec = wrapTime(TimeSec + Plan.Offset, PeriodSec);

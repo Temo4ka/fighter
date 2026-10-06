@@ -357,7 +357,10 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
 
     REQUIRE(Log.FirstHitTick.has_value());
     REQUIRE(Log.DownTick.has_value());
-    CHECK(*Log.DownTick - *Log.FirstHitTick < TicksPerSecond);   // falls right away
+    // It falls and lies on the floor before it starts to get up. (With the
+    // smooth body's limp legs it sinks to its knees first, then lies: about
+    // 1.1-1.4 s, no longer within 1 s.)
+    CHECK(*Log.DownTick - *Log.FirstHitTick < Control.KnockdownSec * TicksPerSecond);
     CHECK(isUpright(getRight(Fight)));
     CHECK(isUpright(getLeft(Fight)));
 

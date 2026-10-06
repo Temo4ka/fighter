@@ -55,6 +55,7 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
 const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& Around, float Dt) {
     updateMeters(Dt);
     syncPosture();
+    OpponentDown = Around.OpponentDown;
     StateSec += Dt;
 
     // Where the opponent is. The body turns only when the fighter is free
@@ -154,16 +155,17 @@ void Fighter::onStrikeLanded(bool Clean) {
 void Fighter::stopAtContact() {
     // In any phase: nothing passes through the opponent. A contact in the
     // startup jams the attack. The posed limbs are held back too.
-    const CombatTuning& Tuning = Rules->Tuning;
     if (getMove()) stopStrikeAtContact();
-    Body.holdLimbsBack(Tuning.ContactStopDepth);
+    Body.holdLimbsBack(getStopDepth());
 }
+
+void Fighter::holdLimbsBack() { Body.holdLimbsBack(getStopDepth()); }
 
 void Fighter::stopStrikeAtContact() {
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
     const std::optional<float> Kept =
-        Body.stopAtContact(AttackClip->Strikers, Tuning.ContactStopDepth);
+        Body.stopAtContact(AttackClip->Strikers, getStopDepth());
     if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
 
     // The first stop: the clip goes back to the time of the contact (clip
@@ -179,6 +181,14 @@ void Fighter::stopStrikeAtContact() {
         debug::logEvent(std::format("P{} {} {} at the opponent (clip {:.2f} s)", Body.getFighterIndex() + 1,
                                     Move->Id, Startup ? "jammed in the startup" : "stopped", AttackTime));
     }
+}
+
+float Fighter::getStopDepth() const {
+    // A posed limb held pressed into a body lying on the floor would clamp
+    // its limp parts to the floor: the ragdoll pulled away levers them up
+    // into the limb (nothing moves a posed limb out of the way). On a lying
+    // opponent the limb stops at the touch.
+    return OpponentDown ? 0.0f : Rules->Tuning.ContactStopDepth;
 }
 
 bool Fighter::takeExhaustedNotice() { return std::exchange(ExhaustedNotice, false); }
@@ -517,6 +527,8 @@ void Fighter::advanceLegs(float Dt) {
     const float Travel = Motion.getPlannedTravel();
     const float LastTravel = Motion.getVelocity() * Dt;
     Stride.Held = LastPlannedTravel * Stride.Sign > MinTravel && LastTravel * Stride.Sign < MinTravel;
+    // Slowed by the opponent in the last step: it is in the way.
+    WalkHeld = Motion.getSpacingMotion().Slowed * Stride.Sign < 0.0f;
     // Pushed back faster than it walks, the walker steps backwards.
     Stride.Pushed = Travel * Stride.Sign < 0.0f;
     FeetSettling = false;
@@ -529,7 +541,15 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
     const CombatTuning& Tuning = Rules->Tuning;
     if (Cycle.getMode() == LegCycle::Mode::Walking) FeetSettling = true;
     const bool WasPlaying = Cycle.isPlaying();
-    Cycle.stop(Dt, Tuning.WalkStopRate);
+    // A walk the opponent holds back stops where it is (LegCycle::hold):
+    // playing the step on without travel would set the swing foot down on
+    // the opponent's, and the spacing would shove them apart.
+    if (WalkHeld) {
+        Cycle.hold();
+    } else {
+        Cycle.stop(Dt, Tuning.WalkStopRate);
+    }
+    if (!Cycle.isPlaying() && !Cycle.isHeld()) WalkHeld = false;
     // Stopped in the normal stance: the legs cross over to the stance
     // clip's (or the crouch's); the switched one holds the cycle's pose.
     if (FeetSettling && !Cycle.isPlaying() && Cycle.isEngaged() && Cycle.getVariant() == StanceVariant::Normal) {
@@ -563,7 +583,7 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, float Dt) {
     // legs over, LegCycle::settle()); else the stance clip's legs (the
     // normal stance). A change crosses over (legs only).
     LegSource Source = LegSource::Stance;
-    if (Walk.isPlaying()) {
+    if (Walk.isPlaying() || Walk.isHeld()) {
         Source = LegSource::Walk;
     } else if (Walk.isEngaged() && Walk.getVariant() == StanceVariant::Switched) {
         Source = LegSource::SwitchedStance;
@@ -650,6 +670,8 @@ std::string Fighter::describeLegs() const {
                                Stride.Held     ? ", held by the opponent"
                                : Stride.Pushed ? ", pushed back"
                                                : "");
+        case LegCycle::Mode::Held:
+            return std::format("held in mid-step at {:.2f} (opponent in the way)", Walk.getTime());
         case LegCycle::Mode::Stopping:
             return std::format("stopping {:.2f} -> {:.2f} ({})", Walk.getTime(), Walk.getStopTarget(),
                                getStanceVariantName(Variant));

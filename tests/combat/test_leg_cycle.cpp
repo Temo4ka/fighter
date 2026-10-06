@@ -172,3 +172,29 @@ TEST_CASE("LegCycle: follow keeps the share of the last step", "[combat]") {
     Cycle.follow(0.0f);
     CHECK(Cycle.getTime() == Approx(Stopping));
 }
+
+TEST_CASE("LegCycle: hold keeps a mid-step pose, or stops with both feet down", "[combat]") {
+    LegCycle Cycle = makeTwoSpanCycle();
+    walkTo(Cycle, 0.35f);   // between the spans: a foot in the air
+    const float MidStep = Cycle.getTime();
+    Cycle.hold();
+    CHECK(Cycle.isHeld());
+    CHECK_FALSE(Cycle.isPlaying());
+    CHECK(Cycle.getTime() == MidStep);
+    Cycle.hold();
+    CHECK(Cycle.getTime() == MidStep);
+    // Walking again goes on from there.
+    Cycle.walk(0.01f, 1.0f, 1.0f);
+    CHECK_FALSE(Cycle.isHeld());
+    CHECK(Cycle.getTime() == Approx(MidStep + 0.01f));
+    // With both feet down it simply stands.
+    walkTo(Cycle, 0.55f);
+    Cycle.hold();
+    CHECK_FALSE(Cycle.isHeld());
+    CHECK(Cycle.getMode() == LegCycle::Mode::Still);
+    // settle() ends a hold.
+    walkTo(Cycle, 0.35f);
+    Cycle.hold();
+    Cycle.settle();
+    CHECK_FALSE(Cycle.isHeld());
+}

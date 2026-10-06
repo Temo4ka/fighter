@@ -198,9 +198,11 @@ BlendTable parseBlends(const Json& Value) {
                 }
                 const float Sec = Rule.at("sec").get<float>();
                 if (Sec < 0.0f) {
-                    throw std::runtime_error(std::format("blends.rules[{}].sec must not be negative, not {}", Index, Sec));
+                    throw std::runtime_error(
+                        std::format("blends.rules[{}].sec must not be negative, not {}", Index, Sec));
                 }
-                Table.Rules.push_back({.From = getKind(Rule, "from", Index), .To = getKind(Rule, "to", Index), .Sec = Sec});
+                Table.Rules.push_back(
+                    {.From = getKind(Rule, "from", Index), .To = getKind(Rule, "to", Index), .Sec = Sec});
             }
         } else {
             throw std::runtime_error(std::format("blends: unknown key '{}'", Key));

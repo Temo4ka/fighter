@@ -73,6 +73,7 @@ public:
         Still,      ///< Holds its phase.
         Walking,    ///< Follows the walking speed.
         Stopping,   ///< Plays on to the nearest support span, then holds.
+        Held,       ///< Keeps a mid-step pose: the opponent is in the way (hold()).
     };
 
     LegCycle() = default;
@@ -94,13 +95,20 @@ public:
     /// both feet are down, otherwise it plays on to the nearest point of a
     /// support span (either way round) at \p Rate clip seconds per second.
     void stop(float Dt, float Rate);
+    /// A walk the opponent holds back stops where it is: with both feet down
+    /// as stop() does at once; in mid-step it keeps its pose (Mode::Held)
+    /// until it walks again or settle(), because playing the step on (or
+    /// back) without travel would set a foot down on the opponent's.
+    void hold();
+    /// Holds its walk pose in mid-step (hold()).
+    bool isHeld() const { return CurrentMode == Mode::Held; }
     /// Jumps to the middle of the normal span and holds it; the cycle is
     /// not engaged any more (another clip took the legs over).
     void settle();
 
     Mode getMode() const { return CurrentMode; }
-    /// Walking or stopping: the clip must be shown.
-    bool isPlaying() const { return CurrentMode != Mode::Still; }
+    /// Walking or stopping: the clip must be shown (also while held, isHeld()).
+    bool isPlaying() const { return CurrentMode == Mode::Walking || CurrentMode == Mode::Stopping; }
     bool isStopping() const { return CurrentMode == Mode::Stopping; }
     /// Has it played since the last settle()? Its held pose is then the one
     /// the legs stand in.
@@ -123,6 +131,7 @@ private:
         size_t Span = 0;
     };
     StopPlan planStop() const;
+    void playStop(const StopPlan& Plan, float Dt, float Rate);
 
     float PeriodSec = 1.0f;
     std::vector<SupportSpan> Spans{SupportSpan{}};

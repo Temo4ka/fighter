@@ -82,6 +82,8 @@ struct BattleRules {
 /// What a fighter knows about the battle around it in one step.
 struct Surroundings {
     float OpponentX = 0.0f;   ///< The opponent's pelvis, m.
+    /// The opponent lies on the floor (a ragdoll, also knocked out).
+    bool OpponentDown = false;
 };
 
 /// What the last hit taken did; for the debug panel.
@@ -132,6 +134,10 @@ public:
     /// The other posed limbs (the legs) are held back at the opponent too,
     /// attacking or not (rig::Rig::holdLimbsBack).
     void stopAtContact();
+    /// After stopAtContact() of both fighters: the posed limbs that are
+    /// still too deep in the opponent (its limbs stopped too, maybe back
+    /// into these) go back once more (rig::Rig::holdLimbsBack).
+    void holdLimbsBack();
     /// Did the current attack run into the opponent in its startup
     /// (stopAtContact)?
     bool isJammed() const { return getMove() && Jammed; }
@@ -191,6 +197,9 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
+    /// How deep a posed limb may press into the opponent before it stops
+    /// (stopAtContact()), m.
+    float getStopDepth() const;
     /// The strikers' part of stopAtContact().
     void stopStrikeAtContact();
     /// What a posed strike stopped at the opponent does (stopAtContact).
@@ -288,6 +297,8 @@ private:
         bool Pushed = false;         ///< Walking, but pushed back: the legs step backwards.
     };
     LegPlan Stride;
+    bool OpponentDown = false;             ///< Surroundings::OpponentDown of the last control().
+    bool WalkHeld = false;                 ///< The opponent slowed the walk when it last walked.
     float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.
     /// What sets the legs below the clip on top.
     enum class LegSource : uint8_t { Stance, SwitchedStance, Walk };
