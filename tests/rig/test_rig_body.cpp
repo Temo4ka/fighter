@@ -397,8 +397,19 @@ TEST_CASE("Rig: a limb stuck in the opponent yields and pulls back, still collid
     CHECK(Stuck.Left.getJointAngle(BodyPart::ForearmL) > Def.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] * 0.5f);
     CHECK(Deepest < 0.01f);
 
-    // A new wish (the clip asks for the guard) ends the yield at once.
+    // A new pose that is not a strike (the clip asks for the guard) does not
+    // end the yield at once: the limb comes back only when the guard's pose
+    // is clear of the opponent (hysteresis, yieldReturnClearance).
+    REQUIRE(Stuck.Left.isYielding(BodyPart::ForearmL));
     Stuck.Left.setTargetAngles(loadStance());
+    Stuck.run(1);
+    CHECK(Stuck.Left.isYielding(BodyPart::ForearmL));
+    // A new strike with the limb (its pose away from the one it yielded
+    // from) ends the yield at once: it tries again.
+    std::bitset<BodyPartCount> Jab;
+    Jab.set(static_cast<size_t>(BodyPart::ForearmL));
+    Stuck.Left.setStrikingParts(Jab, Jab);
+    Stuck.run(1);
     CHECK_FALSE(Stuck.Left.isYielding(BodyPart::ForearmL));
 }
 

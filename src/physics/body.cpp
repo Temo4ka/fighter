@@ -37,6 +37,10 @@ float Body::getAngularVelocity() const { return b2Body_GetAngularVelocity(loadBo
 
 float Body::getMass() const { return b2Body_GetMass(loadBody(Id)); }
 
+float Body::getRotationalInertia() const { return b2Body_GetRotationalInertia(loadBody(Id)); }
+
+float Body::getGravityScale() const { return b2Body_GetGravityScale(loadBody(Id)); }
+
 Vec2 Body::getWorldPoint(Vec2 LocalPoint) const {
     return fromBox2D(b2Body_GetWorldPoint(loadBody(Id), toBox2D(LocalPoint)));
 }
@@ -62,6 +66,8 @@ void Body::setMass(float Kg) {
 void Body::setLinearVelocity(Vec2 Velocity) { b2Body_SetLinearVelocity(loadBody(Id), toBox2D(Velocity)); }
 
 void Body::setAngularVelocity(float Velocity) { b2Body_SetAngularVelocity(loadBody(Id), Velocity); }
+
+void Body::setGravityScale(float Scale) { b2Body_SetGravityScale(loadBody(Id), Scale); }
 
 void Body::setTransform(Vec2 Position, float Angle) {
     b2Body_SetTransform(loadBody(Id), toBox2D(Position), b2MakeRot(Angle));
