@@ -265,10 +265,16 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
 }
 
 TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") {
-    Battle Fight(makeConfig());
-    // Closer than JabRange: the fist lands while the arm still extends, so
-    // the hit is strong enough to see the sway (at full reach it is a tap).
+    // Close, from the stance: the fist lands while the arm still extends,
+    // so the hit is strong enough to see the sway (at full reach it is a
+    // tap). The fighters start there instead of walking up: a walk rests
+    // with the feet wide (the layered walk), its front foot meets the
+    // dummy's and the spacing parts them to full reach.
     constexpr float CloseJabRange = 0.72f;
+    constexpr float CloseJabSpawn = 0.65f;   // m between the pelvises
+    ScratchData Data("jab_dummy");
+    Data.replace("combat.json", "\"spawnDistance\": 2.4", std::format("\"spawnDistance\": {}", CloseJabSpawn));
+    Battle Fight(Data.makeConfig());
     const AttackLog Log =
         attackDummy(Fight, MoveButton::Jab, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, CloseJabRange);
 
@@ -300,7 +306,10 @@ TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[com
     float Strongest = 0.0f;
     for (const auto& Hit : Log.Hits) {
         CHECK(Hit.Attacker.Fighter == 0);
-        CHECK((Hit.Attacker.Part == BodyPart::FootL || Hit.Attacker.Part == BodyPart::ShinL));
+        // The kicking leg: the left one, or the right one when the walk
+        // stopped with the right foot in front (the kick plays mirrored).
+        CHECK((Hit.Attacker.Part == BodyPart::FootL || Hit.Attacker.Part == BodyPart::ShinL ||
+               Hit.Attacker.Part == BodyPart::FootR || Hit.Attacker.Part == BodyPart::ShinR));
         Strongest = std::max(Strongest, Hit.Impulse);
     }
     // A kick lands harder than a jab; the dummy sways and is pushed back.
