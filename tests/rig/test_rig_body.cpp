@@ -813,6 +813,43 @@ TEST_CASE("Rig: measureLegs tells where the feet of a pose stand", "[rig]") {
     }
 }
 
+TEST_CASE("Rig: kept feet hold their place beyond the slip, the pelvis goes down to reach them", "[rig]") {
+    // The pelvis travels about 0.25 m with the legs in the stance: plain planted
+    // feet are dragged once the clip is footLockSlip away; kept feet stay
+    // as far as the legs reach, and the pelvis goes down to reach them.
+    const auto travel = [](bool Keep) {
+        Solo Stage(makeSetup(0.0f, true));
+        Rig& Body = Stage.Body;
+        Stage.run(10);
+        struct Result {
+            float FootMove = 0.0f;
+            float PelvisDrop = 0.0f;
+        } Out;
+        // The ankle in the world (the foot may turn about it).
+        const auto getAnkleX = [&] {
+            return Body.getPartPosition(BodyPart::Pelvis).X + Body.measureLegsNow().Right.Ankle.X;
+        };
+        const float AnkleX = getAnkleX();
+        const float PelvisY = Body.getPartPosition(BodyPart::Pelvis).Y;
+        for (int Step = 0; Step < 30; ++Step) {
+            if (Keep) Body.keepFeetPlanted();
+            Body.setMoveVelocity(Step < 14 ? 1.0f : 0.0f);
+            Body.planMotion(Dt);
+            Body.applyControl(Dt);
+            Stage.PhysWorld.step(Dt);
+        }
+        Out.FootMove = std::abs(getAnkleX() - AnkleX);
+        Out.PelvisDrop = PelvisY - Body.getPartPosition(BodyPart::Pelvis).Y;
+        return Out;
+    };
+    const auto Dragged = travel(false);
+    const auto Kept = travel(true);
+    CHECK(Dragged.FootMove > 0.03f);
+    CHECK(Kept.FootMove < 1e-3f);
+    CHECK(Kept.PelvisDrop > 0.005f);
+    CHECK(Dragged.PelvisDrop < Kept.PelvisDrop);
+}
+
 TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
     for (const bool FacingRight : {true, false}) {
         INFO("facing right " << FacingRight);

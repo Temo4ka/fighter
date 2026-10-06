@@ -219,3 +219,30 @@ TEST_CASE("LegCycle: hold keeps a mid-step pose, or stops with both feet down", 
     Cycle.settle();
     CHECK_FALSE(Cycle.isHeld());
 }
+
+TEST_CASE("LegCycle: a stop heads to the target chosen for it", "[combat]") {
+    LegCycle Cycle = makeTwoSpanCycle();
+    walkTo(Cycle, 0.3f);   // between the spans: a foot in the air
+    const std::vector<StopTarget> Targets = Cycle.getStopTargets();
+    REQUIRE(Targets.size() == 2);
+    // Into each span the nearer way round: back into the first, on into the
+    // second.
+    CHECK(Targets[0].Span == 0);
+    CHECK(Targets[0].Offset < 0.0f);
+    CHECK(Targets[1].Span == 1);
+    CHECK(Targets[1].Offset > 0.0f);
+    // Unchosen the stop goes to the nearer one (back); chosen, to the other.
+    Cycle.chooseStop(Targets[1]);
+    CHECK(Cycle.getStopTarget() == Approx(Targets[1].TimeSec).margin(1e-4f));
+    CHECK(Cycle.getFrontFoot() == BodyPart::FootR);
+    for (int Step = 0; Step < 20 && Cycle.getMode() != LegCycle::Mode::Still; ++Step) Cycle.stop(Dt, 3.0f);
+    CHECK(Cycle.getTime() >= 0.5f);
+    CHECK(Cycle.getTime() <= 0.6f);
+    // Resting in a span there is nothing to choose.
+    CHECK(Cycle.getStopTargets().empty());
+    // Walking again forgets the choice.
+    walkTo(Cycle, 0.7f);
+    for (int Step = 0; Step < 20 && Cycle.getMode() != LegCycle::Mode::Still; ++Step) Cycle.stop(Dt, 3.0f);
+    CHECK(Cycle.getFrontFoot() == BodyPart::FootR);
+    CHECK(Cycle.getTime() <= 0.6f);
+}
