@@ -4,8 +4,10 @@
 #include <cmath>
 #include <format>
 #include <string>
+#include <iterator>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "debug/draw.hpp"
 #include "rig/pelvis_controller.hpp"
@@ -182,10 +184,28 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
     // A strike sweeps fast: while one swings, overlaps are not eased (its
     // stop at the contact needs the bodies where they are meant to be).
     const bool Striking = Left.isStriking() || Right.isStriking();
-    const float MaxOverlap = Striking ? 0.0f : std::max(Params.MaxSoftOverlap, LeftOver);
+    const float SoftOverlap = std::max(Params.MaxSoftOverlap, LeftOver);
+    // While a strike swings, the striking limb is not eased off at all: its
+    // stop at the contact (Rig::stopAtContact) needs the opponent where it
+    // is meant to be. Other overlaps during a strike (a leg set down by a
+    // switch-step, a guard, a lean) are eased as ever: a posed leg that
+    // swung into the opponent is held back there (Rig::holdLimbsBack), the
+    // torsos and heads are kept apart by the solver.
+    const auto getStrikerOverlap = [&](float Trial) {
+        const auto [LeftX, RightX] = place(Trial);
+        const std::vector<PartPlacement> LeftBody = Left.predictBody(LeftX, Dt);
+        const std::vector<PartPlacement> RightBody = Right.predictBody(RightX, Dt);
+        std::vector<PartPlacement> LeftStrikers;
+        std::vector<PartPlacement> RightStrikers;
+        std::ranges::copy_if(LeftBody, std::back_inserter(LeftStrikers), &PartPlacement::Striking);
+        std::ranges::copy_if(RightBody, std::back_inserter(RightStrikers), &PartPlacement::Striking);
+        return -std::min(Left.measureGap(LeftStrikers, RightBody), Left.measureGap(LeftBody, RightStrikers));
+    };
     bool Hard = false;
     float OverlapLeft = Overlap > 0.0f ? getOverlap(Slowed + Pushed) : 0.0f;
-    if (OverlapLeft > MaxOverlap) {
+    const bool TooDeep = OverlapLeft > SoftOverlap || (Striking && OverlapLeft > 0.0f &&
+                                                        getStrikerOverlap(Slowed + Pushed) > 0.0f);
+    if (TooDeep) {
         Pushed = std::max(Pushed, Needed - Slowed);
         OverlapLeft = getOverlap(Slowed + Pushed);
         Hard = true;

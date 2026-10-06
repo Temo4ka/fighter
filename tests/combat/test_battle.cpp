@@ -405,15 +405,24 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
     constexpr float PelvisKickRange = 0.98f;
     size_t HitCount = 0;
     bool KnockedDown = false;
+    bool Kicked = false;   // in this period
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
         // Both battles get the same input, computed from the first one.
         const float Distance = getRight(First).Position.X - getLeft(First).Position.X;
-        // P1 walks into kicking range and kicks every 2.5 s, jabbing in between.
+        // P1 walks into kicking range and kicks once every 2.5 s (as soon as
+        // it is in range in the first 0.5 s of the period), jabbing in
+        // between. The kick is an input of the scenario, computed from the
+        // first battle like the rest: a kick pressed only in the first 3
+        // ticks of the period missed whenever P1 arrived a tick late.
         const int Phase = Tick % 150;
+        if (Phase == 0) Kicked = false;
+        const bool Kick = !Kicked && Distance <= PelvisKickRange && Phase < 30 &&
+                          getLeft(First).State != FighterState::Attacking;
+        Kicked = Kicked || Kick;
         const PlayerCommands LeftCmd{
             .MoveX = Distance > PelvisKickRange ? 1.0f : 0.0f,
             .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .BodyKick = Distance <= PelvisKickRange && Phase < 3,
+            .BodyKick = Kick,
         };
         // P2 backs away now and then, but stands still while P1 kicks: a
         // kick that meets the legs at close range is weak (legs collide).
