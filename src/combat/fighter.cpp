@@ -780,6 +780,15 @@ anim::Pose Fighter::placeStepFeet(const anim::Pose& Legs, float TimeSec, float P
     }
 
     // Heights and foot angles from the clip; the standing foot on the floor.
+    // The swing foot is lifted WalkLiftScale of the clip's height above the
+    // clearance, less on a
+    // step shorter than the clip's: its travel against what the clip's foot
+    // would travel over the rest of the step (so that a step anchored in the
+    // air does not drop the foot).
+    const float ClipTravel = std::abs(Length + Each.SwingEndX - Each.SwingBeginX) * std::abs(To - From);
+    const float StepShare =
+        ClipTravel > 1e-4f ? std::min(std::abs(EndX - Anchor->SwingX) / ClipTravel, 1.0f) : 1.0f;
+    const float LiftScale = Rules->Tuning.WalkLiftScale * StepShare;
     const rig::LegStance Clip = Body.measureLegs(Legs.Angles);
     anim::Pose Result = Legs;
     const rig::FootPlacement& Standing = Clip.getFoot(Stand);
@@ -790,8 +799,11 @@ anim::Pose Fighter::placeStepFeet(const anim::Pose& Legs, float TimeSec, float P
     // take it for a standing one and hold it.
     const bool OnItsWay = Along > 0.0f && Along < 1.0f;
     const float Clearance = Body.getControl().FootPlantHeight * SwingClearance;
+    // Only the height above the clearance is scaled: lower, a foot in the
+    // air could pass for a planted one.
+    const float Lowered = std::max(Swinging.SoleHeight - Clearance, 0.0f) * (1.0f - LiftScale);
     const float Raise = OnItsWay ? std::max(Clearance - Swinging.SoleHeight, 0.0f) : 0.0f;
-    Body.reachFoot(Result.Angles, Each.Swing, Clip.PelvisHeight, {SwingX - PelvisX, Swinging.Ankle.Y + Raise},
+    Body.reachFoot(Result.Angles, Each.Swing, Clip.PelvisHeight, {SwingX - PelvisX, Swinging.Ankle.Y - Lowered + Raise},
                    Swinging.Angle);
     return Result;
 }

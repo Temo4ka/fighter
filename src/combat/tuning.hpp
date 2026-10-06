@@ -181,6 +181,10 @@ struct CombatTuning {
     /// finish the step on both feet (the legs follow its travel); a step that
     /// needs more ends short, the swing foot set down where it is, m.
     float StopMaxCoast = 0.06f;
+    /// Walking, the swing foot is lifted this share of the clip's height
+    /// (and less on a step shorter than the clip's: in proportion to its
+    /// length), 0..1.
+    float WalkLiftScale = 0.75f;
     /// A step that ends short sets its swing foot down where it is, but not
     /// closer to the other foot than this (feet side by side are fine; a
     /// step that has just begun is about as wide as the rest pose anyway), m.

@@ -37,6 +37,7 @@ constexpr std::array TuningFields = {
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
     TuningField{"restMinFootSpread", &CombatTuning::RestMinFootSpread},
     TuningField{"stopMaxCoast", &CombatTuning::StopMaxCoast},
+    TuningField{"walkLiftScale", &CombatTuning::WalkLiftScale},
     TuningField{"shortStepMinSpread", &CombatTuning::ShortStepMinSpread},
     TuningField{"stopResumeDistance", &CombatTuning::StopResumeDistance},
     TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
@@ -152,6 +153,9 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
     if (Tuning.RestMinFootSpread < 0.0f) throw std::runtime_error("restMinFootSpread must not be negative");
     if (Tuning.StopMaxCoast < 0.0f) throw std::runtime_error("stopMaxCoast must not be negative");
+    if (Tuning.WalkLiftScale < 0.0f || Tuning.WalkLiftScale > 1.0f) {
+        throw std::runtime_error("walkLiftScale must be in [0, 1]");
+    }
     if (Tuning.ShortStepMinSpread < 0.0f) throw std::runtime_error("shortStepMinSpread must not be negative");
     if (Tuning.StopResumeDistance < 0.0f) throw std::runtime_error("stopResumeDistance must not be negative");
     if (Tuning.StepMinSpeed < 0.0f) throw std::runtime_error("stepMinSpeed must not be negative");
