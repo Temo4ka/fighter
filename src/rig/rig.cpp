@@ -465,7 +465,9 @@ void Rig::reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeigh
 
 void Rig::keepFeetPlanted() {
     for (auto& Limb : Legs) {
-        if (Limb.Locked && !Limb.Stepping) Limb.KeptOffsetX = Limb.OffsetX;
+        if (!Limb.Locked || Limb.Stepping) continue;
+        Limb.KeptOffsetX = Limb.OffsetX;
+        Limb.Kept = true;
     }
 }
 
@@ -816,6 +818,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         Farthest->Stepping = true;
         Farthest->Locked = false;
         Farthest->KeptOffsetX = 0.0f;
+        Farthest->Kept = false;
     }
 
     PerBodyPart<float> Corrections = Base;
@@ -836,6 +839,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         } else if (!Planted && Limb.Locked) {
             Limb.Locked = false;   // lifted: it returns to the clip from where it stood
             Limb.KeptOffsetX = 0.0f;
+            Limb.Kept = false;
         }
         float Lift = 0.0f;
         if (Limb.Locked) {
@@ -847,7 +851,9 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             const float Reach = Limb.Length - LegReachMargin;
             const float Drop = HipPoint.Y - ClipAnkle.Y;
             const float Span = std::sqrt(std::max(Reach * Reach - Drop * Drop, 0.0f));
-            const float Slip = Control.FootLockSlip;
+            // A kept foot (keepFeetPlanted) holds its place as far as the leg
+            // reaches: the legs rest where they stopped.
+            const float Slip = Limb.Kept ? std::numeric_limits<float>::max() : Control.FootLockSlip;
             Limb.LockX = std::clamp(Limb.LockX, std::max(ClipAnkle.X - Slip, std::min(HipPoint.X - Span, ClipAnkle.X)),
                                     std::min(ClipAnkle.X + Slip, std::max(HipPoint.X + Span, ClipAnkle.X)));
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
@@ -889,12 +895,20 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
                          (2.0f * ThighLength * ShinLength);
     const float Opening = std::acos(std::clamp(Cosine, -1.0f, 1.0f));
     const float RestBend = getHeading(ShinBone) - getHeading(ThighBone);
+    // A solution the knee cannot bend to (clamped to its limit) leaves the
+    // ankle off the target: the one within the limits wins, else the one
+    // closer to the hint.
     const auto clampKnee = [&](float Angle) {
         return std::clamp(wrapAngle(Angle), Knee.LowerAngle, Knee.UpperAngle);
     };
-    const float KneeA = clampKnee(Opening - RestBend);
-    const float KneeB = clampKnee(-Opening - RestBend);
-    const float KneeAngle = std::abs(KneeA - KneeHint) <= std::abs(KneeB - KneeHint) ? KneeA : KneeB;
+    const float RawA = wrapAngle(Opening - RestBend);
+    const float RawB = wrapAngle(-Opening - RestBend);
+    const float KneeA = clampKnee(RawA);
+    const float KneeB = clampKnee(RawB);
+    const bool ReachesA = KneeA == RawA;
+    const bool ReachesB = KneeB == RawB;
+    const bool CloserA = std::abs(KneeA - KneeHint) <= std::abs(KneeB - KneeHint);
+    const float KneeAngle = ReachesA != ReachesB ? (ReachesA ? KneeA : KneeB) : (CloserA ? KneeA : KneeB);
 
     // Body angles, then joint angles.
     const float ThighAngle = getHeading(ToAnkle) - getHeading(ThighBone + rotate(ShinBone, KneeAngle));
@@ -974,6 +988,7 @@ void Rig::releaseFeet() {
         Limb.Stepping = false;
         Limb.OffsetX = 0.0f;
         Limb.KeptOffsetX = 0.0f;
+        Limb.Kept = false;
     }
 }
 

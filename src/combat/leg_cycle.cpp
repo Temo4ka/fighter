@@ -67,6 +67,7 @@ LegCycle::LegCycle(float NewPeriodSec, std::vector<SupportSpan> NewSpans)
 }
 
 void LegCycle::walk(float Dt, float Rate, float NewDirection) {
+    Chosen.reset();
     Direction = NewDirection > 0.0f ? 1.0f : -1.0f;
     StepSec = Dt * Rate * Direction;
     TimeSec = wrapTime(TimeSec + StepSec, PeriodSec);
@@ -90,6 +91,7 @@ void LegCycle::stop(float Dt, float Rate) {
 
 void LegCycle::hold() {
     StepSec = 0.0f;
+    Chosen.reset();
     if (CurrentMode == Mode::Still) return;
     CurrentMode = planStop().Offset == 0.0f ? Mode::Still : Mode::Held;
 }
@@ -107,6 +109,7 @@ void LegCycle::playStop(const StopPlan& Plan, float Dt, float Rate) {
 
 void LegCycle::settle(BodyPart FrontFoot) {
     StepSec = 0.0f;
+    Chosen.reset();
     TimeSec = getRestTime(FrontFoot);
     CurrentMode = Mode::Still;
     Engaged = false;
@@ -121,7 +124,33 @@ float LegCycle::getRestTime(BodyPart FrontFoot) const {
     return getMiddle(Found != Spans.end() ? *Found : Spans.front(), PeriodSec);
 }
 
+std::vector<StopTarget> LegCycle::getStopTargets() const {
+    std::vector<StopTarget> Targets;
+    for (size_t Index = 0; Index < Spans.size(); ++Index) {
+        const SupportSpan& Span = Spans[Index];
+        if (isInside(Span, TimeSec, PeriodSec)) return {};
+        // Aim a little inside the span, so that rounding cannot stop the
+        // phase just outside it.
+        const float Margin = getWidth(Span, PeriodSec) * 0.25f;
+        const float Forward = wrapTime(Span.BeginSec + Margin - TimeSec, PeriodSec);
+        const float Backward = -wrapTime(TimeSec - (Span.EndSec - Margin), PeriodSec);
+        // The nearer way round.
+        const float Offset = Forward <= -Backward ? Forward : Backward;
+        Targets.push_back({.TimeSec = wrapTime(TimeSec + Offset, PeriodSec), .Offset = Offset, .Span = Index});
+    }
+    return Targets;
+}
+
+void LegCycle::chooseStop(const StopTarget& Target) { Chosen = Target; }
+
 LegCycle::StopPlan LegCycle::planStop() const {
+    if (Chosen) {
+        // The rest of the way to the chosen target, the same way round.
+        const float Left = Chosen->Offset > 0.0f ? wrapTime(Chosen->TimeSec - TimeSec, PeriodSec)
+                                                 : -wrapTime(TimeSec - Chosen->TimeSec, PeriodSec);
+        const bool Passed = std::abs(Left) > std::abs(Chosen->Offset) + TieSec;
+        return {.Offset = Passed ? 0.0f : Left, .Span = Chosen->Span};
+    }
     StopPlan Best{.Offset = std::numeric_limits<float>::max(), .Span = 0};
     for (size_t Index = 0; Index < Spans.size(); ++Index) {
         const SupportSpan& Span = Spans[Index];

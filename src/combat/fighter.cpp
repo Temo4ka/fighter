@@ -21,6 +21,10 @@ constexpr float WallContactM = 0.01f;
 /// face the other way: no flipping while they overlap, m.
 constexpr float FacingDeadZoneM = 0.05f;
 
+/// Stop targets whose planted feet are this close in how far they are off
+/// the cycle are as good: the nearer one wins, m.
+constexpr float StopTieM = 0.01f;
+
 /// Width and offset of the Block zone drawn in front of the body, m.
 constexpr float BlockBarOffsetM = 0.3f;
 constexpr float BlockBarHalfWidthM = 0.04f;
@@ -558,6 +562,7 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
     if (WalkHeld) {
         Cycle.hold();
     } else {
+        if (Cycle.getMode() == LegCycle::Mode::Walking) chooseStop(Cycle, Crouched);
         Cycle.stop(Dt, Tuning.WalkStopRate);
     }
     if (!Cycle.isPlaying() && !Cycle.isHeld()) WalkHeld = false;
@@ -640,6 +645,52 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     // them.
     if (Stepping) Body.keepFeetPlanted();
     return Result;
+}
+
+void Fighter::chooseStop(LegCycle& Cycle, bool Crouched) {
+    const std::vector<StopTarget> Targets = Cycle.getStopTargets();
+    if (Targets.empty()) return;
+    // Played on without travel, the cycle moves the planted foot relative to
+    // the pelvis, and the rig holds it where it stands: the target where the
+    // cycle has the planted feet closest to where they are leaves the legs
+    // closest to the cycle's own rest pose (and as wide).
+    const rig::LegStance Now = Body.measureLegsNow();
+    const auto getMismatch = [&](const StopTarget& Target) {
+        const rig::LegStance Then = Body.measureLegs(getCyclePose(Crouched, Target.TimeSec).Angles);
+        float Mismatch = 0.0f;
+        for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
+            if (Now.getFoot(Foot).Planted) Mismatch += std::abs(Then.getFoot(Foot).Ankle.X - Now.getFoot(Foot).Ankle.X);
+        }
+        return Mismatch;
+    };
+    const StopTarget* Best = nullptr;
+    float BestMismatch = 0.0f;
+    for (const StopTarget& Target : Targets) {
+        const float Mismatch = getMismatch(Target);
+        const bool Tie = Best && std::abs(Mismatch - BestMismatch) <= StopTieM;
+        if (!Best || (Tie ? std::abs(Target.Offset) < std::abs(Best->Offset) : Mismatch < BestMismatch)) {
+            Best = &Target;
+            BestMismatch = Mismatch;
+        }
+    }
+    Cycle.chooseStop(*Best);
+    if constexpr (FIGHTER_DEBUG) {
+        debug::logEvent(std::format("P{} stops {:.2f} -> phase {:.2f}, planted feet {:.2f} m off the cycle",
+                                    Body.getFighterIndex() + 1, Cycle.getTime(), Best->TimeSec, BestMismatch));
+    }
+}
+
+anim::Pose Fighter::getCyclePose(bool Crouched, float TimeSec) const {
+    const ClipLibrary& Clips = Rules->Clips;
+    anim::Pose Pose = anim::sampleClip(Clips.get(clips::Stance), 0.0f);
+    if (!Crouched) {
+        anim::layerPose(Pose, anim::sampleClip(Clips.get(clips::Walk), TimeSec));
+        return Pose;
+    }
+    if (LegsMirrored) Pose = anim::joinLayers(Pose, anim::mirrorLegs(Pose));
+    anim::layerPose(Pose, anim::sampleClip(getPlayed(Clips.get(clips::Crouch)), 0.0f));
+    anim::layerPose(Pose, anim::sampleClip(getPlayed(Clips.get(clips::CrouchWalk)), TimeSec));
+    return Pose;
 }
 
 void Fighter::updateRestLegs(bool LegAction, float Dt) {

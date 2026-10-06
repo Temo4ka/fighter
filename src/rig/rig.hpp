@@ -184,10 +184,12 @@ public:
     void setBaseStiffness(float Stiffness);
     /// Takes the planted feet where they stand now as the stance: standing
     /// still, a foot steps back under the body only when it is pushed
-    /// FootRestepDistance further from there (not from the clip). Combat
-    /// calls it when a walk has stopped on both feet, so that the feet left
-    /// off the clip by the walk do not take an extra step. Lifting a foot
-    /// forgets it.
+    /// FootRestepDistance further from there (not from the clip), and the
+    /// clip may pull it further than ControlParams::FootLockSlip without
+    /// dragging it (as far as the leg reaches). Combat calls it while a walk
+    /// stops on both feet and while the legs step into an action, so that
+    /// the feet left off the clip do not slide or take an extra step.
+    /// Lifting a foot forgets it.
     void keepFeetPlanted();
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
@@ -453,6 +455,9 @@ private:
         float LockX = 0.0f;       ///< World X of the planted ankle, m.
         float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
         float KeptOffsetX = 0.0f; ///< The offset keepFeetPlanted() took as the stance, m.
+        /// keepFeetPlanted() took it: it holds its place as far as the leg
+        /// reaches, not only within FootLockSlip, until it is lifted.
+        bool Kept = false;
     };
 
     /// Where a body origin is and how the body is turned.

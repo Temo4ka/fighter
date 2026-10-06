@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -49,6 +50,14 @@ struct SupportSpan {
     float EndSec = 0.0f;
     /// The foot in front in the middle of the span: FootL or FootR.
     BodyPart FrontFoot = BodyPart::FootL;
+};
+
+/// A phase a stop may head to: just inside a span, reached forwards
+/// (Offset > 0) or backwards from the current phase.
+struct StopTarget {
+    float TimeSec = 0.0f;
+    float Offset = 0.0f;   ///< Signed clip time from the current phase, s.
+    size_t Span = 0;
 };
 
 /// Sampling step of the support span search, s of clip time.
@@ -87,9 +96,16 @@ public:
     /// not walk since), s.
     float getStepFromTime() const;
     /// No input for \p Dt: a walking cycle stops. It holds where it is if
-    /// both feet are down, otherwise it plays on to the nearest point of a
-    /// support span (either way round) at \p Rate clip seconds per second.
+    /// both feet are down, otherwise it plays on to the target chooseStop()
+    /// set, or to the nearest point of a support span (either way round),
+    /// at \p Rate clip seconds per second.
     void stop(float Dt, float Rate);
+    /// Where a stop could head from the current phase: into each span, the
+    /// nearer way round. None when the phase is in a span.
+    std::vector<StopTarget> getStopTargets() const;
+    /// The stop heads to \p Target (one of getStopTargets()) until the
+    /// cycle walks again, holds or settles.
+    void chooseStop(const StopTarget& Target);
     /// A walk the opponent holds back stops where it is: with both feet down
     /// as stop() does at once; in mid-step it keeps its pose (Mode::Held)
     /// until it walks again or settle(), because playing the step on (or
@@ -135,6 +151,7 @@ private:
     float TimeSec = 0.0f;
     float StepSec = 0.0f;     ///< How far the last walk() moved the phase (signed); 0 after stop(), settle().
     float Direction = 1.0f;   ///< Of the last walk: a tie is broken that way.
+    std::optional<StopTarget> Chosen;   ///< chooseStop(); its Offset is from the phase then.
     Mode CurrentMode = Mode::Still;
     bool Engaged = false;
 };

@@ -246,6 +246,12 @@ private:
     /// or held in place): plays on to both feet down and rests there; the
     /// planted feet stay where they stand.
     void stopLegs(LegCycle& Cycle, bool Crouched, float Dt);
+    /// Chooses where a stop of \p Cycle heads: the support span where the
+    /// cycle has the planted feet closest to where they stand.
+    void chooseStop(LegCycle& Cycle, bool Crouched);
+    /// The pose of the walk (or the crouch walk) at \p TimeSec over the stance
+    /// (or the crouch).
+    anim::Pose getCyclePose(bool Crouched, float TimeSec) const;
     /// The pose for the motors this step: the upper layer (stance, the clip
     /// on top) and the leg layer (the walk or its rest pose, or the leg
     /// action with its steps); and the same without the step's travel
