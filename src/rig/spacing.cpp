@@ -27,7 +27,8 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
 void keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt);
 PelvisController::SpacingMotion splitCorrection(const PelvisController& Motion, float Planned, float Corrected,
                                                 float Dt);
-void reportCorrections(const Rig& Body, float Dt);
+// Only the debug build fills the panel.
+[[maybe_unused]] void reportCorrections(const Rig& Body, float Dt);
 
 } // namespace
 

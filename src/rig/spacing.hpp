@@ -15,10 +15,19 @@
 ///  - each pelvis stays BodyHalfWidth away from the walls; a fighter at a
 ///    wall touches it (Rig::getWallSide, Rig::isAgainstWall), and knockback
 ///    into the wall stops there;
-///  - two standing fighters keep their pelvises 2 * BodyHalfWidth apart (at
-///    SeparationSpeed at most), and their bodies off each other: the posed
-///    parts (the legs) as they will stand after the step, the torsos and
-///    heads (Rig::predictBody), at PosedSeparationSpeed at most. Box2D does
+///  - two standing fighters keep their pelvises 2 * BodyHalfWidth apart, and
+///    their bodies off each other: the posed parts (the legs) as they will
+///    stand after the step, the torsos and heads (Rig::predictBody). One
+///    smooth mechanism does it: first the approach of this step is taken
+///    back (a walk only slows down; its legs follow the travel the pelvis
+///    makes, Rig::setTravelPose, so they do not swing into the opponent);
+///    what is needed beyond that pushes the fighters apart at a speed that
+///    grows by PushAcceleration at most up to PushMaxSpeed and ends at the
+///    contact (no back and forth); an overlap the eased push would leave
+///    deeper than MaxSoftOverlap, or any while a strike swings, is pushed
+///    out at once (logged). The search looks for a shift up to
+///    PosedSeparationSpeed * Dt. Each pelvis records what moved it
+///    (PelvisController::SpacingMotion; the panel line "P1 push"). Box2D does
 ///    not collide posed parts, and a torso held on a posed pelvis cannot get
 ///    out of the way. The overlap is split by mass (the heavier one gives
 ///    way less); a fighter at a wall cannot give way. The push moves the
