@@ -18,10 +18,12 @@
 /// high in the middle and lands at its target, while the other foot stays
 /// planted where it stood. The steps go one after the other, so that one
 /// foot always stands: first a foot caught in the air (by an action started
-/// mid-stride) lands where the action's start pose has it, then the
-/// supporting foot steps, and last the foot the clip itself moves (the
-/// kicking one) steps into the clip's pose of that moment. The pelvis does
-/// not move: the step
+/// mid-stride) lands, then the feet off their place step; a foot the clip
+/// itself moves (the kicking one) steps into the clip's pose of that
+/// moment, after the others. A strike does not step its supporting foot
+/// (only lands it from the air): its reach comes from the hip, and the
+/// kicking leg lifts at once, so there is no time for it. The crouch and
+/// the low block step both feet as needed. The pelvis does not move: the step
 /// works on the legs only (rig::Rig::reachFoot), its height alone goes
 /// from the resting legs' to the action's over the steps.
 ///
@@ -76,10 +78,11 @@ public:
     /// Plans the steps from the legs as they stand (\p Now) into the
     /// action's leg pose at its start (\p Target), over \p DurationSec.
     /// \p ClipLeftLeg, \p ClipRightLeg: the action's clip poses that leg (it
-    /// moves on its own afterwards). No foot to move: the plan is empty
-    /// (isActive() is false) and the action takes the legs as it is.
+    /// moves on its own afterwards). \p Strike: the supporting foot stays on
+    /// the floor. No foot to move: the plan is empty (isActive() is false)
+    /// and the action takes the legs as it is.
     static LegStep plan(const rig::LegStance& Now, const rig::LegStance& Target, bool ClipLeftLeg, bool ClipRightLeg,
-                        float DurationSec, const LegStepTuning& Tuning);
+                        bool Strike, float DurationSec, const LegStepTuning& Tuning);
 
     /// Are the steps going on?
     bool isActive() const { return Active; }

@@ -618,7 +618,18 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
         LegsStepped = false;
         return Result;
     }
-    if (TopChanged) startLegStep(*Top, Result.Moving);
+    if (TopChanged) {
+        // Steps lead from the resting legs into a leg action. From one leg
+        // action into the next (the crouch into a low kick or the low block)
+        // the legs are already the action's: the change blends as authored.
+        const bool FromLegAction = ShownTop && anim::usesLegs(*ShownTop);
+        if (FromLegAction) {
+            Step.cancel();
+            LegsStepped = false;
+        } else {
+            startLegStep(*Top, Result.Moving);
+        }
+    }
     const bool Stepping = Step.isActive();
     Step.advance(Dt, Body.measureLegsNow());
     LegTarget = Body.measureLegs(Result.Moving.Angles);
@@ -664,7 +675,8 @@ void Fighter::startLegStep(const anim::Clip& Top, const anim::Pose& Target) {
     const anim::Pose& Mask = Top.Keys.front().Target;
     const bool ClipLeft = Mask.hasJoint(BodyPart::ThighL) || Mask.hasJoint(BodyPart::ShinL);
     const bool ClipRight = Mask.hasJoint(BodyPart::ThighR) || Mask.hasJoint(BodyPart::ShinR);
-    Step = LegStep::plan(Body.measureLegsNow(), Body.measureLegs(Target.Angles), ClipLeft, ClipRight, Sec, Tuning);
+    Step = LegStep::plan(Body.measureLegsNow(), Body.measureLegs(Target.Angles), ClipLeft, ClipRight, Strike, Sec,
+                         Tuning);
     LegsStepped = Step.isActive();
     if constexpr (FIGHTER_DEBUG) {
         if (Step.isActive()) {

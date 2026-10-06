@@ -26,46 +26,46 @@ rig::FootPlacement standOnFloor(rig::FootPlacement Placed);
 } // namespace
 
 LegStep LegStep::plan(const rig::LegStance& Now, const rig::LegStance& Target, bool ClipLeftLeg, bool ClipRightLeg,
-                      float NewDurationSec, const LegStepTuning& Tuning) {
+                      bool Strike, float NewDurationSec, const LegStepTuning& Tuning) {
     LegStep Result;
     Result.Start = Now;
     for (const BodyPart Foot : Feet) Result.Start.getFoot(Foot) = standOnFloor(Now.getFoot(Foot));
     Result.Standing = Result.Start;
     Result.DurationSec = std::max(NewDurationSec, 0.0f);
     Result.LiftHeight = Tuning.LiftHeight;
+    if (Result.DurationSec <= 0.0f) return Result;
 
     const auto isInAir = [&](BodyPart Foot) { return Now.getFoot(Foot).SoleHeight > InAirHeight; };
     const auto isOff = [&](BodyPart Foot) {
         return std::abs(Now.getFoot(Foot).Ankle.X - Target.getFoot(Foot).Ankle.X) > Tuning.MinDistance;
     };
     const auto isClipLeg = [&](BodyPart Foot) { return Foot == BodyPart::FootL ? ClipLeftLeg : ClipRightLeg; };
-    if (Result.DurationSec <= 0.0f || std::ranges::none_of(Feet, [&](BodyPart Foot) {
-            return isInAir(Foot) || isOff(Foot);
-        })) {
-        return Result;
-    }
 
-    // One foot stands while the other steps: a foot in the air lands first
-    // (where the start pose has it), then the supporting foot steps if it is
-    // off, then the foot the clip moves steps into the clip (it would lift
-    // while the other foot steps).
+    // One foot stands while the other steps. First a supporting foot caught
+    // in the air lands where the start pose has it, then a foot of the clip
+    // caught in the air steps into the clip, then the feet off their
+    // target. A strike leaves a supporting foot on the floor where it
+    // stands (the reach comes from the hip, which does not move, and the
+    // kicking leg lifts at once). A foot of the clip steps into the clip of
+    // the moment, so if anything stepped before it, it catches up.
     std::vector<FootStep> Planned;
-    for (const BodyPart Foot : Feet) {
-        if (!isInAir(Foot)) continue;
-        Planned.push_back({.Foot = Foot, .From = Result.Start.getFoot(Foot), .To = Target.getFoot(Foot)});
-    }
-    std::vector<BodyPart> Later;
-    for (const BodyPart Foot : Feet) {
-        if (!isClipLeg(Foot) && !isInAir(Foot) && isOff(Foot)) Later.push_back(Foot);
-    }
-    for (const BodyPart Foot : Feet) {
-        if (isClipLeg(Foot)) Later.push_back(Foot);
-    }
-    for (const BodyPart Foot : Later) {
-        const bool Landed = isInAir(Foot);
-        Planned.push_back({.Foot = Foot, .From = Landed ? Target.getFoot(Foot) : Result.Start.getFoot(Foot)});
-        // The support foot stands at the start pose; only the clip's moves on.
+    const auto add = [&](BodyPart Foot) {
+        if (std::ranges::any_of(Planned, [&](const FootStep& Step) { return Step.Foot == Foot; })) return;
+        Planned.push_back({.Foot = Foot, .From = Result.Start.getFoot(Foot)});
         if (!isClipLeg(Foot)) Planned.back().To = Target.getFoot(Foot);
+    };
+    for (const BodyPart Foot : Feet) {
+        if (isInAir(Foot) && !isClipLeg(Foot)) add(Foot);
+    }
+    for (const BodyPart Foot : Feet) {
+        if (isInAir(Foot) && isClipLeg(Foot)) add(Foot);
+    }
+    for (const BodyPart Foot : Feet) {
+        if (isOff(Foot) && (isClipLeg(Foot) || !Strike)) add(Foot);
+    }
+    if (Planned.empty()) return Result;
+    for (const BodyPart Foot : Feet) {
+        if (isClipLeg(Foot)) add(Foot);
     }
     const float Slot = Result.DurationSec / static_cast<float>(Planned.size());
     for (size_t Index = 0; Index < Planned.size() && Index < MaxFootSteps; ++Index) {
@@ -82,14 +82,10 @@ void LegStep::advance(float Dt, const rig::LegStance& Now) {
     const float Before = ElapsedSec;
     ElapsedSec += Dt;
     if (ElapsedSec >= DurationSec) Active = false;
-    for (const auto& Step : Steps) {
-        // A step that ended leaves its foot at its landing place.
-        if (Step && Step->To && Step->EndSec > Before && Step->EndSec <= ElapsedSec) {
-            Standing.getFoot(Step->Foot) = *Step->To;
-        }
-    }
     for (const BodyPart Foot : Feet) {
-        if (Now.getFoot(Foot).Planted) Standing.getFoot(Foot) = standOnFloor(Now.getFoot(Foot));
+        const rig::FootPlacement& Placed = Now.getFoot(Foot);
+        Standing.getFoot(Foot).Planted = Placed.Planted;
+        if (Placed.Planted) Standing.getFoot(Foot) = standOnFloor(Placed);
     }
     for (auto& Step : Steps) {
         if (!Step || Step->BeginSec <= 0.0f || Step->BeginSec <= Before || Step->BeginSec > ElapsedSec) continue;
@@ -174,14 +170,20 @@ const FootStep* LegStep::findCurrentStep() const {
 }
 
 rig::FootPlacement LegStep::placeFoot(BodyPart Foot, float TimeSec, const rig::LegStance& Target) const {
-    // The step of the foot going on now; else it stands where it stands
-    // (before its step, or after it while another foot steps).
+    // On its step; else where the rig holds it planted (before its step, or
+    // after it while another foot steps); a foot that landed and is not
+    // planted yet stays where its step put it.
+    const FootStep* Latest = nullptr;
     for (const auto& Step : Steps) {
-        if (!Step || Step->Foot != Foot || TimeSec < Step->BeginSec || TimeSec >= Step->EndSec) continue;
-        const rig::FootPlacement To = Step->To.value_or(Target.getFoot(Foot));
-        return placeOnArc(*Step, To, (TimeSec - Step->BeginSec) / (Step->EndSec - Step->BeginSec));
+        if (Step && Step->Foot == Foot && TimeSec >= Step->BeginSec) Latest = &*Step;
     }
-    return Standing.getFoot(Foot);
+    if (Latest && TimeSec < Latest->EndSec) {
+        const rig::FootPlacement To = Latest->To.value_or(Target.getFoot(Foot));
+        return placeOnArc(*Latest, To, (TimeSec - Latest->BeginSec) / (Latest->EndSec - Latest->BeginSec));
+    }
+    const rig::FootPlacement& Held = Standing.getFoot(Foot);
+    if (Latest && !Held.Planted) return Latest->To.value_or(Target.getFoot(Foot));
+    return Held;
 }
 
 rig::FootPlacement LegStep::placeOnArc(const FootStep& Step, const rig::FootPlacement& To, float Share) const {
