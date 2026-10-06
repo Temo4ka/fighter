@@ -90,6 +90,13 @@ struct LegStepTuning {
     float StartupShare = 0.8f;
     /// The steps into an action without a startup (crouch, low block), s.
     float Sec = 0.15f;
+    /// Resting, a planted foot further than this from where the pose puts
+    /// it (left there by a push, a knockback, a short step) steps there
+    /// again, m.
+    float RestepDistance = 0.12f;
+    /// Such a re-step, and the swing foot of a step that ended short set
+    /// down, take this long, s.
+    float RestSec = 0.12f;
     StanceAfterStop Stance = StanceAfterStop::Mirror;
 };
 
@@ -171,6 +178,19 @@ struct CombatTuning {
     /// finish the step on both feet (the legs follow its travel); a step that
     /// needs more ends short, the swing foot set down where it is, m.
     float StopMaxCoast = 0.06f;
+    /// A step that ends short sets its swing foot down where it is, but not
+    /// closer to the other foot than this (feet side by side are fine; a
+    /// step that has just begun is about as wide as the rest pose anyway), m.
+    float ShortStepMinSpread = 0.1f;
+    /// Walking again from a rest pose, the legs go from it into the walk
+    /// cycle over this much pelvis travel (a short press, a little of the
+    /// way), m.
+    float StopResumeDistance = 0.15f;
+    /// How much the swing foot moves evenly with the pelvis travel within a
+    /// step (0..1): 0 plays the walk clip in its own time (its swing is slow
+    /// at lift-off and fast before landing, so a short press swings far),
+    /// 1 moves the swing foot along with the travel (combat/leg_cycle.hpp).
+    float SwingEvenness = 0.9f;
     /// Into the pose of an action that needs the legs.
     LegStepTuning LegStep;
     /// The legs step when the pelvis moves faster than this, m/s: walking,

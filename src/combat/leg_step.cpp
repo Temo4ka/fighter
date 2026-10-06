@@ -189,7 +189,10 @@ rig::FootPlacement LegStep::placeFoot(BodyPart Foot, float TimeSec, const rig::L
 rig::FootPlacement LegStep::placeOnArc(const FootStep& Step, const rig::FootPlacement& To, float Share) const {
     const float Clamped = std::clamp(Share, 0.0f, 1.0f);
     const float Along = smoothStep(Clamped);
-    const float Lift = LiftHeight * std::sin(std::numbers::pi_v<float> * Clamped);
+    // A foot already in the air (set down from a step that ended short)
+    // goes up only what it lacks of the lift height.
+    const float Peak = std::max(LiftHeight - std::max(Step.From.SoleHeight, To.SoleHeight), 0.0f);
+    const float Lift = Peak * std::sin(std::numbers::pi_v<float> * Clamped);
     return {.Ankle = {lerp(Step.From.Ankle.X, To.Ankle.X, Along), lerp(Step.From.Ankle.Y, To.Ankle.Y, Along) + Lift},
             .Angle = lerp(Step.From.Angle, To.Angle, Along),
             .SoleHeight = lerp(Step.From.SoleHeight, To.SoleHeight, Along) + Lift};

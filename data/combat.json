@@ -16,11 +16,16 @@
   "walkStopRate": 3.0,
   "restMinFootSpread": 0.25,
   "stopMaxCoast": 0.06,
+  "shortStepMinSpread": 0.1,
+  "stopResumeDistance": 0.15,
+  "swingEvenness": 0.9,
   "legStep": {
     "minDistance": 0.03,
     "liftHeight": 0.06,
     "startupShare": 0.8,
     "sec": 0.15,
+    "restepDistance": 0.12,
+    "restSec": 0.12,
     "stanceAfterStop": "mirror"
   },
   "crouchWalkSpeedScale": 0.5,

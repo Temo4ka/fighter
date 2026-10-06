@@ -19,6 +19,13 @@
 /// spans are found from the clip and the body (the sole heights and the
 /// ankles the rig computes), not written into the clip.
 ///
+/// The cycle runs in "even time" (setEvenTable()): its clip time is warped
+/// within each step (span middle to span middle) so that the swing foot
+/// moves forward evenly with the pelvis travel instead of as the clip
+/// times it (a clip's swing is slow at lift-off and fast before landing):
+/// a short press is a short swing. The warp keeps the step boundaries, so a
+/// full step is still the same travel.
+///
 /// Played on quickly, the cycle also moves the foot that stands on the
 /// floor relative to the pelvis: the rig holds it where it stands (a planted
 /// foot, the leg bends to it) and the fighter keeps the feet there from then
@@ -82,8 +89,16 @@ public:
 
     LegCycle() = default;
     /// A cycle of \p PeriodSec with its support spans. It starts settled
-    /// with the left foot in front (settle()).
+    /// with the left foot in front (settle()). Without setEvenTable() even
+    /// time is clip time.
     LegCycle(float PeriodSec, std::vector<SupportSpan> Spans);
+    /// The even time of the clip times 0, P/N, ... P (N + 1 samples, P the
+    /// period), increasing; the last one is the first plus the period. The
+    /// walk, its follow() and the coast advance even time.
+    void setEvenTable(std::vector<float> Table);
+    /// Clip time -> even time and back, s in [0, period).
+    float toEven(float ClipSec) const;
+    float toClip(float EvenSec) const;
 
     /// Walks for \p Dt: the phase runs \p Rate clip seconds per second,
     /// forwards for \p Direction > 0, backwards (a step back) otherwise.
@@ -119,9 +134,9 @@ public:
     void rest();
     /// Is the phase inside a support span (both feet down, wide)?
     bool isInSpan() const;
-    /// Clip time left to the span a stop heads to (0 when none), s.
+    /// Even time left to the span a stop heads to (0 when none), s.
     float getStopLeft() const;
-    /// Clip time from the phase to the next span in the direction of the
+    /// Even time from the phase to the next span in the direction of the
     /// last walk (0 inside a span), s: what is left of the step going on.
     float getLeftToSpanAhead() const;
     /// A walk the opponent holds back stops where it is: with both feet down
@@ -145,6 +160,8 @@ public:
     /// the legs stand in.
     bool isEngaged() const { return Engaged; }
     float getTime() const { return TimeSec; }
+    /// The direction of the last walk: +1 forwards through the clip, -1 back.
+    float getDirection() const { return Direction; }
     float getPeriod() const { return PeriodSec; }
     /// The phase a stop heads to (the current one when held).
     float getStopTarget() const;
@@ -164,10 +181,14 @@ private:
     StopPlan planStop() const;
     /// The nearest span ahead in the direction of the last walk.
     StopTarget findSpanAhead() const;
+    /// The even time from the phase to the clip time \p Offset away (signed
+    /// the same way).
+    float getEvenOffset(float Offset) const;
     void playStop(const StopPlan& Plan, float Dt, float Rate);
 
     float PeriodSec = 1.0f;
     std::vector<SupportSpan> Spans{SupportSpan{}};
+    std::vector<float> EvenTable;   ///< setEvenTable(); empty: even time is clip time.
     float TimeSec = 0.0f;
     float StepSec = 0.0f;     ///< How far the last walk() moved the phase (signed); 0 after stop(), settle().
     float Direction = 1.0f;   ///< Of the last walk: a tie is broken that way.
@@ -179,7 +200,10 @@ private:
 /// The leg cycle of the looping clip \p Cycle played over \p Base (the
 /// stance or the crouch): the support spans are where both soles of
 /// \p Body are below the rig's foot plant height (rig::Rig::measureLegs)
-/// and the ankles at least \p MinSpread apart, m.
-LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread);
+/// and the ankles at least \p MinSpread apart, m. \p Evenness (0..1): how
+/// much the swing foot's progress, not the clip's time, sets the even time
+/// of a step (0: even time is clip time).
+LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread,
+                      float Evenness = 0.0f);
 
 } // namespace fighter::combat

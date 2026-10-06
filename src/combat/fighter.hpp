@@ -40,10 +40,16 @@
 /// stopped, or play the clip on top if that clip poses the legs (a leg
 /// action: kicks, the crouch, the low block).
 ///
-/// Walking stops on both feet (combat/leg_cycle.hpp): released, the walk
-/// cycle plays on to the nearest wide double-support phase and the legs
-/// rest there, feet planted, until something needs them; walking again goes
-/// on from that phase. An action that does not pose the legs (a punch, the
+/// The stride follows the press (combat/leg_cycle.hpp): the walk cycle
+/// runs with the pelvis travel, so a short press is a short step. Released,
+/// the step going on ends on both feet: the pelvis coasts on to the next
+/// wide double support if that is at most CombatTuning::StopMaxCoast away
+/// (the legs still follow its travel); else the step ends short, the swing
+/// foot set down where it is (a lifted LegStep), never closer to the other
+/// foot than CombatTuning::RestMinFootSpread. The legs rest there, feet
+/// planted, until something needs them; walking again goes on from that
+/// phase. A planted foot left further than legStep.restepDistance from the
+/// rest pose (a push, a knockback) steps there again. An action that does not pose the legs (a punch, the
 /// upper blocks, a reaction) leaves them as they are. A leg action takes
 /// them with real steps during its startup (combat/leg_step.hpp), and with
 /// the right foot in front it plays mirrored, left leg for right
@@ -278,7 +284,37 @@ private:
     bool shouldMirrorLegs() const;
     /// The stance legs with \p FrontFoot in front (mirrored for FootR).
     anim::Pose getStanceLegs(BodyPart FrontFoot) const;
+    /// \name The end of a step when the move key is released
+    /// @{
+    /// Heads the walk to the end of the step going on: a coast to the span
+    /// ahead within StopMaxCoast, else a short step.
+    void beginStop(float CycleSpeed);
+    /// One step of the coast: the cycle follows the pelvis travel, which
+    /// ends at the span or at the coast's length; then the legs rest.
+    void coastLegs(float CycleSpeed, float Dt);
+    /// The walk came to rest at its phase (at a span, or short): the rest
+    /// pose keeps the planted feet where they stand (within
+    /// legStep.restepDistance of the cycle's pose, else they step there) and
+    /// sets the swing foot of a short step down where it is, within the
+    /// leg's reach (RestLanding, by a LegStep).
+    void settleRest();
+    /// \p Legs (the cycle's pose) with the feet of the rest (RestLanding).
+    anim::Pose applyLanding(const anim::Pose& Legs) const;
+    /// Walking again from the rest: the landing and any re-step fade into
+    /// the walk cycle.
+    void leaveRest();
+    /// Drops the rest pose's landing, a re-step and a coast (another clip
+    /// took the legs, or the fighter fell).
+    void clearRest();
+    /// Resting: re-steps a planted foot left off the rest pose \p Target
+    /// (the motor pose of this step), and advances and applies the landing
+    /// or re-step going on.
+    void updateRestStep(TargetPoses& Target, float Dt);
+    /// @}
     std::string describeLegs() const;
+    /// "step 0.12 of 0.48 m", "coast 0.03 m (max 0.06), to the span",
+    /// "rest after a short step; re-steps 2, last FootR 0.07 m".
+    std::string describeStride() const;
     /// The clip on the upper body ("jab 0.12/0.44 s ...", "stance").
     std::string describeUpper() const;
     /// "pose walk -> strike 0.04 s, 0.40; legs -": the blends in progress.
@@ -353,6 +389,29 @@ private:
     bool LegsStepped = false;
     bool LegsMirrored = false;             ///< The leg action on top plays with the legs swapped.
     rig::LegStance LegTarget;              ///< Where the leg action has the legs this step (for the debug draw).
+
+    /// Where the feet stand while the legs rest at the walk cycle's phase
+    /// (the pelvis height is the cycle's), and the swing foot of a step that
+    /// ended short, set down.
+    struct FootLanding {
+        std::optional<BodyPart> SetDown;
+        rig::LegStance Feet;
+    };
+    std::optional<FootLanding> RestLanding;
+    LegStep RestStep;                      ///< Setting the short step's foot down, or a re-step.
+    bool RestStepFresh = false;            ///< RestStep was planned in this step: it starts in the next.
+    rig::LegStance RestTarget;             ///< Where RestStep takes the legs (for the debug draw).
+    bool Coasting = false;                 ///< Released: the pelvis coasts to the end of the step.
+    bool CoastToSpan = false;              ///< The coast reaches the next span (else the step ends short).
+    float CoastSign = 1.0f;                ///< Of the coast, world X.
+    float CoastLeft = 0.0f;                ///< Coast still allowed, m.
+    float CoastDone = 0.0f;                ///< How far the last (or current) coast went, m.
+    float StepTravel = 0.0f;               ///< Pelvis travel in the step going on, m.
+    float StepLength = 0.0f;               ///< The step going on at full stride, m.
+    int Resteps = 0;                       ///< Re-steps so far, for the debug panel.
+    /// LegFade runs over pelvis travel (m), not time: leaving a rest.
+    bool LegFadeByTravel = false;
+    std::string LastRestep;                ///< The last one, for the debug panel.
     bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
     std::optional<MoveButton> PendingAttack; ///< Pressed while crouched: starts once the fighter stood up.
     float StandUpLeftSec = 0.0f;

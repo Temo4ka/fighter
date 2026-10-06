@@ -96,6 +96,20 @@ TEST_CASE("parseCombatTuning: the steps into an action that needs the legs", "[c
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "sec": 0 } })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "minDistance": -1 } })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": 1 })"), std::runtime_error);
+    const CombatTuning Rest = parseCombatTuning(R"({ "stopMaxCoast": 0.04,
+        "legStep": { "restepDistance": 0.07, "restSec": 0.2 } })");
+    CHECK(Rest.StopMaxCoast == 0.04f);
+    CHECK(parseCombatTuning(R"({ "shortStepMinSpread": 0.2 })").ShortStepMinSpread == 0.2f);
+    CHECK(parseCombatTuning(R"({ "stopResumeDistance": 0.2 })").StopResumeDistance == 0.2f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "stopResumeDistance": -1 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "shortStepMinSpread": -1 })"), std::runtime_error);
+    CHECK(Rest.LegStep.RestepDistance == 0.07f);
+    CHECK(Rest.LegStep.RestSec == 0.2f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "stopMaxCoast": -0.01 })"), std::runtime_error);
+    CHECK(parseCombatTuning(R"({ "swingEvenness": 0.5 })").SwingEvenness == 0.5f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "swingEvenness": 1.5 })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restepDistance": 0 } })"), std::runtime_error);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restSec": 0 } })"), std::runtime_error);
 }
 
 TEST_CASE("loadCombatTuning: data/combat.json loads", "[combat]") {

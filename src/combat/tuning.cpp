@@ -37,6 +37,9 @@ constexpr std::array TuningFields = {
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
     TuningField{"restMinFootSpread", &CombatTuning::RestMinFootSpread},
     TuningField{"stopMaxCoast", &CombatTuning::StopMaxCoast},
+    TuningField{"shortStepMinSpread", &CombatTuning::ShortStepMinSpread},
+    TuningField{"stopResumeDistance", &CombatTuning::StopResumeDistance},
+    TuningField{"swingEvenness", &CombatTuning::SwingEvenness},
     TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
     TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
@@ -150,6 +153,11 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
     if (Tuning.RestMinFootSpread < 0.0f) throw std::runtime_error("restMinFootSpread must not be negative");
     if (Tuning.StopMaxCoast < 0.0f) throw std::runtime_error("stopMaxCoast must not be negative");
+    if (Tuning.ShortStepMinSpread < 0.0f) throw std::runtime_error("shortStepMinSpread must not be negative");
+    if (Tuning.StopResumeDistance < 0.0f) throw std::runtime_error("stopResumeDistance must not be negative");
+    if (Tuning.SwingEvenness < 0.0f || Tuning.SwingEvenness > 1.0f) {
+        throw std::runtime_error("swingEvenness must be in [0, 1]");
+    }
     if (Tuning.StepMinSpeed < 0.0f) throw std::runtime_error("stepMinSpeed must not be negative");
     if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {
         throw std::runtime_error("crouchWalkSpeedScale must be in (0, 1]");
@@ -219,7 +227,8 @@ BlendTable parseBlends(const Json& Value) {
     return Table;
 }
 
-/// "legStep": { "minDistance": m, "liftHeight": m, "startupShare": share, "sec": s,
+/// "legStep": { "minDistance": m, "liftHeight": m, "startupShare": share, "sec": s, "restepDistance": m,
+/// "restSec": s,
 /// "stanceAfterStop": "mirror" | "authored" }.
 LegStepTuning parseLegStep(const Json& Value) {
     if (!Value.is_object()) throw std::runtime_error("legStep must be an object");
@@ -233,6 +242,10 @@ LegStepTuning parseLegStep(const Json& Value) {
             Step.StartupShare = Item.get<float>();
         } else if (Key == "sec") {
             Step.Sec = Item.get<float>();
+        } else if (Key == "restepDistance") {
+            Step.RestepDistance = Item.get<float>();
+        } else if (Key == "restSec") {
+            Step.RestSec = Item.get<float>();
         } else if (Key == "stanceAfterStop") {
             const std::string Name = Item.get<std::string>();
             const auto Found = std::ranges::find(StanceAfterStopNames, Name);
@@ -251,6 +264,8 @@ LegStepTuning parseLegStep(const Json& Value) {
         throw std::runtime_error("legStep.startupShare must be in (0, 1]");
     }
     if (Step.Sec <= 0.0f) throw std::runtime_error("legStep.sec must be positive");
+    if (Step.RestepDistance <= 0.0f) throw std::runtime_error("legStep.restepDistance must be positive");
+    if (Step.RestSec <= 0.0f) throw std::runtime_error("legStep.restSec must be positive");
     return Step;
 }
 

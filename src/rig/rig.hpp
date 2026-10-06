@@ -32,7 +32,10 @@
 /// (a crouch) lowers the pelvis with the feet staying on the floor. A planted
 /// foot holds its place on the floor while the pelvis moves: the leg bends
 /// to reach it (two-bone IK), so the feet do not slide when the walk cycle
-/// and the walking speed disagree.
+/// and the walking speed disagree. While the fighter walks, a lifted foot
+/// does not move against the walk in the world: a clip whose rear foot goes
+/// back faster than the body goes on would slide it back as it lifts; it
+/// lifts in place instead and swings when the clip takes it forward.
 ///
 /// A strong hit knocks the fighter down: every part becomes dynamic and the
 /// body falls as a ragdoll, pushed and spun by the hit; after a while the
@@ -191,6 +194,11 @@ public:
     /// the feet left off the clip do not slide or take an extra step.
     /// Lifting a foot forgets it.
     void keepFeetPlanted();
+    /// The lifted feet go exactly where the target pose puts them: their
+    /// offset from the clip (a lifted foot returns to the clip from where it
+    /// stood) is dropped. Combat calls it when it starts posing the feet
+    /// itself (a step into an action or into the rest), from where they are.
+    void dropLiftedFootOffsets();
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -458,6 +466,9 @@ private:
         /// keepFeetPlanted() took it: it holds its place as far as the leg
         /// reaches, not only within FootLockSlip, until it is lifted.
         bool Kept = false;
+        /// World X of the ankle in the last step (if HasLastX).
+        float LastX = 0.0f;
+        bool HasLastX = false;
     };
 
     /// Where a body origin is and how the body is turned.
