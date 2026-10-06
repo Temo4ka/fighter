@@ -157,6 +157,13 @@ struct ControlParams {
     float FootRestepDistance = 0.05f;
     /// How high a foot stepping back is lifted, per meter it still has to go.
     float FootStepLift = 0.5f;
+    /// Holding a planted foot, the knee bends at most this much deeper than
+    /// the clip bends it (always the way a knee bends), rad; a foot further
+    /// off is not reached (combat steps it again).
+    float KneeExtraBend = 0.6f;
+    /// The pelvis goes down at most this far below the pose for a planted
+    /// foot the leg would not reach otherwise, m.
+    float MaxPelvisDrop = 0.03f;
     /// @}
 
     /// \name Limbs stuck in the opponent

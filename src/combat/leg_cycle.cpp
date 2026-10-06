@@ -89,6 +89,67 @@ void LegCycle::stop(float Dt, float Rate) {
     playStop(planStop(), Dt, Rate);
 }
 
+void LegCycle::beginStop() {
+    StepSec = 0.0f;
+    Chosen.reset();
+    if (isInSpan()) {
+        CurrentMode = Mode::Still;
+        return;
+    }
+    Chosen = findSpanAhead();
+    CurrentMode = Mode::Stopping;
+}
+
+void LegCycle::coast(float Dt, float Rate, float NewDirection) {
+    if (CurrentMode != Mode::Stopping) return;
+    const float Left = planStop().Offset;
+    const float Step = Dt * Rate * (NewDirection > 0.0f ? 1.0f : -1.0f);
+    // Only towards the span; there it rests.
+    if (Step * Left <= 0.0f && Left != 0.0f) {
+        StepSec = 0.0f;
+        return;
+    }
+    if (std::abs(Step) >= std::abs(Left)) {
+        StepSec = Left;
+        TimeSec = wrapTime(TimeSec + Left, PeriodSec);
+        CurrentMode = Mode::Still;
+        Chosen.reset();
+        return;
+    }
+    StepSec = Step;
+    TimeSec = wrapTime(TimeSec + Step, PeriodSec);
+}
+
+void LegCycle::rest() {
+    StepSec = 0.0f;
+    Chosen.reset();
+    CurrentMode = Mode::Still;
+}
+
+bool LegCycle::isInSpan() const {
+    return std::ranges::any_of(Spans, [&](const SupportSpan& Span) { return isInside(Span, TimeSec, PeriodSec); });
+}
+
+float LegCycle::getLeftToSpanAhead() const { return isInSpan() ? 0.0f : std::abs(findSpanAhead().Offset); }
+
+StopTarget LegCycle::findSpanAhead() const {
+    std::optional<StopTarget> Best;
+    for (size_t Index = 0; Index < Spans.size(); ++Index) {
+        const SupportSpan& Span = Spans[Index];
+        // A little inside the span, so that rounding cannot stop the phase
+        // just outside it.
+        const float Margin = getWidth(Span, PeriodSec) * 0.25f;
+        const float Offset = Direction > 0.0f ? wrapTime(Span.BeginSec + Margin - TimeSec, PeriodSec)
+                                              : -wrapTime(TimeSec - (Span.EndSec - Margin), PeriodSec);
+        if (!Best || std::abs(Offset) < std::abs(Best->Offset)) {
+            Best = StopTarget{.TimeSec = wrapTime(TimeSec + Offset, PeriodSec), .Offset = Offset, .Span = Index};
+        }
+    }
+    return Best.value_or(StopTarget{.TimeSec = TimeSec});
+}
+
+float LegCycle::getStopLeft() const { return CurrentMode == Mode::Stopping ? std::abs(planStop().Offset) : 0.0f; }
+
 void LegCycle::hold() {
     StepSec = 0.0f;
     Chosen.reset();

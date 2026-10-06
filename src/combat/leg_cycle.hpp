@@ -76,7 +76,7 @@ public:
     enum class Mode : uint8_t {
         Still,      ///< Holds its phase.
         Walking,    ///< Follows the walking speed.
-        Stopping,   ///< Plays on to the nearest support span, then rests there.
+        Stopping,   ///< Coasts (coast()) or plays on (stop()) to a support span.
         Held,       ///< Keeps a mid-step pose: the opponent is in the way (hold()).
     };
 
@@ -106,6 +106,24 @@ public:
     /// The stop heads to \p Target (one of getStopTargets()) until the
     /// cycle walks again, holds or settles.
     void chooseStop(const StopTarget& Target);
+    /// The move key released: the walk heads to the next support span in
+    /// the direction it walked (the end of the step going on), and coast()
+    /// takes it there with the pelvis travel. In a span already, it rests
+    /// there at once.
+    void beginStop();
+    /// After beginStop(): like walk(), the phase runs with the travel, but
+    /// stops at the span it heads to and rests there (Mode::Still).
+    void coast(float Dt, float Rate, float Direction);
+    /// Rests where it is, also in mid-step (the step ends short: the
+    /// fighter sets the swing foot down).
+    void rest();
+    /// Is the phase inside a support span (both feet down, wide)?
+    bool isInSpan() const;
+    /// Clip time left to the span a stop heads to (0 when none), s.
+    float getStopLeft() const;
+    /// Clip time from the phase to the next span in the direction of the
+    /// last walk (0 inside a span), s: what is left of the step going on.
+    float getLeftToSpanAhead() const;
     /// A walk the opponent holds back stops where it is: with both feet down
     /// as stop() does at once; in mid-step it keeps its pose (Mode::Held)
     /// until it walks again or settle(), because playing the step on (or
@@ -144,6 +162,8 @@ private:
         size_t Span = 0;
     };
     StopPlan planStop() const;
+    /// The nearest span ahead in the direction of the last walk.
+    StopTarget findSpanAhead() const;
     void playStop(const StopPlan& Plan, float Dt, float Rate);
 
     float PeriodSec = 1.0f;

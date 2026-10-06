@@ -825,7 +825,7 @@ float Rig::getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Le
         const float HighestHip = getAnkleInPose(Limb, Pose).Y + std::sqrt(Reach * Reach - Across * Across);
         RootDrop = std::max(RootDrop, HipPoint.Y - HighestHip);
     }
-    return RootDrop;
+    return std::min(RootDrop, Control.MaxPelvisDrop);
 }
 
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
@@ -891,15 +891,17 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
         if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
-            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections,
-                       Joints[Limb.Knee].Target);
+            // The knee bends at most KneeExtraBend deeper than the clip's.
+            const JointState& Knee = Joints[Limb.Knee];
+            const float MaxBend = std::abs(Knee.Target) + Control.KneeExtraBend;
+            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections, Knee.Target, MaxBend);
         }
     }
     return Corrections;
 }
 
 void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                     PerBodyPart<float>& Corrections, float KneeHint) const {
+                     PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend) const {
     const JointState& Hip = Joints[Limb.Hip];
     const JointState& Knee = Joints[Limb.Knee];
     const JointState& AnkleJoint = Joints[Limb.Ankle];
@@ -936,7 +938,11 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     const bool ReachesA = KneeA == RawA;
     const bool ReachesB = KneeB == RawB;
     const bool CloserA = std::abs(KneeA - KneeHint) <= std::abs(KneeB - KneeHint);
-    const float KneeAngle = ReachesA != ReachesB ? (ReachesA ? KneeA : KneeB) : (CloserA ? KneeA : KneeB);
+    float KneeAngle = ReachesA != ReachesB ? (ReachesA ? KneeA : KneeB) : (CloserA ? KneeA : KneeB);
+    // A knee bends one way only (the side of its range, mirrored with the
+    // facing), and no deeper than MaxBend.
+    const float BendSign = Knee.LowerAngle + Knee.UpperAngle >= 0.0f ? 1.0f : -1.0f;
+    if (MaxBend) KneeAngle = BendSign * std::min(KneeAngle * BendSign, *MaxBend);
 
     // Body angles, then joint angles.
     const float ThighAngle = getHeading(ToAnkle) - getHeading(ThighBone + rotate(ShinBone, KneeAngle));

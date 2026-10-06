@@ -520,9 +520,11 @@ private:
     void followTravel();
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
-    /// The knee takes the solution closer to \p KneeHint (rad, mirrored).
+    /// The knee takes the solution within its limits, else the one closer
+    /// to \p KneeHint (rad, mirrored), and bends no deeper than \p MaxBend
+    /// (rad, along the way it bends), if given.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                    PerBodyPart<float>& Corrections, float KneeHint) const;
+                    PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend = {}) const;
     /// The joint targets of the pose \p Angles (as for setTargetAngles(),
     /// clamped to the limits) as corrections to the current targets.
     PerBodyPart<float> getAngleCorrections(const PerBodyPart<float>& Angles) const;

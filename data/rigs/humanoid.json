@@ -85,6 +85,8 @@
     "footLockRelease": 12.0,
     "footRestepDistance": 0.05,
     "footStepLift": 0.5,
+    "kneeExtraBend": 0.6,
+    "maxPelvisDrop": 0.03,
 
     "jamAngle": 0.35,
     "jamSec": 0.3,

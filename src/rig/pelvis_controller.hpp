@@ -72,6 +72,11 @@ public:
     /// up again with WalkAcceleration when the way is free instead of at
     /// once.
     void slowWalk(float Speed);
+    /// After plan(): the walk may take the pelvis at most \p MaxTravel (m,
+    /// not negative) further in this step; if it planned more, the planned
+    /// position comes back to that and the walk stops (a coast that ends).
+    /// The knockback is left alone. Returns whether it cut the walk.
+    bool capWalkTravel(float MaxTravel, float Dt);
     /// Makes the planned position the current one.
     void commit(float Dt);
     /// Stands still at \p NewX: no walking, no knockback.

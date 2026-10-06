@@ -282,6 +282,26 @@ TEST_CASE("PelvisController: stopping uses the deceleration", "[rig]") {
     CHECK(Controller.getWalkVelocity() == Approx(0.6f - 0.2f));
 }
 
+TEST_CASE("PelvisController: capWalkTravel ends a coast at its distance", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 100.0f, .WalkDeceleration = 20.0f, .KnockbackDecay = 5.0f});
+    Controller.setTargetVelocity(1.0f);
+    Controller.plan(0.1f);
+    Controller.commit(0.1f);
+    Controller.addKnockback(0.5f);
+    Controller.plan(0.1f);
+    // Walk 0.1 m and knockback 0.05 m planned; the walk may go 0.02 m.
+    CHECK_FALSE(Controller.capWalkTravel(0.5f, 0.1f));
+    CHECK(Controller.capWalkTravel(0.02f, 0.1f));
+    CHECK(Controller.getPlannedTravel() == Approx(0.02f + 0.05f));
+    CHECK(Controller.getWalkVelocity() == 0.0f);
+    // Backwards too, and a negative limit is none.
+    PelvisController Back(0.0f, {.WalkAcceleration = 100.0f, .WalkDeceleration = 20.0f, .KnockbackDecay = 5.0f});
+    Back.setTargetVelocity(-1.0f);
+    Back.plan(0.1f);
+    CHECK(Back.capWalkTravel(-1.0f, 0.1f));
+    CHECK(Back.getPlannedTravel() == Approx(0.0f).margin(1e-6f));
+}
+
 TEST_CASE("PelvisController: knockback decays and walls stop it", "[rig]") {
     PelvisController Controller(0.0f, {.WalkAcceleration = 6.0f, .KnockbackDecay = 5.0f});
     Controller.addKnockback(2.0f);

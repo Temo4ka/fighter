@@ -167,6 +167,10 @@ struct CombatTuning {
     /// only if the ankles are at least this far apart (not where the feet
     /// pass each other), m.
     float RestMinFootSpread = 0.25f;
+    /// The move key released mid-step: the pelvis may go on this far to
+    /// finish the step on both feet (the legs follow its travel); a step that
+    /// needs more ends short, the swing foot set down where it is, m.
+    float StopMaxCoast = 0.06f;
     /// Into the pose of an action that needs the legs.
     LegStepTuning LegStep;
     /// The legs step when the pelvis moves faster than this, m/s: walking,
