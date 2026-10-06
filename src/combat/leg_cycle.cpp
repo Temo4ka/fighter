@@ -4,7 +4,6 @@
 #include <cmath>
 #include <limits>
 #include <optional>
-#include <ranges>
 #include <utility>
 
 namespace fighter::combat {
@@ -12,16 +11,9 @@ namespace {
 
 /// Offsets closer than this count as equal: the tie goes the way of the walk.
 constexpr float TieSec = 1e-5f;
-/// The swing foot's share of a step never sets even time alone: the clip's
-/// time keeps this share, so that even time keeps increasing.
-constexpr float MaxEvenness = 0.98f;
-/// A step whose swing foot moves less than this in the world is timed by
-/// the clip, m.
-constexpr float MinSwingGap = 0.01f;
+
 
 float wrapTime(float TimeSec, float PeriodSec);
-std::vector<float> makeEvenTable(float PeriodSec, std::vector<float> Middles,
-                                 const std::function<rig::LegStance(float)>& Measure, float Evenness);
 float getWidth(const SupportSpan& Span, float PeriodSec);
 bool isInside(const SupportSpan& Span, float TimeSec, float PeriodSec);
 float getMiddle(const SupportSpan& Span, float PeriodSec);
@@ -75,38 +67,29 @@ LegCycle::LegCycle(float NewPeriodSec, std::vector<SupportSpan> NewSpans)
     settle();
 }
 
-void LegCycle::setEvenTable(std::vector<float> Table) {
-    EvenTable = Table.size() >= 2 ? std::move(Table) : std::vector<float>{};
+std::optional<size_t> LegCycle::findStep(float At) const {
+    for (size_t Index = 0; Index < Steps.size(); ++Index) {
+        const CycleStep& Step = Steps[Index];
+        if (wrapTime(At - Step.BeginSec, PeriodSec) <= Step.EndSec - Step.BeginSec) return Index;
+    }
+    return std::nullopt;
 }
 
-float LegCycle::toEven(float ClipSec) const {
-    if (EvenTable.empty()) return wrapTime(ClipSec, PeriodSec);
-    const float Sample = PeriodSec / static_cast<float>(EvenTable.size() - 1);
-    const float At = wrapTime(ClipSec, PeriodSec) / Sample;
-    const auto Index = std::min(static_cast<size_t>(At), EvenTable.size() - 2);
-    const float T = At - static_cast<float>(Index);
-    return wrapTime(EvenTable[Index] + (EvenTable[Index + 1] - EvenTable[Index]) * T, PeriodSec);
-}
-
-float LegCycle::toClip(float EvenSec) const {
-    if (EvenTable.empty()) return wrapTime(EvenSec, PeriodSec);
-    const float Sample = PeriodSec / static_cast<float>(EvenTable.size() - 1);
-    const float First = EvenTable.front();
-    const float Even = First + wrapTime(EvenSec - First, PeriodSec);
-    const auto Next = std::upper_bound(EvenTable.begin(), EvenTable.end(), Even);
-    if (Next == EvenTable.begin()) return 0.0f;
-    if (Next == EvenTable.end()) return wrapTime(PeriodSec, PeriodSec);
-    const auto Index = static_cast<size_t>(std::prev(Next) - EvenTable.begin());
-    const float Span = EvenTable[Index + 1] - EvenTable[Index];
-    const float T = Span > 0.0f ? (Even - EvenTable[Index]) / Span : 0.0f;
-    return wrapTime((static_cast<float>(Index) + T) * Sample, PeriodSec);
+float LegCycle::getStepShare(size_t Step, float At) const {
+    const CycleStep& Each = Steps[Step];
+    const float Length = Each.EndSec - Each.BeginSec;
+    if (Length <= 0.0f) return 0.0f;
+    // The nearer way round from the begin: a little before it is negative.
+    float Into = wrapTime(At - Each.BeginSec, PeriodSec);
+    if (Into > Length + (PeriodSec - Length) * 0.5f) Into -= PeriodSec;
+    return Into / Length;
 }
 
 void LegCycle::walk(float Dt, float Rate, float NewDirection) {
     Chosen.reset();
     Direction = NewDirection > 0.0f ? 1.0f : -1.0f;
     StepSec = Dt * Rate * Direction;
-    TimeSec = toClip(toEven(TimeSec) + StepSec);
+    TimeSec = wrapTime(TimeSec + StepSec, PeriodSec);
     CurrentMode = Mode::Walking;
     Engaged = true;
 }
@@ -114,13 +97,13 @@ void LegCycle::walk(float Dt, float Rate, float NewDirection) {
 void LegCycle::follow(float Share) {
     const float Kept = StepSec * std::clamp(Share, 0.0f, 1.0f);
     const bool Arrived = CurrentMode == Mode::Still && StepSec != 0.0f;
-    TimeSec = toClip(toEven(TimeSec) - StepSec + Kept);
+    TimeSec = wrapTime(TimeSec - StepSec + Kept, PeriodSec);
     StepSec = Kept;
     // A coast that reached its span but was held back short of it goes on.
     if (Arrived && Kept != StepSec) CurrentMode = Mode::Stopping;
 }
 
-float LegCycle::getStepFromTime() const { return toClip(toEven(TimeSec) - StepSec); }
+float LegCycle::getStepFromTime() const { return wrapTime(TimeSec - StepSec, PeriodSec); }
 
 void LegCycle::stop(float Dt, float Rate) {
     StepSec = 0.0f;
@@ -142,7 +125,7 @@ void LegCycle::beginStop() {
 void LegCycle::coast(float Dt, float Rate, float NewDirection) {
     if (CurrentMode != Mode::Stopping) return;
     const float Offset = planStop().Offset;
-    const float Left = getEvenOffset(Offset);
+    const float Left = Offset;
     const float Step = Dt * Rate * (NewDirection > 0.0f ? 1.0f : -1.0f);
     // Only towards the span; there it rests.
     if (Step * Left <= 0.0f && Left != 0.0f) {
@@ -156,7 +139,7 @@ void LegCycle::coast(float Dt, float Rate, float NewDirection) {
         return;
     }
     StepSec = Step;
-    TimeSec = toClip(toEven(TimeSec) + Step);
+    TimeSec = wrapTime(TimeSec + Step, PeriodSec);
 }
 
 void LegCycle::rest() {
@@ -169,16 +152,7 @@ bool LegCycle::isInSpan() const {
     return std::ranges::any_of(Spans, [&](const SupportSpan& Span) { return isInside(Span, TimeSec, PeriodSec); });
 }
 
-float LegCycle::getLeftToSpanAhead() const {
-    return isInSpan() ? 0.0f : std::abs(getEvenOffset(findSpanAhead().Offset));
-}
-
-float LegCycle::getEvenOffset(float Offset) const {
-    if (Offset == 0.0f) return 0.0f;
-    const float From = toEven(TimeSec);
-    const float To = toEven(TimeSec + Offset);
-    return Offset > 0.0f ? wrapTime(To - From, PeriodSec) : -wrapTime(From - To, PeriodSec);
-}
+float LegCycle::getLeftToSpanAhead() const { return isInSpan() ? 0.0f : std::abs(findSpanAhead().Offset); }
 
 StopTarget LegCycle::findSpanAhead() const {
     std::optional<StopTarget> Best;
@@ -196,9 +170,7 @@ StopTarget LegCycle::findSpanAhead() const {
     return Best.value_or(StopTarget{.TimeSec = TimeSec});
 }
 
-float LegCycle::getStopLeft() const {
-    return CurrentMode == Mode::Stopping ? std::abs(getEvenOffset(planStop().Offset)) : 0.0f;
-}
+float LegCycle::getStopLeft() const { return CurrentMode == Mode::Stopping ? std::abs(planStop().Offset) : 0.0f; }
 
 void LegCycle::hold() {
     StepSec = 0.0f;
@@ -280,8 +252,7 @@ LegCycle::StopPlan LegCycle::planStop() const {
     return Best;
 }
 
-LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread,
-                      float Evenness) {
+LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig::Rig& Body, float MinSpread) {
     const auto measure = [&](float TimeSec) {
         anim::Pose Pose = Base;
         anim::layerPose(Pose, anim::sampleClip(Cycle, TimeSec));
@@ -299,79 +270,49 @@ LegCycle makeLegCycle(const anim::Clip& Cycle, const anim::Pose& Base, const rig
     for (SupportSpan& Span : Spans) Span.FrontFoot = measure(getMiddle(Span, Cycle.DurationSec)).getFrontFoot();
     std::vector<float> Middles;
     for (const SupportSpan& Span : Spans) Middles.push_back(getMiddle(Span, Cycle.DurationSec));
+    std::ranges::sort(Middles);
+    std::vector<CycleStep> Steps;
+    for (size_t Index = 0; Index < Middles.size(); ++Index) {
+        const float Begin = Middles[Index];
+        const float End = Index + 1 < Middles.size() ? Middles[Index + 1] : Middles.front() + Cycle.DurationSec;
+        if (End <= Begin) continue;
+        // The swing foot: the one that goes higher in the step.
+        float LeftLift = 0.0f;
+        float RightLift = 0.0f;
+        for (float Time = Begin; Time < End; Time += SupportSampleSec) {
+            const rig::LegStance Legs = measure(wrapTime(Time, Cycle.DurationSec));
+            LeftLift = std::max(LeftLift, Legs.Left.SoleHeight);
+            RightLift = std::max(RightLift, Legs.Right.SoleHeight);
+        }
+        const BodyPart Swing = LeftLift >= RightLift ? BodyPart::FootL : BodyPart::FootR;
+        // Where in the step the swing foot is in the air.
+        float Lift = 1.0f;
+        float Land = 0.0f;
+        const float PlantHeight = Body.getControl().FootPlantHeight;
+        for (float Time = Begin; Time < End; Time += SupportSampleSec) {
+            if (measure(wrapTime(Time, Cycle.DurationSec)).getFoot(Swing).SoleHeight <= PlantHeight) continue;
+            const float Share = (Time - Begin) / (End - Begin);
+            Lift = std::min(Lift, Share);
+            Land = std::max(Land, Share);
+        }
+        if (Land <= Lift) {
+            Lift = 0.0f;
+            Land = 1.0f;
+        }
+        Steps.push_back({.BeginSec = Begin,
+                         .EndSec = End,
+                         .Swing = Swing,
+                         .SwingBeginX = measure(Begin).getFoot(Swing).Ankle.X,
+                         .SwingEndX = measure(wrapTime(End, Cycle.DurationSec)).getFoot(Swing).Ankle.X,
+                         .LiftShare = Lift,
+                         .LandShare = Land});
+    }
     LegCycle Result(Cycle.DurationSec, std::move(Spans));
-    if (Evenness > 0.0f) Result.setEvenTable(makeEvenTable(Cycle.DurationSec, Middles, measure, Evenness));
+    Result.setSteps(std::move(Steps));
     return Result;
 }
 
 namespace {
-
-/// The even times of the clip times 0, P/N, ... P (LegCycle::setEvenTable):
-/// in each step, from one span middle to the next, even time is the share
-/// of the step the swing foot has gone in the world, blended by \p Evenness
-/// with the share of the step's clip time.
-std::vector<float> makeEvenTable(float PeriodSec, std::vector<float> Middles,
-                                 const std::function<rig::LegStance(float)>& Measure, float Evenness) {
-    const auto Count = static_cast<size_t>(std::max(1.0f, std::ceil(PeriodSec / SupportSampleSec)));
-    const float Sample = PeriodSec / static_cast<float>(Count);
-    const float Weight = std::clamp(Evenness, 0.0f, MaxEvenness);
-    std::ranges::sort(Middles);
-    std::vector<float> Table(Count + 1);
-    for (size_t Step = 0; Step < Middles.size(); ++Step) {
-        const float Begin = Middles[Step];
-        const float End = Step + 1 < Middles.size() ? Middles[Step + 1] : Middles.front() + PeriodSec;
-        const float Length = End - Begin;
-        if (Length <= 0.0f) continue;
-        // The clip samples of the step (clip time unwrapped from Begin).
-        std::vector<float> Times;
-        for (auto Index = static_cast<size_t>(std::ceil(Begin / Sample)); static_cast<float>(Index) * Sample <= End;
-             ++Index) {
-            Times.push_back(static_cast<float>(Index) * Sample);
-        }
-        std::vector<rig::LegStance> Legs;
-        for (const float Time : Times) Legs.push_back(Measure(wrapTime(Time, PeriodSec)));
-        // The swing foot: the one that is higher somewhere in the step.
-        float LeftLift = 0.0f;
-        float RightLift = 0.0f;
-        for (const rig::LegStance& Each : Legs) {
-            LeftLift = std::max(LeftLift, Each.Left.SoleHeight);
-            RightLift = std::max(RightLift, Each.Right.SoleHeight);
-        }
-        const BodyPart Swing = LeftLift >= RightLift ? BodyPart::FootL : BodyPart::FootR;
-        const BodyPart Other = Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
-        // The swing foot in the world: relative to the pelvis, plus the
-        // travel the step makes, which the planted foot shows (it goes back
-        // relative to the pelvis as far as the pelvis goes on).
-        const rig::LegStance First = Measure(wrapTime(Begin, PeriodSec));
-        const rig::LegStance Last = Measure(wrapTime(End, PeriodSec));
-        const float Speed = (First.getFoot(Other).Ankle.X - Last.getFoot(Other).Ankle.X) / Length;
-        const auto getWorldX = [&](const rig::LegStance& Each, float Time) {
-            return Each.getFoot(Swing).Ankle.X + Speed * (Time - Begin);
-        };
-        const float From = getWorldX(First, Begin);
-        const float To = getWorldX(Last, End);
-        float Reached = 0.0f;
-        for (auto&& [Time, Each] : std::views::zip(Times, Legs)) {
-            const float ByTime = (Time - Begin) / Length;
-            float ByFoot = ByTime;
-            if (std::abs(To - From) > MinSwingGap) {
-                Reached = std::max(Reached, std::clamp((getWorldX(Each, Time) - From) / (To - From), 0.0f, 1.0f));
-                ByFoot = Reached;
-            }
-            const float Even = Begin + Length * (ByTime + (ByFoot - ByTime) * Weight);
-            // Into [0, P]: a sample of the wrapping step before 0 is one period on.
-            const auto Index = static_cast<size_t>(std::lround(Time / Sample)) % Count;
-            Table[Index] = Time >= PeriodSec ? Even - PeriodSec : Even;
-        }
-    }
-    // The table runs on through the period: the last sample is the first
-    // one period on.
-    Table[Count] = Table[0] + PeriodSec;
-    for (size_t Index = 1; Index <= Count; ++Index) {
-        if (Table[Index] < Table[Index - 1]) Table[Index] += PeriodSec;
-    }
-    return Table;
-}
 
 float wrapTime(float TimeSec, float PeriodSec) {
     const float Wrapped = std::fmod(TimeSec, PeriodSec);

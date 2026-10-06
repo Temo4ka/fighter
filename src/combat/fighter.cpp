@@ -31,8 +31,11 @@ constexpr float CoastEndM = 1e-4f;
 /// tries, how close counts as reached, and how far each try moves the foot
 /// towards the body, m.
 constexpr int MaxReachTries = 20;
-constexpr float ReachToleranceM = 0.003f;
+constexpr float ReachToleranceM = 0.01f;
 constexpr float ReachStepM = 0.015f;
+/// A swing foot on its way is at least this many times the plant height
+/// off the floor.
+constexpr float SwingClearance = 2.0f;
 /// Knockback slower than this lets a resting foot step again, m/s.
 constexpr float CalmKnockback = 0.05f;
 
@@ -59,11 +62,10 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
     const float MinSpread = NewRules.Tuning.RestMinFootSpread;
-    const float Evenness = NewRules.Tuning.SwingEvenness;
-    Walk = makeLegCycle(NewRules.Clips.get(clips::Walk), Shown, Body, MinSpread, Evenness);
+    Walk = makeLegCycle(NewRules.Clips.get(clips::Walk), Shown, Body, MinSpread);
     anim::Pose Crouched = Shown;
     anim::layerPose(Crouched, anim::sampleClip(NewRules.Clips.get(clips::Crouch), 0.0f));
-    CrouchWalk = makeLegCycle(NewRules.Clips.get(clips::CrouchWalk), Crouched, Body, MinSpread, Evenness);
+    CrouchWalk = makeLegCycle(NewRules.Clips.get(clips::CrouchWalk), Crouched, Body, MinSpread);
     ShownLegs = anim::selectJoints(Shown, anim::getLegJoints());
     ShownLegsStill = ShownLegs;
 }
@@ -627,13 +629,15 @@ void Fighter::coastLegs(float CycleSpeed, float Dt) {
     // where it stands, it does not slide when the pelvis glides a hair on.
     Body.keepFeetPlanted();
     if (Walk.getMode() == LegCycle::Mode::Still) {
-        Coasting = false;   // at the span: both feet down
+        Coasting = false;   // at the span: both feet down, the pelvis stops
+        Motion.slowWalk(0.0f);
         StepTravel = 0.0f;
         settleRest();
         return;
     }
     if (CoastLeft > CoastEndM && Along && !Pushed) return;
     Coasting = false;
+    Motion.slowWalk(0.0f);
     Walk.rest();
     settleRest();
 }
@@ -659,10 +663,11 @@ void Fighter::settleRest() {
             if (!Rest.SetDown || Actual.SoleHeight > Now.getFoot(*Rest.SetDown).SoleHeight) Rest.SetDown = Foot;
             continue;
         }
-        // Planted: it stays where it stands, unless it is too far off.
+        // Planted: it stays where it stands (the walk put it there) if the
+        // leg reaches it; else it steps to the pose.
         Actual.Ankle.Y -= std::min(Actual.SoleHeight, 0.0f);
         Actual.SoleHeight = std::max(Actual.SoleHeight, 0.0f);
-        if (std::abs(Actual.Ankle.X - Place.Ankle.X) <= Tuning.LegStep.RestepDistance) Place = Actual;
+        if (canStandAt(Frozen, Clip.PelvisHeight, Foot, Actual, false)) Place = Actual;
     }
     for (const BodyPart Swing : {BodyPart::FootL, BodyPart::FootR}) {
         if (!Lifted[Swing == BodyPart::FootL ? 0 : 1]) continue;
@@ -677,18 +682,15 @@ void Fighter::settleRest() {
             const float Side = std::abs(Gap) > CoastEndM ? (Gap > 0.0f ? 1.0f : -1.0f) : Walk.getDirection();
             Place.Ankle.X = OtherX + Side * Tuning.ShortStepMinSpread;
         }
-        for (int Try = 0; Try < MaxReachTries; ++Try) {
-            PerBodyPart<float> Angles = Frozen.Angles;
-            Body.reachFoot(Angles, Swing, Clip.PelvisHeight, Place.Ankle, Place.Angle);
-            const rig::FootPlacement Reached = Body.measureLegs(Angles).getFoot(Swing);
-            if (std::abs(Reached.Ankle.Y - Place.Ankle.Y) <= ReachToleranceM &&
-                std::abs(Reached.Ankle.X - Place.Ankle.X) <= ReachToleranceM) {
-                break;
-            }
+        for (int Try = 0; Try < MaxReachTries && !canStandAt(Frozen, Clip.PelvisHeight, Swing, Place, false); ++Try) {
             Place.Ankle.X -= std::copysign(std::min(ReachStepM, std::abs(Place.Ankle.X)), Place.Ankle.X);
         }
     }
     RestLanding = Rest;
+    // The rest pose starts from the feet as they stand: a fade into the walk
+    // still going on would pull them off it.
+    LegFade.cancel();
+    LegFadeByTravel = false;
     RestStep = LegStep::plan(Now, Body.measureLegs(applyLanding(Frozen).Angles), false, false, false,
                              Tuning.LegStep.RestSec, Tuning.LegStep);
     RestStepFresh = RestStep.isActive();
@@ -701,6 +703,83 @@ void Fighter::settleRest() {
                                         CoastDone));
         }
     }
+}
+
+void Fighter::anchorStep() {
+    const std::optional<size_t> Found = Walk.findStep(Walk.getTime());
+    if (!Found) return;
+    const float Heading = Walk.getDirection() > 0.0f ? 1.0f : -1.0f;
+    if (Anchor && Anchor->Step == *Found && Anchor->Heading == Heading) return;
+    // Anchored where the body is now: at the phase before this tick's step.
+    const CycleStep& Each = Walk.getSteps()[*Found];
+    const BodyPart Stand = Each.Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
+    const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
+    const float PelvisX = Body.getController().getPositionX() * Facing;
+    const rig::LegStance Now = Body.measureLegsNow();
+    Anchor = StrideAnchor{.Step = *Found,
+                          .Heading = Heading,
+                          .Share = std::clamp(Walk.getStepShare(*Found, Walk.getStepFromTime()), 0.0f, 1.0f),
+                          .PelvisX = PelvisX,
+                          .SwingX = PelvisX + Now.getFoot(Each.Swing).Ankle.X,
+                          .StandX = PelvisX + Now.getFoot(Stand).Ankle.X};
+}
+
+anim::Pose Fighter::placeStepFeet(const anim::Pose& Legs, float TimeSec, float PelvisX) const {
+    if (!Anchor) return Legs;
+    const CycleStep& Each = Walk.getSteps()[Anchor->Step];
+    const BodyPart Stand = Each.Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
+    const float Length = (Each.EndSec - Each.BeginSec) * Body.getWalkSpeed();
+    // The share of the step's swing in the air: the foot moves along the
+    // floor only between the clip's lift-off and landing.
+    const auto getAir = [&](float Share) {
+        return std::clamp((Share - Each.LiftShare) / (Each.LandShare - Each.LiftShare), 0.0f, 1.0f);
+    };
+    // The swing foot goes from where it was anchored to where the clip
+    // lands it at the end of the step it heads to (the pelvis then plus the
+    // clip's ankle there), in proportion to the air share.
+    const float EndShare = Anchor->Heading > 0.0f ? 1.0f : 0.0f;
+    const float EndPelvis = Anchor->PelvisX + (EndShare - Anchor->Share) * Length;
+    const float EndX = EndPelvis + (Anchor->Heading > 0.0f ? Each.SwingEndX : Each.SwingBeginX);
+    const float Share = Walk.getStepShare(Anchor->Step, TimeSec);
+    const float From = getAir(Anchor->Share);
+    const float To = getAir(EndShare);
+    float SwingX = EndX;
+    float Along = 1.0f;
+    if (std::abs(To - From) > 1e-4f) {
+        Along = std::clamp((getAir(Share) - From) / (To - From), 0.0f, 1.0f);
+        SwingX = Anchor->SwingX + (EndX - Anchor->SwingX) * Along;
+    } else if (std::abs(getAir(Share) - To) > 1e-4f) {
+        Along = 0.0f;
+        SwingX = Anchor->SwingX;
+    }
+
+    // Heights and foot angles from the clip; the standing foot on the floor.
+    const rig::LegStance Clip = Body.measureLegs(Legs.Angles);
+    anim::Pose Result = Legs;
+    const rig::FootPlacement& Standing = Clip.getFoot(Stand);
+    const rig::FootPlacement& Swinging = Clip.getFoot(Each.Swing);
+    Body.reachFoot(Result.Angles, Stand, Clip.PelvisHeight,
+                   {Anchor->StandX - PelvisX, Standing.Ankle.Y - Standing.SoleHeight}, Standing.Angle);
+    // A swing foot on its way is off the floor, so that the rig does not
+    // take it for a standing one and hold it.
+    const bool OnItsWay = Along > 0.0f && Along < 1.0f;
+    const float Clearance = Body.getControl().FootPlantHeight * SwingClearance;
+    const float Raise = OnItsWay ? std::max(Clearance - Swinging.SoleHeight, 0.0f) : 0.0f;
+    Body.reachFoot(Result.Angles, Each.Swing, Clip.PelvisHeight, {SwingX - PelvisX, Swinging.Ankle.Y + Raise},
+                   Swinging.Angle);
+    return Result;
+}
+
+bool Fighter::canStandAt(const anim::Pose& Legs, float PelvisHeight, BodyPart Foot, const rig::FootPlacement& Place,
+                         bool KneeCap) const {
+    PerBodyPart<float> Angles = Legs.Angles;
+    Body.reachFoot(Angles, Foot, PelvisHeight, Place.Ankle, Place.Angle);
+    const rig::FootPlacement Reached = Body.measureLegs(Angles).getFoot(Foot);
+    const auto Knee = static_cast<size_t>(Foot == BodyPart::FootL ? BodyPart::ShinL : BodyPart::ShinR);
+    const bool KneeFits =
+        !KneeCap || std::abs(Angles[Knee]) <= std::abs(Legs.Angles[Knee]) + Body.getControl().KneeExtraBend;
+    return KneeFits && std::abs(Reached.Ankle.X - Place.Ankle.X) <= ReachToleranceM &&
+           std::abs(Reached.Ankle.Y - Place.Ankle.Y) <= ReachToleranceM;
 }
 
 anim::Pose Fighter::applyLanding(const anim::Pose& Legs) const {
@@ -925,11 +1004,22 @@ void Fighter::updateRestLegs(bool LegAction, float Dt) {
     const LegSource Source = Walk.isEngaged() ? LegSource::Walk : LegSource::Stance;
     anim::Pose Legs;
     anim::Pose LegsStill;
+    const bool Stepping = Source == LegSource::Walk && !RestLanding &&
+                          (Walk.getMode() == LegCycle::Mode::Walking || Walk.getMode() == LegCycle::Mode::Stopping);
+    if (!Stepping) Anchor.reset();
     if (Source == LegSource::Walk && RestLanding) {
         // Resting after a short step: the cycle's pose with the swing foot
         // set down.
         Legs = applyLanding(anim::sampleClip(WalkClip, Walk.getTime()));
         LegsStill = Legs;
+    } else if (Stepping && !Walk.getSteps().empty()) {
+        // The feet go along the floor with the pelvis travel.
+        anchorStep();
+        const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
+        const float PelvisX = Body.getController().getPositionX() * Facing;
+        Legs = placeStepFeet(anim::sampleClip(WalkClip, Walk.getTime()), Walk.getTime(),
+                             PelvisX + Stride.Travel * Facing);
+        LegsStill = placeStepFeet(anim::sampleClip(WalkClip, Walk.getStepFromTime()), Walk.getStepFromTime(), PelvisX);
     } else if (Source == LegSource::Walk) {
         Legs = anim::sampleClip(WalkClip, Walk.getTime());
         LegsStill = anim::sampleClip(WalkClip, Walk.getStepFromTime());

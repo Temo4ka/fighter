@@ -893,18 +893,9 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             Limb.OffsetX = Limb.LockX - ClipAnkle.X;
         } else {
             Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
-            // Walking, a lifted foot does not go back against the walk.
-            const float Walking = Controller.getWalkVelocity();
-            const bool Calm = std::abs(Controller.getKnockback()) < MinRestepKnockback;
-            if (!Limb.Stepping && Limb.HasLastX && Walking != 0.0f && Calm &&
-                (ClipAnkle.X + Limb.OffsetX - Limb.LastX) * Walking < 0.0f) {
-                Limb.OffsetX = Limb.LastX - ClipAnkle.X;
-            }
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
-        Limb.LastX = ClipAnkle.X + Limb.OffsetX;
-        Limb.HasLastX = true;
         if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
             // The knee bends at most KneeExtraBend deeper than the clip's.
             const JointState& Knee = Joints[Limb.Knee];
@@ -1038,7 +1029,6 @@ void Rig::releaseFeet() {
         Limb.OffsetX = 0.0f;
         Limb.KeptOffsetX = 0.0f;
         Limb.Kept = false;
-        Limb.HasLastX = false;
     }
 }
 

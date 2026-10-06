@@ -186,11 +186,6 @@ struct CombatTuning {
     /// cycle over this much pelvis travel (a short press, a little of the
     /// way), m.
     float StopResumeDistance = 0.15f;
-    /// How much the swing foot moves evenly with the pelvis travel within a
-    /// step (0..1): 0 plays the walk clip in its own time (its swing is slow
-    /// at lift-off and fast before landing, so a short press swings far),
-    /// 1 moves the swing foot along with the travel (combat/leg_cycle.hpp).
-    float SwingEvenness = 0.9f;
     /// Into the pose of an action that needs the legs.
     LegStepTuning LegStep;
     /// The legs step when the pelvis moves faster than this, m/s: walking,

@@ -298,6 +298,21 @@ private:
     /// sets the swing foot of a short step down where it is, within the
     /// leg's reach (RestLanding, by a LegStep).
     void settleRest();
+    /// The feet of a walk step along the floor (StrideAnchor): the standing
+    /// foot where it stood, the swing foot with the pelvis travel from where
+    /// it was to where the clip lands it, moving only while the clip has it
+    /// in the air. \p Legs: the clip's legs at \p TimeSec; \p PelvisX: where
+    /// the pelvis is for this pose (along the facing, m). Returns \p Legs
+    /// bent to put the ankles there (rig::Rig::reachFoot).
+    anim::Pose placeStepFeet(const anim::Pose& Legs, float TimeSec, float PelvisX) const;
+    /// Takes the feet as they stand as the anchor of the step the walk is in
+    /// now (a new step, a turn of the walk, walking again).
+    void anchorStep();
+    /// Can the leg of \p Foot in \p Legs (with the pelvis \p PelvisHeight up)
+    /// stand at \p Place: reached, and with \p KneeCap the knee bent at most
+    /// rig::ControlParams::KneeExtraBend deeper than in \p Legs?
+    bool canStandAt(const anim::Pose& Legs, float PelvisHeight, BodyPart Foot, const rig::FootPlacement& Place,
+                    bool KneeCap) const;
     /// \p Legs (the cycle's pose) with the feet of the rest (RestLanding).
     anim::Pose applyLanding(const anim::Pose& Legs) const;
     /// Walking again from the rest: the landing and any re-step fade into
@@ -411,6 +426,17 @@ private:
     int Resteps = 0;                       ///< Re-steps so far, for the debug panel.
     /// LegFade runs over pelvis travel (m), not time: leaving a rest.
     bool LegFadeByTravel = false;
+    /// Where the feet of the walk step going on are along the floor (in the
+    /// world, along the facing, m): placeStepFeet().
+    struct StrideAnchor {
+        size_t Step = 0;           ///< LegCycle::getSteps() index.
+        float Heading = 1.0f;      ///< +1 the walk goes on to the step's end, -1 back to its begin.
+        float Share = 0.0f;        ///< The share of the step when anchored (LegCycle::getStepShare).
+        float PelvisX = 0.0f;      ///< The pelvis then.
+        float SwingX = 0.0f;       ///< The swing foot's ankle then.
+        float StandX = 0.0f;       ///< The standing foot's ankle (it stays).
+    };
+    std::optional<StrideAnchor> Anchor;
     std::string LastRestep;                ///< The last one, for the debug panel.
     bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
     std::optional<MoveButton> PendingAttack; ///< Pressed while crouched: starts once the fighter stood up.

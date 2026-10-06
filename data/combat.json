@@ -18,7 +18,6 @@
   "stopMaxCoast": 0.06,
   "shortStepMinSpread": 0.1,
   "stopResumeDistance": 0.15,
-  "swingEvenness": 0.9,
   "legStep": {
     "minDistance": 0.03,
     "liftHeight": 0.06,

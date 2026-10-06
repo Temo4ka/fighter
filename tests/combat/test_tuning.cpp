@@ -106,8 +106,6 @@ TEST_CASE("parseCombatTuning: the steps into an action that needs the legs", "[c
     CHECK(Rest.LegStep.RestepDistance == 0.07f);
     CHECK(Rest.LegStep.RestSec == 0.2f);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "stopMaxCoast": -0.01 })"), std::runtime_error);
-    CHECK(parseCombatTuning(R"({ "swingEvenness": 0.5 })").SwingEvenness == 0.5f);
-    CHECK_THROWS_AS(parseCombatTuning(R"({ "swingEvenness": 1.5 })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restepDistance": 0 } })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restSec": 0 } })"), std::runtime_error);
 }

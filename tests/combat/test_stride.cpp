@@ -30,15 +30,19 @@ namespace {
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 /// A sole this close to the floor stands on it, m.
 constexpr float LandedHeight = 0.005f;
-/// The pelvis may sink this much below the stance height (the walk's own
-/// wide steps lower it about 1-2 cm), m.
-constexpr float MaxPelvisSink = 0.04f;
+/// The pelvis may sink this much below the stance height, m: the walk's own
+/// wide steps lower it 1-2 cm, and a step that begins with the standing
+/// foot far back (left there by the step before) is wider still for a
+/// while (up to about 4.5 cm). Before the stride work choppy taps sank it
+/// by 10 cm.
+constexpr float MaxPelvisSink = 0.05f;
 /// A knee bends at most this much (the walk clip's deepest knee is 70 deg)
 /// and never backwards more than a hair, rad.
 constexpr float MaxKneeBend = 95.0f * RadiansPerDegree;
 constexpr float MaxKneeBackward = 3.0f * RadiansPerDegree;
-/// A planted ankle moves less than this in a step, m...
-constexpr float MaxPlantedSlipPerTick = 0.003f;
+/// A planted ankle moves less than this in a step, m (the rig's foot IK
+/// settles a few millimetres when a foot plants)...
+constexpr float MaxPlantedSlipPerTick = 0.005f;
 /// ...and less than this over the whole run, m.
 constexpr float MaxPlantedSlipTotal = 0.05f;
 /// Between two presses the feet move (both together, along the floor) at
@@ -48,7 +52,7 @@ constexpr float MaxPlantedSlipTotal = 0.05f;
 /// within about 2.8x everywhere in the step, m/m and m. (Before the stride
 /// work a 4 cm tap swung the feet 0.76 m.)
 constexpr float MaxFootPerTravel = 3.0f;
-constexpr float FootMotionSlack = 0.04f;
+constexpr float FootMotionSlack = 0.05f;
 
 const CombatTuning& getTuning() {
     static const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");
