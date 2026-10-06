@@ -813,41 +813,58 @@ TEST_CASE("Rig: measureLegs tells where the feet of a pose stand", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: kept feet hold their place beyond the slip, the pelvis goes down to reach them", "[rig]") {
-    // The pelvis travels about 0.25 m with the legs in the stance: plain planted
-    // feet are dragged once the clip is footLockSlip away; kept feet stay
-    // as far as the legs reach, and the pelvis goes down to reach them.
-    const auto travel = [](bool Keep) {
+TEST_CASE("Rig: kept feet hold their place, the knee and the pelvis give only so much", "[rig]") {
+    // The pelvis travels with the legs in the stance. A kept foot (combat's
+    // keepFeetPlanted) holds its place while the leg reaches it within the
+    // caps: the knee no more than kneeExtraBend deeper than the clip, the
+    // pelvis no more than maxPelvisDrop down; beyond that it is dragged
+    // (combat steps it again).
+    struct Result {
+        float FootMove = 0.0f;
+        float PelvisDrop = 0.0f;
+        float DeepestExtraBend = 0.0f;
+    };
+    const auto travel = [](bool Keep, int Ticks) {
         Solo Stage(makeSetup(0.0f, true));
         Rig& Body = Stage.Body;
         Stage.run(10);
-        struct Result {
-            float FootMove = 0.0f;
-            float PelvisDrop = 0.0f;
-        } Out;
+        Result Out;
         // The ankle in the world (the foot may turn about it).
         const auto getAnkleX = [&] {
             return Body.getPartPosition(BodyPart::Pelvis).X + Body.measureLegsNow().Right.Ankle.X;
         };
         const float AnkleX = getAnkleX();
         const float PelvisY = Body.getPartPosition(BodyPart::Pelvis).Y;
-        for (int Step = 0; Step < 30; ++Step) {
+        const PerBodyPart<float> Stance = loadStance();
+        for (int Step = 0; Step < Ticks + 16; ++Step) {
             if (Keep) Body.keepFeetPlanted();
-            Body.setMoveVelocity(Step < 14 ? 1.0f : 0.0f);
+            Body.setMoveVelocity(Step < Ticks ? 1.0f : 0.0f);
             Body.planMotion(Dt);
             Body.applyControl(Dt);
             Stage.PhysWorld.step(Dt);
+            for (const BodyPart Shin : {BodyPart::ShinL, BodyPart::ShinR}) {
+                const float Extra = Stance[static_cast<size_t>(Shin)] - Body.getJointAngle(Shin);
+                Out.DeepestExtraBend = std::max(Out.DeepestExtraBend, Extra);
+            }
+            Out.PelvisDrop = std::max(Out.PelvisDrop, PelvisY - Body.getPartPosition(BodyPart::Pelvis).Y);
         }
         Out.FootMove = std::abs(getAnkleX() - AnkleX);
-        Out.PelvisDrop = PelvisY - Body.getPartPosition(BodyPart::Pelvis).Y;
         return Out;
     };
-    const auto Dragged = travel(false);
-    const auto Kept = travel(true);
+    const ControlParams& Control = loadHumanoid().Control;
+    // A short travel: the kept foot stays, a plain one is held as well
+    // (within footLockSlip).
+    const Result Short = travel(true, 6);
+    CHECK(Short.FootMove < 1e-3f);
+    // A long one: plain feet are dragged after footLockSlip; kept feet hold
+    // as long as the caps allow and are then dragged too, the knee and the
+    // pelvis never beyond the caps.
+    const Result Dragged = travel(false, 14);
+    const Result Kept = travel(true, 14);
     CHECK(Dragged.FootMove > 0.03f);
-    CHECK(Kept.FootMove < 1e-3f);
-    CHECK(Kept.PelvisDrop > 0.005f);
-    CHECK(Dragged.PelvisDrop < Kept.PelvisDrop);
+    CHECK(Kept.PelvisDrop <= Control.MaxPelvisDrop + 1e-3f);
+    CHECK(Kept.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
+    CHECK(Dragged.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
 }
 
 TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
