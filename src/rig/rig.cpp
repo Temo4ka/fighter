@@ -122,8 +122,17 @@ void Rig::setTargetAngles(const PerBodyPart<float>& Angles) {
     for (auto& Joint : Joints) {
         const float Angle = Angles[static_cast<size_t>(Joint.Child)] * Facing;
         Joint.Wish = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
+        Joint.StillWish = Joint.Wish;
     }
     refreshTargets();
+}
+
+void Rig::setTravelPose(const PerBodyPart<float>& StillAngles, float Travel) {
+    PoseTravel = Travel;
+    for (auto& Joint : Joints) {
+        const float Angle = StillAngles[static_cast<size_t>(Joint.Child)] * Facing;
+        Joint.StillWish = std::clamp(Angle, Joint.LowerAngle, Joint.UpperAngle);
+    }
 }
 
 void Rig::setMoveVelocity(float Velocity) { Controller.setTargetVelocity(Velocity); }
@@ -171,6 +180,7 @@ void Rig::applyControl(float Dt) {
     const Vec2 OldVelocity = Pelvis.getLinearVelocity();
     const float OldSpin = Pelvis.getAngularVelocity();
     if (CurrentPosture != Posture::KnockedDown) {
+        followTravel();
         Controller.commit(Dt);
         moveKinematicParts(Dt);
     }
@@ -229,7 +239,7 @@ void Rig::applyHit(float Impulse, Vec2 Direction, Vec2 Point, bool KnockDown) {
 void Rig::addPush(float Distance) {
     if (CurrentPosture == Posture::KnockedDown) return;
     // The knockback decays exponentially: its path is speed / decay.
-    Controller.addKnockback(Distance * Control.KnockbackDecay);
+    Controller.addPushOut(Distance * Control.KnockbackDecay);
 }
 
 void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
@@ -298,9 +308,11 @@ void Rig::holdLimbsBack(float MaxDepth) {
 }
 
 void Rig::pushBody(float Delta) {
+    const float Before = Controller.getPlannedX();
     Controller.shift(Delta);
+    const float Drag = getFootDrag(Controller.getPlannedX()) - getFootDrag(Before);
     for (auto& Limb : Legs) {
-        if (Limb.Locked) Limb.LockX += Delta;
+        if (Limb.Locked) Limb.LockX += Drag;
     }
 }
 
@@ -596,13 +608,13 @@ PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement,
     return Pose;
 }
 
-Rig::Placement Rig::getStandingRoot(float RootX) const {
+Rig::Placement Rig::getStandingRoot(float RootX, const PerBodyPart<float>& Corrections) const {
     // Pose the body with the root on the floor line, then lift it so that
     // the lowest kinematic part (a sole) just touches the floor. Bent knees
     // (a crouch) leave the feet higher, so the pelvis goes down.
     const Placement OnFloor{.Position = {RootX, 0.0f},
                             .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
-    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor);
+    const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
     float Lowest = std::numeric_limits<float>::max();
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         if (Part.Kinematic) Lowest = std::min(Lowest, getLowestPoint(Part.Shape, Target.Position, Target.Angle));
@@ -635,7 +647,7 @@ void Rig::advancePosture() {
 
 void Rig::moveKinematicParts(float Dt) {
     if (CurrentPosture != Posture::Standing) releaseFeet();
-    const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec);
+    const PerBodyPart<Placement> Pose = computePosedPose(Controller.getPositionX(), Legs, Dt, PostureSec, {});
     SlidingFeet = false;
     for (auto&& [Part, Goal] : std::views::zip(Parts, Pose)) {
         if (Part.Kinematic) Part.Handle.moveTo(Goal.Position, Goal.Angle, Dt);
@@ -643,10 +655,12 @@ void Rig::moveKinematicParts(float Dt) {
 }
 
 PerBodyPart<Rig::Placement> Rig::computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt,
-                                                   float PostureTime) const {
-    const Placement RootPlacement = getStandingRoot(RootX);
-    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
-    if (CurrentPosture == Posture::Standing) Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt));
+                                                   float PostureTime, const PerBodyPart<float>& Corrections) const {
+    const Placement RootPlacement = getStandingRoot(RootX, Corrections);
+    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement, Corrections);
+    if (CurrentPosture == Posture::Standing) {
+        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt, Corrections));
+    }
     if (CurrentPosture != Posture::GettingUp) return Pose;
     // Getting up blends from where the parts lay to the stance.
     const float Blend = smoothStep(std::clamp(PostureTime / Control.GetUpSec, 0.0f, 1.0f));
@@ -663,11 +677,15 @@ std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
     // applyControl() advances the posture time before it poses the parts.
     // A push away from the plan takes the planted feet along (pushBody()).
     std::vector<Leg> Limbs = Legs;
-    const float Pushed = RootX - Controller.getPlannedX();
+    const float Pushed = getFootDrag(RootX) - getFootDrag(Controller.getPlannedX());
     for (auto& Limb : Limbs) {
         if (Limb.Locked) Limb.LockX += Pushed;
     }
-    const PerBodyPart<Placement> Pose = computePosedPose(RootX, Limbs, Dt, PostureSec + Dt);
+    // The posed joints follow the share of the planned travel made
+    // (setTravelPose()).
+    const PerBodyPart<Placement> Pose =
+        computePosedPose(RootX, Limbs, Dt, PostureSec + Dt,
+                         getTravelCorrections(Controller.getTravelShare(RootX, PoseTravel)));
     // The parts that are not posed now (the torso and the head, held on the
     // pelvis) and the strikers (they stop at the opponent by themselves,
     // stopAtContact(); the opponent must not walk into where they are) move
@@ -732,7 +750,8 @@ float Rig::measureGap(std::span<const PartPlacement> Own, std::span<const PartPl
     return Smallest;
 }
 
-PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const {
+PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
+                                  const PerBodyPart<float>& Base) const {
     // Standing still after a push, the feet are left away from the stance:
     // the foot farthest off steps back under the body, one at a time and
     // only while all feet stand (not during a kick).
@@ -749,7 +768,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         Farthest->KeptOffsetX = 0.0f;
     }
 
-    PerBodyPart<float> Corrections{};
+    PerBodyPart<float> Corrections = Base;
     for (auto& Limb : Limbs) {
         const JointState& Ankle = Joints[Limb.Ankle];
         const Placement& Shin = Pose[static_cast<size_t>(Ankle.Parent)];
@@ -864,6 +883,31 @@ void Rig::rewindLimb(BodyPart Top, float Fraction) {
             Physics->rewindBody(Parts[Index].Handle, Fraction, Pelvis);
         }
     }
+}
+
+float Rig::getFootDrag(float RootX) const {
+    // Between where the pelvis is and where it planned to go, a correction
+    // only takes back some of its own travel: the planted feet stay.
+    const float Start = Controller.getPositionX();
+    const float Planned = Start + Controller.getPlannedTravel();
+    return RootX - std::clamp(RootX, std::min(Start, Planned), std::max(Start, Planned));
+}
+
+PerBodyPart<float> Rig::getTravelCorrections(float Share) const {
+    PerBodyPart<float> Corrections{};
+    for (const auto& Joint : Joints) {
+        Corrections[static_cast<size_t>(Joint.Child)] = (Joint.StillWish - Joint.Wish) * (1.0f - Share);
+    }
+    return Corrections;
+}
+
+void Rig::followTravel() {
+    const float Share = getTravelShare();
+    for (auto& Joint : Joints) {
+        Joint.Wish = Joint.StillWish + (Joint.Wish - Joint.StillWish) * Share;
+        Joint.StillWish = Joint.Wish;
+    }
+    refreshTargets();
 }
 
 void Rig::releaseFeet() {

@@ -3,8 +3,6 @@
   "duration": 1.0,
   "stiffness": 1.4,
   "allowMove": true,
-  "blendIn": 0.08,
-  "blendOut": 0.1,
   "keys": [
     { "t": 0.0, "pose": {
         "Torso": -14, "Head": -4,

@@ -95,8 +95,8 @@ Clip parseClip(std::string_view JsonText, std::string Name) {
         Result.DurationSec = Root.at("duration").get<float>();
         Result.Stiffness = Root.value("stiffness", 1.0f);
         Result.AllowMove = Root.value("allowMove", true);
-        Result.BlendInSec = Root.value("blendIn", DefaultBlendInSec);
-        Result.BlendOutSec = Root.value("blendOut", DefaultBlendOutSec);
+        if (Root.contains("blendIn")) Result.BlendInSec = Root.at("blendIn").get<float>();
+        if (Root.contains("blendOut")) Result.BlendOutSec = Root.at("blendOut").get<float>();
         if (const auto Active = Root.find("active"); Active != Root.end()) {
             Result.ActiveBeginSec = Active->at(0).get<float>();
             Result.ActiveEndSec = Active->at(1).get<float>();
@@ -166,7 +166,9 @@ void validateClip(const Clip& Result) {
         Result.ActiveEndSec > Result.DurationSec) {
         Fail("active must be [begin, end] with 0 <= begin <= end <= duration");
     }
-    if (Result.BlendInSec < 0.0f || Result.BlendOutSec < 0.0f) Fail("blendIn and blendOut must not be negative");
+    if (Result.BlendInSec.value_or(0.0f) < 0.0f || Result.BlendOutSec.value_or(0.0f) < 0.0f) {
+        Fail("blendIn and blendOut must not be negative");
+    }
     if (Result.Keys.front().TimeSec != 0.0f) Fail("the first key must be at t = 0");
     for (const auto& Key : Result.Keys) {
         if (Key.Target.Mask != Result.Keys.front().Target.Mask) Fail("every key must set the same joints");

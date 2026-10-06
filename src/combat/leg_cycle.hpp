@@ -83,6 +83,13 @@ public:
     /// Walks for \p Dt: the phase runs \p Rate clip seconds per second,
     /// forwards for \p Direction > 0, backwards (a step back) otherwise.
     void walk(float Dt, float Rate, float Direction);
+    /// After walk(): keeps only \p Share (0..1) of the step it made, when
+    /// the pelvis travelled only that share of what the step assumed
+    /// (rig::Rig::getTravelShare).
+    void follow(float Share);
+    /// The phase before the last walk() (the current one if the cycle did
+    /// not walk since), s.
+    float getStepFromTime() const;
     /// No input for \p Dt: a walking cycle stops. It holds where it is if
     /// both feet are down, otherwise it plays on to the nearest point of a
     /// support span (either way round) at \p Rate clip seconds per second.
@@ -121,6 +128,7 @@ private:
     std::vector<SupportSpan> Spans{SupportSpan{}};
     size_t NormalSpan = 0;
     float TimeSec = 0.0f;
+    float StepSec = 0.0f;     ///< How far the last walk() moved the phase (signed); 0 after stop(), settle().
     float Direction = 1.0f;   ///< Of the last walk: a tie is broken that way.
     Mode CurrentMode = Mode::Still;
     bool Engaged = false;

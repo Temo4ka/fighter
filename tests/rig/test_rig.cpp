@@ -321,3 +321,69 @@ TEST_CASE("Rig: getSoleHeight lifts a bent leg's foot off the floor", "[rig]") {
     // The pose of the rig itself is not changed by the probe.
     CHECK(Setup.Body.getSoleHeight(makeTargets(), BodyPart::FootR) == Approx(0.0f).margin(0.002f));
 }
+
+TEST_CASE("PelvisController: the planned travel and the share of it made", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 100.0f, .KnockbackDecay = 5.0f});
+    Controller.setTargetVelocity(1.0f);
+    Controller.plan(0.1f);
+    CHECK(Controller.getPlannedTravel() == Approx(0.1f));
+    // The share of a travel that ending at a point makes, clamped to [0, 1].
+    CHECK(Controller.getTravelShare(0.05f, 0.1f) == Approx(0.5f));
+    CHECK(Controller.getTravelShare(-0.05f, 0.1f) == 0.0f);
+    CHECK(Controller.getTravelShare(0.3f, 0.1f) == 1.0f);
+    CHECK(Controller.getTravelShare(0.3f, 0.0f) == 1.0f);   // no travel
+    CHECK(Controller.getTravelShare(-0.05f, -0.1f) == Approx(0.5f));
+}
+
+TEST_CASE("PelvisController: corrections are told by their source", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 100.0f, .KnockbackDecay = 5.0f});
+    Controller.setTargetVelocity(1.0f);
+    Controller.plan(0.1f);
+    Controller.shift(-0.03f);
+    Controller.limit(-1.0f, 0.05f);
+    CHECK(Controller.getSpacingShift() == Approx(-0.03f));
+    CHECK(Controller.getWallShift() == Approx(-0.02f));
+    Controller.commit(0.1f);
+    // Kept after the commit (for the panel), cleared by the next plan.
+    CHECK(Controller.getSpacingShift() == Approx(-0.03f));
+    Controller.plan(0.1f);
+    CHECK(Controller.getSpacingShift() == 0.0f);
+    CHECK(Controller.getWallShift() == 0.0f);
+
+    Controller.setSpacingMotion({.Slowed = -0.5f, .Pushed = 0.2f, .Eased = 0.1f, .Wall = 0.05f, .Overlap = 0.01f});
+    CHECK(Controller.getSpacingMotion().Pushed == 0.2f);
+    CHECK(Controller.getSpacingMotion().Overlap == 0.01f);
+}
+
+TEST_CASE("PelvisController: the push-out is knockback the panel shows apart", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 6.0f, .KnockbackDecay = 5.0f});
+    Controller.addKnockback(1.0f);
+    Controller.addPushOut(0.5f);
+    CHECK(Controller.getKnockback() == Approx(1.5f));
+    CHECK(Controller.getPushOut() == Approx(0.5f));
+    Controller.plan(0.1f);
+    CHECK(Controller.getPlannedX() == Approx(0.15f));
+    CHECK(Controller.getPushOut() == Approx(0.5f * std::exp(-0.5f)));
+    // A wall stops it like the knockback.
+    Controller.limit(-1.0f, 0.1f);
+    CHECK(Controller.getPushOut() == 0.0f);
+}
+
+TEST_CASE("PelvisController: a walk held back picks up again with its acceleration", "[rig]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 6.0f, .KnockbackDecay = 5.0f});
+    Controller.setTargetVelocity(1.2f);
+    for (int Step = 0; Step < 30; ++Step) {
+        Controller.plan(0.1f);
+        Controller.commit(0.1f);
+    }
+    REQUIRE(Controller.getWalkVelocity() == Approx(1.2f));
+    Controller.slowWalk(0.2f);
+    CHECK(Controller.getWalkVelocity() == Approx(0.2f));
+    // Never below 0, never faster than it was.
+    Controller.slowWalk(-0.5f);
+    CHECK(Controller.getWalkVelocity() == 0.0f);
+    Controller.slowWalk(3.0f);
+    CHECK(Controller.getWalkVelocity() == 0.0f);
+    Controller.plan(0.1f);
+    CHECK(Controller.getWalkVelocity() == Approx(0.6f));
+}

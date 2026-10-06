@@ -17,10 +17,54 @@
 
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string_view>
+#include <vector>
 
 namespace fighter::combat {
+
+/// What sets the pose of a fighter, for the blend times of the changes
+/// between them (BlendTable).
+enum class PoseKind : uint8_t {
+    Stance,      ///< Standing (the normal or the switched stance).
+    Walk,        ///< The walk cycle.
+    Crouch,      ///< Crouched, holding still.
+    CrouchWalk,  ///< The crouch walk cycle.
+    Block,       ///< A block clip.
+    Strike,      ///< An attack clip.
+    Reaction,    ///< A hit reaction clip (flinch, stagger, knockback).
+    Count
+};
+
+/// "stance", "walk", "crouch", "crouchWalk", "block", "strike", "reaction".
+std::string_view getPoseKindName(PoseKind Kind);
+
+/// How long the pose takes to cross over when what sets it changes
+/// (stance <-> walk <-> crouch <-> block <-> strikes <-> reactions):
+/// a default and rules for pairs of kinds (data/combat.json, "blends"). A
+/// clip's own blendIn / blendOut (data/poses) overrides the table for the
+/// changes into and out of that clip.
+struct BlendTable {
+    /// One rule: From -> To in Sec; an empty kind matches any.
+    struct Rule {
+        std::optional<PoseKind> From;
+        std::optional<PoseKind> To;
+        float Sec = 0.0f;
+    };
+    float DefaultSec = 0.1f;
+    std::vector<Rule> Rules;
+    /// A blend into a strike lasts at most this share of its startup (at
+    /// its rate), so the strike shows its own pose before its active phase
+    /// and its timing does not change.
+    float StrikeStartupShare = 0.5f;
+
+    /// The blend time of \p From -> \p To: the rule with both kinds, else
+    /// the one with \p To and any from, else the one with \p From and any
+    /// to, else the default, s.
+    float getSec(PoseKind From, PoseKind To) const;
+};
 
 struct CombatTuning {
     /// Distance between the fighters' body origins at the start, m.
@@ -60,11 +104,20 @@ struct CombatTuning {
     /// Half the width of a fighter's pushbox, m: the pelvises stay at least
     /// twice this apart and this far from the arena walls.
     float BodyHalfWidth = 0.25f;
-    /// Overlapping pelvises are pushed apart at most this fast, m/s.
+    /// A standing fighter steps off a body lying under it at most this
+    /// fast, m/s.
     float SeparationSpeed = 4.0f;
-    /// Overlapping bodies (legs, torsos, heads; rig/spacing.hpp) are pushed
-    /// apart at most this fast, m/s.
+    /// The largest correction of a step the spacing looks for (overlapping
+    /// pelvises or bodies; rig/spacing.hpp), as a speed, m/s.
     float PosedSeparationSpeed = 12.0f;
+    /// Beyond taking back their approach (which only slows a walk down), the
+    /// spacing pushes the fighters apart at most this fast, m/s...
+    float PushMaxSpeed = 1.5f;
+    /// ...and that push speed changes at most this fast, m/s^2.
+    float PushAcceleration = 20.0f;
+    /// Bodies the eased push would leave deeper than this in each other are
+    /// pushed apart at once (a hard push), m. Below overlapTolerance.
+    float PushSoftOverlap = 0.008f;
     /// With no stamina left, walking and strikes are this much slower (O.13).
     float ExhaustedSpeedScale = 0.7f;
     /// An exhausted fighter is slow until its stamina is back to this share
@@ -82,10 +135,6 @@ struct CombatTuning {
     /// the nearest phase with both feet down this many times faster than
     /// walking (clip seconds per second).
     float WalkStopRate = 3.0f;
-    /// Stopped, the legs cross over from the walk cycle to the stance clip
-    /// (or the switched stance) in this time; walking crosses back the same
-    /// way, s.
-    float StanceSettleSec = 0.15f;
     /// While a walk plays on to its stop and the legs settle into the
     /// stance, the planted foot slides along with the clip (true): the
     /// fighter ends in the exact stance, but that foot may slide up to about
@@ -96,6 +145,11 @@ struct CombatTuning {
     /// legs back into the normal stance during its startup: in this share of
     /// it (0..1]. The startup itself does not change.
     float SwitchStepShare = 0.8f;
+    /// The legs step when the pelvis moves faster than this, m/s: walking,
+    /// a pelvis held slower than this by the opponent stops the walk cycle
+    /// on both feet (no marching on the spot); not walking, a pelvis pushed
+    /// faster than this makes the legs step along.
+    float StepMinSpeed = 0.15f;
     /// Walking while crouched is this much slower than walking.
     float CrouchWalkSpeedScale = 0.5f;
     /// A strike other than the low kick pressed while crouched: the fighter
@@ -118,6 +172,8 @@ struct CombatTuning {
     /// the clip's recovery over this time, s.
     float ContactRecoveryBlendSec = 0.15f;
     /// @}
+    /// The cross-overs between the clips (stance and walk legs included).
+    BlendTable Blends;
 };
 
 /// Parses the tuning from JSON text. Every key is optional; an unknown key

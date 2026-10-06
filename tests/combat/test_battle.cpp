@@ -190,24 +190,39 @@ TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
 }
 
 TEST_CASE("Battle: fighters do not pass through each other", "[combat][dod]") {
+    // Walking into each other, the fighters meet and stay there: the
+    // pelvises never closer than the pushboxes (their legs usually meet
+    // first), and once met, neither gets past the other.
     const float BodyHalfWidth = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json").BodyHalfWidth;
+    const auto getGap = [](const Battle& Fight) { return getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight)); };
     Battle Fight(makeConfig());
     float SmallestGap = 10.0f;
-    for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) {
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
         Fight.update({.MoveX = 1.0f}, {.MoveX = -1.0f}, Dt);
-        SmallestGap = std::min(SmallestGap, getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight)));
+        SmallestGap = std::min(SmallestGap, getGap(Fight));
     }
-    CHECK(SmallestGap == Approx(2.0f * BodyHalfWidth).margin(1e-4f));
+    const float MetGap = getGap(Fight);
+    for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
+        Fight.update({.MoveX = 1.0f}, {.MoveX = -1.0f}, Dt);
+        SmallestGap = std::min(SmallestGap, getGap(Fight));
+    }
+    CHECK(SmallestGap >= 2.0f * BodyHalfWidth - 1e-4f);
+    CHECK(getGap(Fight) == Approx(MetGap).margin(0.005f));
+    CHECK(getPelvisX(getLeft(Fight)) < getPelvisX(getRight(Fight)));
 
-    // Walking into a standing fighter pushes it; the lighter one gives way more.
+    // Walking into a standing fighter pushes it, never closer than the
+    // pushboxes.
     BattleConfig Config = makeConfig();
     Config.Right.Stats.Constitution = 20;
     Battle Push(Config);
     const float HeavyStartX = getPelvisX(getRight(Push));
-    run(Push, {.MoveX = 1.0f}, {}, 4 * TicksPerSecond);
-    const float Pushed = getPelvisX(getRight(Push)) - HeavyStartX;
-    CHECK(Pushed > 0.1f);
-    CHECK(getPelvisX(getRight(Push)) - getPelvisX(getLeft(Push)) == Approx(2.0f * BodyHalfWidth).margin(1e-4f));
+    float Narrowest = 10.0f;
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
+        Push.update({.MoveX = 1.0f}, {}, Dt);
+        Narrowest = std::min(Narrowest, getGap(Push));
+    }
+    CHECK(getPelvisX(getRight(Push)) - HeavyStartX > 0.1f);
+    CHECK(Narrowest >= 2.0f * BodyHalfWidth - 1e-4f);
 }
 
 TEST_CASE("Battle: a jab moves the fist forward", "[combat][dod]") {

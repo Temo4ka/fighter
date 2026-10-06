@@ -42,6 +42,7 @@
 #include <bitset>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,9 +50,6 @@
 #include "anim/pose.hpp"
 
 namespace fighter::anim {
-
-inline constexpr float DefaultBlendInSec = 0.08f;
-inline constexpr float DefaultBlendOutSec = 0.10f;
 
 /// The slowest playback rate the rate helpers accept: a stalled or negative
 /// rate would make durations infinite.
@@ -72,11 +70,12 @@ struct Clip {
     std::bitset<BodyPartCount> Strikers;  ///< Parts whose contacts are hits in the active phase.
     float Stiffness = 1.0f;       ///< Motor stiffness while the clip plays.
     bool AllowMove = true;
-    /// Fade times, s: how long the pose takes to cross over from the previous
-    /// one when this clip starts (BlendInSec) and back to what is below it
-    /// when it ends (BlendOutSec). Combat passes them to PoseTransition::begin().
-    float BlendInSec = DefaultBlendInSec;
-    float BlendOutSec = DefaultBlendOutSec;
+    /// Fade times, s, if the clip sets them: how long the pose takes to cross
+    /// over from the previous one when this clip starts (BlendInSec) and back
+    /// to what is below it when it ends (BlendOutSec). Without them combat
+    /// takes the time of the change from its blend table (data/combat.json).
+    std::optional<float> BlendInSec;
+    std::optional<float> BlendOutSec;
 
     bool isActiveAt(float TimeSec) const { return TimeSec >= ActiveBeginSec && TimeSec < ActiveEndSec; }
     bool isFinishedAt(float TimeSec) const { return !Loop && TimeSec >= DurationSec; }
