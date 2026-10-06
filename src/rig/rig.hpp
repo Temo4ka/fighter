@@ -502,8 +502,12 @@ private:
     /// Holds planted feet in place: returns the joint corrections for the
     /// pose \p Pose (posed with the corrections \p Base, which it keeps for
     /// the joints it does not bend) and updates the locks of \p Limbs.
+    /// \p RootDrop: how far the root went down below the pose (getReachDrop()).
     PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
-                                 const PerBodyPart<float>& Base) const;
+                                 const PerBodyPart<float>& Base, float RootDrop) const;
+    /// How far the root of \p Pose must go down so that the legs reach their
+    /// kept planted feet (keepFeetPlanted()), m; 0 if they do.
+    float getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Leg>& Limbs) const;
     /// How far the planted feet go along when the pelvis ends the step at
     /// \p RootX, relative to its own plan: only the part beyond the step's
     /// planned travel (pushBody()), m.

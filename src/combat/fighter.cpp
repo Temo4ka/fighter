@@ -98,13 +98,13 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
     const anim::Clip* Top = getTopClip();
     const bool TopChanged = Top != ShownTop || TopRestarted;
+    const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
     // A leg action ends the walk where it rested: afterwards the legs rest
     // in the stance it leaves them in.
     if (Top && anim::usesLegs(*Top)) {
         RestFront = LegsMirrored ? BodyPart::FootR : BodyPart::FootL;
         Walk.settle(RestFront);
     }
-    const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
     // A clip that starts fades in, one that ends fades out: the clip's own
     // time or the blend table's for the change.
     if (TopChanged) beginTopFade(Top);
@@ -627,8 +627,12 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
         // Steps lead from the resting legs into a leg action. From one leg
         // action into the next (the crouch into a low kick or the low block)
         // the legs are already the action's: the change blends as authored.
+        // From the stance with the same foot in front the legs are in the
+        // pose the action is authored from: no steps either.
         const bool FromLegAction = ShownTop && anim::usesLegs(*ShownTop);
-        if (FromLegAction) {
+        const BodyPart ActionFront = LegsMirrored ? BodyPart::FootR : BodyPart::FootL;
+        const bool FromItsStance = ShownSource == LegSource::Stance && RestFront == ActionFront;
+        if (FromLegAction || FromItsStance) {
             Step.cancel();
             LegsStepped = false;
         } else {
@@ -636,7 +640,9 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
         }
     }
     const bool Stepping = Step.isActive();
-    Step.advance(Dt, Body.measureLegsNow());
+    // The step tick holds the feet where they stand (the rig takes them
+    // there without an offset); the steps start in the next one.
+    if (!TopChanged) Step.advance(Dt, Body.measureLegsNow());
     LegTarget = Body.measureLegs(Result.Moving.Angles);
     Step.apply(Result.Moving.Angles, Body);
     Step.apply(Result.Still.Angles, Body);

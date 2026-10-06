@@ -61,6 +61,9 @@ constexpr float MinRestepKnockback = 0.05f;
 constexpr float StepDoneDistance = 0.005f;
 /// A planted foot stays this much inside the reach of a straight leg, m.
 constexpr float LegReachMargin = 1e-4f;
+/// A kept foot is held this much inside the leg's full reach: the pelvis
+/// goes down for it rather than straightening the knee completely, m.
+constexpr float KeptReachMargin = 0.01f;
 
 PartDef mirrorPart(const PartDef& Source, float Facing);
 PartDef moveShape(const PartDef& Source, Vec2 Offset);
@@ -708,10 +711,17 @@ void Rig::moveKinematicParts(float Dt) {
 
 PerBodyPart<Rig::Placement> Rig::computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt,
                                                    float PostureTime, const PerBodyPart<float>& Corrections) const {
-    const Placement RootPlacement = getStandingRoot(RootX, Corrections);
+    Placement RootPlacement = getStandingRoot(RootX, Corrections);
     PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement, Corrections);
     if (CurrentPosture == Posture::Standing) {
-        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt, Corrections));
+        // A kept foot planted wider than the clip's pose reaches: the pelvis
+        // goes down so that the leg reaches it, instead of dragging it.
+        const float RootDrop = getReachDrop(Pose, Limbs);
+        if (RootDrop > 0.0f) {
+            RootPlacement.Position.Y -= RootDrop;
+            Pose = computeTargetPose(RootPlacement, Corrections);
+        }
+        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt, Corrections, RootDrop));
     }
     if (CurrentPosture != Posture::GettingUp) return Pose;
     // Getting up blends from where the parts lay to the stance.
@@ -802,8 +812,24 @@ float Rig::measureGap(std::span<const PartPlacement> Own, std::span<const PartPl
     return Smallest;
 }
 
+float Rig::getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Leg>& Limbs) const {
+    float RootDrop = 0.0f;
+    for (const auto& Limb : Limbs) {
+        if (!Limb.Locked || !Limb.Kept) continue;
+        const JointState& Hip = Joints[Limb.Hip];
+        const Placement& Pelvis = Pose[static_cast<size_t>(Hip.Parent)];
+        const Vec2 HipPoint = Pelvis.Position + rotate(Hip.AnchorInParent, Pelvis.Angle);
+        const float Reach = Limb.Length - KeptReachMargin;
+        const float Across = Limb.LockX - HipPoint.X;
+        if (std::abs(Across) >= Reach) continue;   // out of reach at any height: it is dragged
+        const float HighestHip = getAnkleInPose(Limb, Pose).Y + std::sqrt(Reach * Reach - Across * Across);
+        RootDrop = std::max(RootDrop, HipPoint.Y - HighestHip);
+    }
+    return RootDrop;
+}
+
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
-                                  const PerBodyPart<float>& Base) const {
+                                  const PerBodyPart<float>& Base, float RootDrop) const {
     // Standing still after a push, the feet are left away from the stance:
     // the foot farthest off steps back under the body, one at a time and
     // only while all feet stand (not during a kick).
@@ -842,6 +868,8 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             Limb.Kept = false;
         }
         float Lift = 0.0f;
+        // A planted foot stays on the floor when the pelvis went down for it.
+        if (Limb.Locked) Lift = RootDrop;
         if (Limb.Locked) {
             // A pull longer than the slip (a knockback, a push) drags the
             // foot, and so does one the leg cannot reach.
@@ -849,7 +877,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             const Placement& Pelvis = Pose[static_cast<size_t>(Hip.Parent)];
             const Vec2 HipPoint = Pelvis.Position + rotate(Hip.AnchorInParent, Pelvis.Angle);
             const float Reach = Limb.Length - LegReachMargin;
-            const float Drop = HipPoint.Y - ClipAnkle.Y;
+            const float Drop = HipPoint.Y - ClipAnkle.Y - RootDrop;
             const float Span = std::sqrt(std::max(Reach * Reach - Drop * Drop, 0.0f));
             // A kept foot (keepFeetPlanted) holds its place as far as the leg
             // reaches: the legs rest where they stopped.
@@ -862,7 +890,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
-        if (std::abs(Limb.OffsetX) > MinFootOffset) {
+        if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
             reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections,
                        Joints[Limb.Knee].Target);
         }
