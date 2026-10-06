@@ -24,9 +24,9 @@ app ──► render ──► combat ──► stats ──► core
 | `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | — | — |
 | `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body` (динамические и кинематические), `RevoluteJoint`, `HitEvent`; Box2D debug draw → `debug::` | — | внутри |
 | `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — гибридное тело: кинематические таз и ноги (`PelvisController`, позы из клипов, стопы на месте), физический корпус на PD-моторах, жёсткость, отбрасывание, нокдаун, разворот, оружие; `keepApart`/`pushApartOnHit` — расстояния между бойцами и стены | — | — |
-| `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose` | — | — |
+| `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose`, слои ног и верха тела и зеркальные ноги (`anim/layers.hpp`) | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
-| `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`) | — | — |
+| `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`), `LegCycle` (цикл ходьбы и его остановка), `LegStep` (шаги в действие ногами) | — | — |
 | `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
@@ -82,6 +82,13 @@ app ──► render ──► combat ──► stats ──► core
 разбор `HitEvent` (попадание — контакт ударной части в активной фазе атаки, одно на атаку) →
 отбрасывание, выталкивание вплотную (`rig::pushApartOnHit`), просадка жёсткости или нокдаун → снимок для рендера → отладочные примитивы.
 Пользовательских колбэков внутри шага Box2D нет.
+
+**Слои позы.** Поза бойца — два слоя (`anim/layers.hpp`): ноги и верх тела. Верх играет стойку и клип
+сверху (удары руками, блоки, реакции); ноги — ходьбу, позу покоя там, где ходьба остановилась
+(`LegCycle`), или клип сверху, если у него есть ключи ног (удар ногой, присед, низкий блок). В такое
+действие ноги входят настоящими шагами (`LegStep`: стопа по дуге, IK рига `Rig::reachFoot`, таз не
+двигается); с правой ногой впереди действие играет зеркально (`ClipLibrary::getMirrored`). Подробности
+и параметры — [TUNING.md](TUNING.md), разделы 1 и 3б.
 
 **Гибридное тело.** Таз и ноги — кинематические тела: их двигает код, и упасть сам боец не может.
 Торс, голова и руки — динамические на моторах относительно таза: удары и реакции физические.
