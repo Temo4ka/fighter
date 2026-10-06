@@ -224,7 +224,7 @@ BlendTable parseBlends(const Json& Value) {
 }
 
 /// "legStep": { "minDistance": m, "liftHeight": m, "startupShare": share, "sec": s, "restepDistance": m,
-/// "restSec": s,
+/// "restSec": s, "restepClearance": m,
 /// "stanceAfterStop": "mirror" | "authored" }.
 LegStepTuning parseLegStep(const Json& Value) {
     if (!Value.is_object()) throw std::runtime_error("legStep must be an object");
@@ -242,6 +242,8 @@ LegStepTuning parseLegStep(const Json& Value) {
             Step.RestepDistance = Item.get<float>();
         } else if (Key == "restSec") {
             Step.RestSec = Item.get<float>();
+        } else if (Key == "restepClearance") {
+            Step.RestepClearance = Item.get<float>();
         } else if (Key == "stanceAfterStop") {
             const std::string Name = Item.get<std::string>();
             const auto Found = std::ranges::find(StanceAfterStopNames, Name);
@@ -262,6 +264,7 @@ LegStepTuning parseLegStep(const Json& Value) {
     if (Step.Sec <= 0.0f) throw std::runtime_error("legStep.sec must be positive");
     if (Step.RestepDistance <= 0.0f) throw std::runtime_error("legStep.restepDistance must be positive");
     if (Step.RestSec <= 0.0f) throw std::runtime_error("legStep.restSec must be positive");
+    if (Step.RestepClearance < 0.0f) throw std::runtime_error("legStep.restepClearance must not be negative");
     return Step;
 }
 

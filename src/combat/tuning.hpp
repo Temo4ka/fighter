@@ -97,6 +97,9 @@ struct LegStepTuning {
     /// Such a re-step, and the swing foot of a step that ended short set
     /// down, take this long, s.
     float RestSec = 0.12f;
+    /// No re-step towards the opponent while the pelvises are closer than
+    /// this: the foot could come down in its legs, m.
+    float RestepClearance = 1.1f;
     StanceAfterStop Stance = StanceAfterStop::Mirror;
 };
 

@@ -74,6 +74,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     updateMeters(Dt);
     syncPosture();
     OpponentDown = Around.OpponentDown;
+    OpponentGap = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
     StateSec += Dt;
 
     // Where the opponent is. The body turns only when the fighter is free
@@ -112,6 +113,16 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
     const anim::Clip* Top = getTopClip();
     const bool TopChanged = Top != ShownTop || TopRestarted;
+    // Legs leaving a leg action fade on the leg layer, over the action's
+    // blend-out (not the next clip's blend-in: a flinch fades in in 0.02 s).
+    const bool LegAction = Top && anim::usesLegs(*Top);
+    if (TopChanged && !LegAction && ShownTop && anim::usesLegs(*ShownTop)) {
+        const float Sec =
+            ShownTop->BlendOutSec.value_or(Rules->Tuning.Blends.getSec(getClipKind(*ShownTop), PoseKind::Stance));
+        LegFade.begin(anim::selectJoints(Shown, anim::getLegJoints()), Sec);
+        LegBlend = {.From = getClipKind(*ShownTop), .To = PoseKind::Stance, .Sec = Sec};
+        LegFadeByTravel = false;
+    }
     const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
     // A leg action ends the walk where it rested: afterwards the legs rest
     // in the stance it leaves them in.
@@ -128,8 +139,9 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     Shown = Fade.step(Target.Moving, Dt);
     ShownStill = Fade.peek(Target.Still);
     // Legs that step into the action's pose are not faded: the steps are
-    // the transition.
-    if (LegsStepped) {
+    // the transition. Nor are the resting or walking legs of the leg layer:
+    // their own fades (LegFade) and steps are.
+    if (LegsStepped || !LegAction) {
         anim::layerPose(Shown, anim::selectJoints(Target.Moving, anim::getLegJoints()));
         anim::layerPose(ShownStill, anim::selectJoints(Target.Still, anim::getLegJoints()));
     }
@@ -153,6 +165,7 @@ void Fighter::applyControl(float Dt) {
     if (Stride.FollowsTravel) {
         const float Share = Body.getTravelShare();
         (Stride.Crouched ? CrouchWalk : Walk).follow(Share);
+        WalkOdometer += Stride.Travel * Share * (Body.isFacingRight() ? 1.0f : -1.0f);
         Shown = anim::blendPoses(ShownStill, Shown, Share);
         ShownLegs = anim::blendPoses(ShownLegsStill, ShownLegs, Share);
     }
@@ -709,19 +722,30 @@ void Fighter::anchorStep() {
     const std::optional<size_t> Found = Walk.findStep(Walk.getTime());
     if (!Found) return;
     const float Heading = Walk.getDirection() > 0.0f ? 1.0f : -1.0f;
-    if (Anchor && Anchor->Step == *Found && Anchor->Heading == Heading) return;
+    const bool FacingRight = Body.isFacingRight();
+    if (Anchor && Anchor->Step == *Found && Anchor->Heading == Heading && Anchor->FacingRight == FacingRight) {
+        // The standing foot is where the rig holds it: a push of the bodies
+        // takes planted feet along (rig::Rig::pushBody).
+        const CycleStep& Current = Walk.getSteps()[*Found];
+        const BodyPart Standing = Current.Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
+        if (Body.isFootLocked(Standing)) {
+            const float PelvisX = WalkOdometer;
+            Anchor->StandX = PelvisX + Body.measureLegsNow().getFoot(Standing).Ankle.X;
+        }
+        return;
+    }
     // Anchored where the body is now: at the phase before this tick's step.
     const CycleStep& Each = Walk.getSteps()[*Found];
     const BodyPart Stand = Each.Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
-    const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
-    const float PelvisX = Body.getController().getPositionX() * Facing;
+    const float PelvisX = WalkOdometer;
     const rig::LegStance Now = Body.measureLegsNow();
     Anchor = StrideAnchor{.Step = *Found,
                           .Heading = Heading,
                           .Share = std::clamp(Walk.getStepShare(*Found, Walk.getStepFromTime()), 0.0f, 1.0f),
                           .PelvisX = PelvisX,
                           .SwingX = PelvisX + Now.getFoot(Each.Swing).Ankle.X,
-                          .StandX = PelvisX + Now.getFoot(Stand).Ankle.X};
+                          .StandX = PelvisX + Now.getFoot(Stand).Ankle.X,
+                          .FacingRight = FacingRight};
 }
 
 anim::Pose Fighter::placeStepFeet(const anim::Pose& Legs, float TimeSec, float PelvisX) const {
@@ -826,7 +850,14 @@ void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
         const LegStepTuning& Tuning = Rules->Tuning.LegStep;
         const rig::LegStance Now = Body.measureLegsNow();
         const rig::LegStance Wanted = Body.measureLegs(Target.Moving.Angles);
+        // Not towards an opponent this close: a foot could come down in its
+        // legs (the rig holds the feet where they stand meanwhile).
+        const bool TowardsOpponent = std::ranges::any_of(std::array{BodyPart::FootL, BodyPart::FootR}, [&](BodyPart Foot) {
+            return Wanted.getFoot(Foot).Ankle.X - Now.getFoot(Foot).Ankle.X > Tuning.MinDistance;
+        });
+        const bool Clear = !TowardsOpponent || OpponentGap >= Tuning.RestepClearance;
         for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
+            if (!Clear) break;
             const float Off = Now.getFoot(Foot).Ankle.X - Wanted.getFoot(Foot).Ankle.X;
             if (!Now.getFoot(Foot).Planted || std::abs(Off) <= Tuning.RestepDistance) continue;
             RestStep = LegStep::plan(Now, Wanted, false, false, false, Tuning.RestSec, Tuning);
@@ -1004,8 +1035,12 @@ void Fighter::updateRestLegs(bool LegAction, float Dt) {
     const LegSource Source = Walk.isEngaged() ? LegSource::Walk : LegSource::Stance;
     anim::Pose Legs;
     anim::Pose LegsStill;
+    // Walking, coasting or held by the opponent in mid-step: the feet of the
+    // step are placed along the floor (held, the phase stands, so do they).
+    const LegCycle::Mode Mode = Walk.getMode();
     const bool Stepping = Source == LegSource::Walk && !RestLanding &&
-                          (Walk.getMode() == LegCycle::Mode::Walking || Walk.getMode() == LegCycle::Mode::Stopping);
+                          (Mode == LegCycle::Mode::Walking || Mode == LegCycle::Mode::Stopping ||
+                           Mode == LegCycle::Mode::Held);
     if (!Stepping) Anchor.reset();
     if (Source == LegSource::Walk && RestLanding) {
         // Resting after a short step: the cycle's pose with the swing foot
@@ -1016,7 +1051,7 @@ void Fighter::updateRestLegs(bool LegAction, float Dt) {
         // The feet go along the floor with the pelvis travel.
         anchorStep();
         const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
-        const float PelvisX = Body.getController().getPositionX() * Facing;
+        const float PelvisX = WalkOdometer;
         Legs = placeStepFeet(anim::sampleClip(WalkClip, Walk.getTime()), Walk.getTime(),
                              PelvisX + Stride.Travel * Facing);
         LegsStill = placeStepFeet(anim::sampleClip(WalkClip, Walk.getStepFromTime()), Walk.getStepFromTime(), PelvisX);

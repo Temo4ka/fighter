@@ -97,7 +97,9 @@ TEST_CASE("parseCombatTuning: the steps into an action that needs the legs", "[c
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "minDistance": -1 } })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": 1 })"), std::runtime_error);
     const CombatTuning Rest = parseCombatTuning(R"({ "stopMaxCoast": 0.04,
-        "legStep": { "restepDistance": 0.07, "restSec": 0.2 } })");
+        "legStep": { "restepDistance": 0.07, "restSec": 0.2, "restepClearance": 0.9 } })");
+    CHECK(Rest.LegStep.RestepClearance == 0.9f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restepClearance": -1 } })"), std::runtime_error);
     CHECK(Rest.StopMaxCoast == 0.04f);
     CHECK(parseCombatTuning(R"({ "shortStepMinSpread": 0.2 })").ShortStepMinSpread == 0.2f);
     CHECK(parseCombatTuning(R"({ "stopResumeDistance": 0.2 })").StopResumeDistance == 0.2f);

@@ -302,7 +302,7 @@ private:
     /// foot where it stood, the swing foot with the pelvis travel from where
     /// it was to where the clip lands it, moving only while the clip has it
     /// in the air. \p Legs: the clip's legs at \p TimeSec; \p PelvisX: where
-    /// the pelvis is for this pose (along the facing, m). Returns \p Legs
+    /// the pelvis is for this pose (WalkOdometer, m). Returns \p Legs
     /// bent to put the ankles there (rig::Rig::reachFoot).
     anim::Pose placeStepFeet(const anim::Pose& Legs, float TimeSec, float PelvisX) const;
     /// Takes the feet as they stand as the anchor of the step the walk is in
@@ -388,6 +388,7 @@ private:
     };
     LegPlan Stride;
     bool OpponentDown = false;             ///< Surroundings::OpponentDown of the last control().
+    float OpponentGap = 1e9f;              ///< Between the pelvises in the last control(), m.
     bool WalkHeld = false;                 ///< The opponent slowed the walk when it last walked.
     float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.
     /// What sets the legs when no clip poses them.
@@ -426,8 +427,12 @@ private:
     int Resteps = 0;                       ///< Re-steps so far, for the debug panel.
     /// LegFade runs over pelvis travel (m), not time: leaving a rest.
     bool LegFadeByTravel = false;
-    /// Where the feet of the walk step going on are along the floor (in the
-    /// world, along the facing, m): placeStepFeet().
+    /// How far the walk has taken the pelvis along the facing, m: what the
+    /// walk cycle followed (not pushes, which the planted feet go along with).
+    /// The feet of a step are placed against it.
+    float WalkOdometer = 0.0f;
+    /// Where the feet of the walk step going on are along the floor (against
+    /// WalkOdometer, m): placeStepFeet().
     struct StrideAnchor {
         size_t Step = 0;           ///< LegCycle::getSteps() index.
         float Heading = 1.0f;      ///< +1 the walk goes on to the step's end, -1 back to its begin.
@@ -435,6 +440,7 @@ private:
         float PelvisX = 0.0f;      ///< The pelvis then.
         float SwingX = 0.0f;       ///< The swing foot's ankle then.
         float StandX = 0.0f;       ///< The standing foot's ankle (it stays).
+        bool FacingRight = true;   ///< A turn starts the step anew.
     };
     std::optional<StrideAnchor> Anchor;
     std::string LastRestep;                ///< The last one, for the debug panel.

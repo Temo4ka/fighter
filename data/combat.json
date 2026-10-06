@@ -25,6 +25,7 @@
     "sec": 0.15,
     "restepDistance": 0.12,
     "restSec": 0.12,
+    "restepClearance": 1.1,
     "stanceAfterStop": "mirror"
   },
   "crouchWalkSpeedScale": 0.5,
