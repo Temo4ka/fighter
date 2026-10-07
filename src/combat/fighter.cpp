@@ -561,7 +561,7 @@ void Fighter::advanceLegs(float Dt) {
     // The cycle follows the distance the pelvis covers, so the feet keep up
     // with it. The crouch walk plays once per period at the full crouch
     // walking speed.
-    const float CycleSpeed = Body.getWalkSpeed() * (Crouched ? Tuning.CrouchWalkSpeedScale : 1.0f);
+    const float CycleSpeed = Body.getStrideSpeed() * (Crouched ? Tuning.CrouchWalkSpeedScale : 1.0f);
     const rig::PelvisController& Motion = Body.getController();
     const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
     const float MinTravel = Tuning.StepMinSpeed * Dt;
@@ -754,7 +754,7 @@ anim::Pose Fighter::placeStepFeet(const anim::Pose& Legs, float TimeSec, float P
     if (!Anchor) return Legs;
     const CycleStep& Each = Walk.getSteps()[Anchor->Step];
     const BodyPart Stand = Each.Swing == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
-    const float Length = (Each.EndSec - Each.BeginSec) * Body.getWalkSpeed();
+    const float Length = (Each.EndSec - Each.BeginSec) * Body.getStrideSpeed();
     // The share of the step's swing in the air: the foot moves along the
     // floor only between the clip's lift-off and landing.
     const auto getAir = [&](float Share) {
@@ -1173,7 +1173,7 @@ std::string Fighter::describeStride() const {
         float Planned = StepLength;
         if (const std::optional<size_t> Current = Walk.findStep(Walk.getTime())) {
             const CycleStep& Each = Walk.getSteps()[*Current];
-            Planned = (Each.EndSec - Each.BeginSec) * Body.getWalkSpeed();
+            Planned = (Each.EndSec - Each.BeginSec) * Body.getStrideSpeed();
         }
         Text = std::format("step planned {:.2f} m, made {:.2f} m", Planned, StepTravel);
     } else {

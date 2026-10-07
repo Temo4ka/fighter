@@ -53,6 +53,11 @@ constexpr float MaxPlantedSlipTotal = 0.05f;
 /// work a 4 cm tap swung the feet 0.76 m.)
 constexpr float MaxFootPerTravel = 3.0f;
 constexpr float FootMotionSlack = 0.06f;
+/// The feet's midpoint stays this close to under the pelvis, m: choppy taps
+/// both ways put it up to 0.17 m off. (When the stride scaled with the DEX
+/// walk speed, the rogue's choppy taps forward left it 0.29 m behind, the
+/// body leaning over the feet.)
+constexpr float MaxFeetOffCenter = 0.2f;
 
 const CombatTuning& getTuning() {
     static const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");
@@ -125,6 +130,7 @@ struct StrideLog {
     float ReleasedSlip = 0.0f;
     float WorstFootExcess = -1e9f;     ///< Feet motion beyond MaxFootPerTravel * travel + slack, m.
     float LongestCoast = 0.0f;         ///< Pelvis travel after a release, m.
+    float FeetOffCenter = 0.0f;        ///< The feet's midpoint from under the pelvis, m.
     std::string Where;
 };
 
@@ -164,6 +170,8 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
             Log.LongestCoast = std::max(Log.LongestCoast, Coast);
         }
         Log.LowestPelvis = std::min(Log.LowestPelvis, getPart(Now, BodyPart::Pelvis).Position.Y);
+        const float FeetX = (getAnkleX(Now, BodyPart::FootL) + getAnkleX(Now, BodyPart::FootR)) * 0.5f;
+        Log.FeetOffCenter = std::max(Log.FeetOffCenter, std::abs(FeetX - getPelvisX(Now)));
         for (const BodyPart Shin : {BodyPart::ShinL, BodyPart::ShinR}) {
             Log.DeepestKnee = std::min(Log.DeepestKnee, getKnee(Now, Shin));
             Log.MostBackwardKnee = std::max(Log.MostBackwardKnee, getKnee(Now, Shin));
@@ -195,10 +203,10 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
 /// release on (a long walk).
 void checkStride(const StrideLog& Log, float StanceHeight, bool WholeRun) {
     INFO(std::format("pelvis {:.3f} (stance {:.3f}), knee {:.1f}/{:.1f} deg, slip {:.4f}/tick {:.3f} total "
-                     "(released {:.4f}/tick {:.3f}), feet excess {:.3f}, coast {:.3f}",
+                     "(released {:.4f}/tick {:.3f}), feet excess {:.3f}, coast {:.3f}, feet off center {:.3f}",
                      Log.LowestPelvis, StanceHeight, Log.DeepestKnee / RadiansPerDegree,
                      Log.MostBackwardKnee / RadiansPerDegree, Log.WorstSlipPerTick, Log.TotalSlip,
-                     Log.ReleasedSlipPerTick, Log.ReleasedSlip, Log.WorstFootExcess, Log.LongestCoast));
+                     Log.ReleasedSlipPerTick, Log.ReleasedSlip, Log.WorstFootExcess, Log.LongestCoast, Log.FeetOffCenter));
     INFO(Log.Where);
     CHECK(Log.LowestPelvis >= StanceHeight - MaxPelvisSink);
     CHECK(Log.DeepestKnee >= -MaxKneeBend);
@@ -207,6 +215,7 @@ void checkStride(const StrideLog& Log, float StanceHeight, bool WholeRun) {
     CHECK((WholeRun ? Log.TotalSlip : Log.ReleasedSlip) < MaxPlantedSlipTotal);
     CHECK(Log.WorstFootExcess <= 0.0f);
     CHECK(Log.LongestCoast <= getTuning().StopMaxCoast + 1e-3f);
+    CHECK(Log.FeetOffCenter <= MaxFeetOffCenter);
 }
 
 } // namespace
@@ -241,3 +250,23 @@ TEST_CASE("Stride: holding the key walks full steps, a release coasts at most st
     }
 }
 
+TEST_CASE("Stride: choppy taps forward keep the feet under the body, whatever the walk speed", "[combat][stride]") {
+    for (const char* Name : {"knight", "rogue"}) {
+        for (const uint32_t Seed : {1u, 7u}) {
+            INFO(Name << " seed " << Seed);
+            BattleConfig Config = makeConfig();
+            Config.Left = loadFighter(Name);
+            Battle Fight(Config);
+            run(Fight, {}, {}, TicksPerSecond / 4);
+            const float StanceHeight = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
+            std::vector<Tap> Taps = makeTaps(Seed, 30);
+            for (Tap& Each : Taps) Each.MoveX = 1.0f;
+            const StrideLog Log = runTaps(Fight, Taps);
+            INFO(std::format("feet off center {:.3f}, pelvis {:.3f} (stance {:.3f}), slip {:.3f}", Log.FeetOffCenter,
+                             Log.LowestPelvis, StanceHeight, Log.TotalSlip));
+            CHECK(Log.FeetOffCenter <= MaxFeetOffCenter);
+            CHECK(Log.LowestPelvis >= StanceHeight - MaxPelvisSink);
+            CHECK(Log.TotalSlip < MaxPlantedSlipTotal);
+        }
+    }
+}

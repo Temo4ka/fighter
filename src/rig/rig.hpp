@@ -322,6 +322,9 @@ public:
     float getTotalMass() const { return TotalMass; }
     /// Walking speed forwards with the profile's scale, m/s.
     float getWalkSpeed() const { return Control.WalkSpeed * MoveSpeedScale; }
+    /// The pelvis travel the walk clip's legs are posed for per second, m/s:
+    /// a faster fighter steps more often, not longer.
+    float getStrideSpeed() const { return Control.WalkSpeed; }
     /// Motor torque of a joint of strength 1 at stiffness 1, N*m.
     float getMotorMaxTorque() const { return MotorMaxTorque; }
     /// Motor speed per radian of angle error at stiffness 1, 1/s.
