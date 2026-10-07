@@ -372,6 +372,9 @@ public:
     void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
+    /// Is \p Point (world, m) on the shield the body holds (within a
+    /// contact's slop of its plate)? False without a shield.
+    bool isOnShield(Vec2 Point) const;
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
     /// it does not touch them or is not posed now.
     float getPosedPenetration(BodyPart Part) const;

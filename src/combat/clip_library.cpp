@@ -25,6 +25,24 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<c
     return Library;
 }
 
+ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveLibrary& Library) {
+    ClipLibrary Clips = load(PosesDir, Library.getMoves());
+    for (const MoveSet& Set : Library.getSets()) {
+        for (const std::optional<std::string>& Name : Set.Block.Clips) {
+            if (!Name || Clips.Clips.contains(*Name)) continue;
+            try {
+                Clips.add(PosesDir, *Name);
+            } catch (const std::exception& Error) {
+                throw std::runtime_error(std::format("movesets/{}.json: block clip '{}': {}", Set.Id, *Name,
+                                                     Error.what()));
+            }
+            const anim::Clip& Added = Clips.get(*Name);
+            if (anim::usesLegs(Added)) Clips.Mirrored.emplace(*Name, anim::mirrorClipLegs(Added));
+        }
+    }
+    return Clips;
+}
+
 const anim::Clip& ClipLibrary::get(std::string_view Name) const {
     const auto Found = Clips.find(Name);
     if (Found == Clips.end()) throw std::out_of_range(std::format("clip '{}' is not loaded", Name));

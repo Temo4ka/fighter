@@ -190,3 +190,64 @@ TEST_CASE("Reactions: data/reactions.json loads", "[combat][reactions]") {
     CHECK(Table.getLevel(ReactionLevel::Touch).MinStrength > 0.0f);
     CHECK_THROWS_WITH(loadReactionTable("no/such/reactions.json"), ContainsSubstring("no/such/reactions.json"));
 }
+
+TEST_CASE("Reactions: the default block is the table's with the O.2 zones", "[combat][reactions][block]") {
+    const BlockRules Block = getDefaultBlock(makeTable());
+    CHECK(Block.DamageScale == 0.25f);
+    CHECK(Block.MaxLevel == ReactionLevel::Touch);
+    CHECK(Block.StaminaScale == 1.0f);
+    CHECK(Block.getClip(BlockZone::High) == "block_high");
+    CHECK(Block.getClip(BlockZone::Low) == "block_low");
+    CHECK(Block.covers(BlockZone::High, BodyPart::Head));
+    CHECK(Block.covers(BlockZone::Mid, BodyPart::ForearmL));
+    CHECK_FALSE(Block.covers(BlockZone::Mid, BodyPart::Head));
+    CHECK(Block.covers(BlockZone::Low, BodyPart::ShinR));
+}
+
+TEST_CASE("Reactions: a move's height decides the block, not the part it touched", "[combat][reactions][block]") {
+    MoveDef High;
+    High.Tags = {"high", "punch"};
+    MoveDef Plain;
+    Plain.Tags = {"punch"};
+    CHECK(getHeightZone(High) == BlockZone::High);
+    CHECK_FALSE(getHeightZone(Plain).has_value());
+
+    const BlockRules Block = getDefaultBlock(makeTable());
+    // A high move on the forearm of a middle guard: the guard is too low.
+    CHECK_FALSE(isBlockedBy(Block, BlockZone::Mid, BlockZone::High, BodyPart::ForearmL));
+    CHECK(isBlockedBy(Block, BlockZone::High, BlockZone::High, BodyPart::ForearmL));
+    // Without a height, the part decides.
+    CHECK(isBlockedBy(Block, BlockZone::Mid, std::nullopt, BodyPart::ForearmL));
+    // A low move under a high guard is not stopped; on the shield it is.
+    CHECK_FALSE(isBlockedBy(Block, BlockZone::High, BlockZone::Low, BodyPart::Head));
+    CHECK(isBlockedBy(Block, BlockZone::High, BlockZone::Low, BodyPart::Head, true));
+
+    // A shield's middle guard that covers the head stops high moves.
+    BlockRules Shield = Block;
+    Shield.Covers[static_cast<size_t>(BlockZone::Mid)].push_back(BodyPart::Head);
+    CHECK(isBlockedBy(Shield, BlockZone::Mid, BlockZone::High, BodyPart::Torso));
+}
+
+TEST_CASE("Reactions: a hit uses the victim's block", "[combat][reactions][block]") {
+    const ReactionTable Table = makeTable();
+    BlockRules Shield = getDefaultBlock(Table);
+    Shield.DamageScale = 0.1f;
+    Shield.MaxLevel = ReactionLevel::None;
+    Shield.StaminaScale = 0.5f;
+
+    HitInput Hit = makeHit(4.0f);
+    const HitOutcome Clean = resolveHit(Table, Hit);
+    Hit.Guard = BlockZone::Mid;
+    Hit.Block = &Shield;
+    const HitOutcome Blocked = resolveHit(Table, Hit);
+    REQUIRE(Blocked.Blocked);
+    CHECK(Blocked.Damage == Approx(Clean.Damage * 0.1f));
+    CHECK(Blocked.Reaction == ReactionLevel::None);
+    CHECK(Blocked.BlockStamina == Approx(4.0f * 4.0f * 0.5f));
+
+    // A high move is not stopped by the middle guard of this block.
+    Hit.Height = BlockZone::High;
+    CHECK_FALSE(resolveHit(Table, Hit).Blocked);
+    Hit.OnShield = true;
+    CHECK(resolveHit(Table, Hit).Blocked);
+}

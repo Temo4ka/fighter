@@ -58,6 +58,7 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     if (const stats::WeaponProps* Held = Gear.findWeapon()) Weapon = *Held;
     Set = &NewRules.Moves.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
                                     Gear.getMoveSet(stats::EquipmentSlot::OffHand));
+    Block = NewRules.Moves.getBlock(*Set, getDefaultBlock(NewRules.Reactions));
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
@@ -107,8 +108,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     // the legs have (an attack chose in startMove()).
     if (State == FighterState::Crouching || State == FighterState::Blocking) {
         const ClipLibrary& Clips = Rules->Clips;
-        const anim::Clip& Authored = State == FighterState::Crouching ? Clips.get(clips::Crouch)
-                                                                      : Clips.getBlock(Guard);
+        const anim::Clip& Authored = State == FighterState::Crouching ? Clips.get(clips::Crouch) : getBlockClip();
         const bool Continues = ShownTop && &Clips.getAuthored(*ShownTop) == &Authored;
         if (anim::usesLegs(Authored) && !Continues) LegsMirrored = shouldMirrorLegs();
     }
@@ -180,6 +180,7 @@ bool Fighter::isHittable() const { return State != FighterState::KnockedDown && 
 
 HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack, float PowerScale, float Direction,
                             bool JammedStrike) {
+    const bool OnShield = Body.isOnShield(Hit.Point);
     const HitInput Input{
         .Impulse = Hit.Impulse,
         .Part = Hit.Victim.Part,
@@ -188,6 +189,9 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
         .Poise = Profile.Poise,
         .Buildup = Buildup,
         .Guard = State == FighterState::Blocking ? std::optional(Guard) : std::nullopt,
+        .Block = &Block,
+        .Height = getHeightZone(Attack),
+        .OnShield = OnShield,
         .MoveDamage = Attack.Damage,
         .PowerScale = PowerScale,
         .MinReaction = JammedStrike ? ReactionLevel::None : Attack.MinReaction,
@@ -196,7 +200,7 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
     Hp = std::max(0.0f, Hp - Outcome.Damage);
     Buildup += Outcome.BuildupAdded;
     if (Outcome.Blocked) spendStamina(Outcome.BlockStamina);
-    LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome};
+    LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome, .OnShield = OnShield};
     react(Outcome.Reaction, Hit.Impulse, Direction, Hit.Point);
     return Outcome;
 }
@@ -252,6 +256,8 @@ std::string_view Fighter::getMoveId() const {
     const MoveDef* Current = getMove();
     return Current ? std::string_view(Current->Id) : std::string_view();
 }
+
+const anim::Clip& Fighter::getBlockClip() const { return Rules->Clips.get(Block.getClip(Guard)); }
 
 float Fighter::getPowerScale(const MoveDef& Attack) const {
     return Attack.UsesWeapon && Weapon ? Weapon->PowerScale : 1.0f;
@@ -535,7 +541,7 @@ float Fighter::planWalking(const PlayerCommands& Cmd) {
     if (!Crouched) CrouchWalk.settle();
     Stride.Crouched = Crouched;
     const bool AttackAllowsMove = State == FighterState::Attacking && AttackClip->AllowMove && !AttackFromCrouch;
-    const bool BlockAllowsMove = State == FighterState::Blocking && Rules->Clips.getBlock(Guard).AllowMove;
+    const bool BlockAllowsMove = State == FighterState::Blocking && getBlockClip().AllowMove;
     const bool CanMove = !PendingAttack && (State == FighterState::Idle || State == FighterState::Walking ||
                                             Crouched || BlockAllowsMove || AttackAllowsMove);
     float MoveX = CanMove ? std::clamp(Cmd.MoveX, -1.0f, 1.0f) : 0.0f;
@@ -1279,8 +1285,8 @@ PoseKind Fighter::getClipKind(const anim::Clip& Played) const {
     const anim::Clip& Source = Clips.getAuthored(Played);
     if (&Source == &Clips.get(clips::Crouch)) return PoseKind::Crouch;
     if (&Source == &Clips.get(clips::CrouchWalk)) return PoseKind::CrouchWalk;
-    for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
-        if (&Source == &Clips.getBlock(Zone)) return PoseKind::Block;
+    for (const std::string& Name : Block.Clips) {
+        if (&Source == &Clips.get(Name)) return PoseKind::Block;
     }
     for (const ReactionLevel Level : {ReactionLevel::Flinch, ReactionLevel::Stagger, ReactionLevel::Knockback}) {
         if (&Source == Clips.findReaction(Level)) return PoseKind::Reaction;
@@ -1301,7 +1307,7 @@ const anim::Clip* Fighter::getTopClip() const {
     switch (State) {
         case FighterState::Attacking: return AttackClip;
         case FighterState::Crouching: return &getPlayed(Rules->Clips.get(clips::Crouch));
-        case FighterState::Blocking: return &getPlayed(Rules->Clips.getBlock(Guard));
+        case FighterState::Blocking: return &getPlayed(getBlockClip());
         case FighterState::Reacting: return Rules->Clips.findReaction(Reaction);
         default: return nullptr;
     }

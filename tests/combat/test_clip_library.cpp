@@ -42,7 +42,7 @@ TEST_CASE("ClipLibrary: loads the state machine clips and every move clip", "[co
 TEST_CASE("ClipLibrary: a missing clip names its file", "[combat][clips]") {
     const test::ScratchData Data("clip_library");
     std::filesystem::remove(Data.getDir() / "poses" / "block_high.json");
-    CHECK_THROWS_WITH(ClipLibrary::load(Data.getDir() / "poses", {}), ContainsSubstring("block_high.json"));
+    CHECK_THROWS_WITH(ClipLibrary::load(Data.getDir() / "poses", std::span<const MoveDef>{}), ContainsSubstring("block_high.json"));
 
     // A move's clip is required too.
     const test::ScratchData Moves("clip_library_moves");
@@ -72,4 +72,18 @@ TEST_CASE("ClipLibrary: the clips that pose the legs have a mirrored copy", "[co
     const anim::Clip& Jab = Clips.get("jab");
     CHECK(&Clips.getMirrored(Jab) == &Jab);
     CHECK_FALSE(Clips.isMirrored(Jab));
+}
+
+TEST_CASE("ClipLibrary: loads the block clips of the movesets", "[combat][clips]") {
+    const test::ScratchData Data("clip_library_blocks");
+    Data.write("movesets/sword.json", R"({"inherit": "unarmed", "moves": {"Heavy": "sword_slash"},
+        "block": {"clips": {"Mid": "my_guard"}}})");
+    std::filesystem::copy_file(Data.getDir() / "poses" / "block_mid.json", Data.getDir() / "poses" / "my_guard.json");
+    const MoveLibrary Library = MoveLibrary::load(Data.getDir());
+    const ClipLibrary Clips = ClipLibrary::load(Data.getDir() / "poses", Library);
+    CHECK(Clips.find("my_guard") != nullptr);
+
+    std::filesystem::remove(Data.getDir() / "poses" / "my_guard.json");
+    CHECK_THROWS_WITH(ClipLibrary::load(Data.getDir() / "poses", Library),
+                      ContainsSubstring("movesets/sword.json") && ContainsSubstring("my_guard"));
 }

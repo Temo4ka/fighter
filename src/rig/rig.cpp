@@ -375,6 +375,11 @@ void Rig::getPartTransforms(std::vector<PartTransform>& Out) const {
     }
 }
 
+bool Rig::isOnShield(Vec2 Point) const {
+    (void)Point;
+    return false;
+}
+
 ExtentX Rig::getExtentX() const {
     ExtentX Result{.Min = std::numeric_limits<float>::max(), .Max = std::numeric_limits<float>::lowest()};
     for (const auto& Part : Parts) {

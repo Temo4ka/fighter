@@ -29,6 +29,7 @@
 #include "combat/commands.hpp"
 #include "combat/events.hpp"
 #include "combat/moves.hpp"
+#include "combat/moveset.hpp"
 
 namespace fighter::combat {
 
@@ -52,6 +53,9 @@ public:
     /// CloseClip) from \p PosesDir. Throws std::runtime_error that names the
     /// file if one is missing or broken.
     static ClipLibrary load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves);
+    /// The same for the moves of \p Library, and the block clips of its
+    /// movesets ("block.clips"); an error names the moveset.
+    static ClipLibrary load(const std::filesystem::path& PosesDir, const MoveLibrary& Library);
 
     /// The clip loaded for \p Name. Throws std::out_of_range if it was not
     /// loaded.
@@ -59,6 +63,8 @@ public:
     /// The clip loaded for \p Name, or nullptr (an optional clip without its
     /// file).
     const anim::Clip* find(std::string_view Name) const;
+    /// The default clip of a guard: block_high, block_mid or block_low (a
+    /// moveset may give its own, BlockRules::Clips).
     const anim::Clip& getBlock(BlockZone Zone) const;
     /// The clip of a reaction level, or nullptr if the level has none (None,
     /// Touch, and Knockdown, which the rig plays as a ragdoll).

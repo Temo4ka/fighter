@@ -112,6 +112,7 @@ struct HitRecord {
     std::string MoveId;
     BodyPart Part = BodyPart::Torso;
     HitOutcome Outcome;
+    bool OnShield = false;   ///< It landed on the shield the fighter holds.
 };
 
 class Fighter {
@@ -197,6 +198,12 @@ public:
     /// Is \p Part a striking part of an attack in its striking phase that
     /// has not landed yet? Only such contacts are hits; the rest are bumps.
     bool isStrikingWith(BodyPart Part) const;
+    /// The block of the fighter's moveset (with its parents and the general
+    /// rules of reactions.json).
+    const BlockRules& getBlock() const { return Block; }
+    /// The clip of the guard the fighter holds (or would hold) now: its
+    /// block's clip for Guard.
+    const anim::Clip& getBlockClip() const;
     /// Back against the arena wall behind it (O.11): cannot retreat.
     bool isAgainstWall() const;
     /// Where the opponent is; the fighter turns that way when it is free to.
@@ -369,6 +376,7 @@ private:
     stats::PhysicalProfile Profile;
     std::optional<stats::WeaponProps> Weapon;
     const MoveSet* Set = nullptr;          ///< From the weapon: which input starts which move, and the block.
+    BlockRules Block;                      ///< The block of Set, with its parents and reactions.json.
     float Hp = 0.0f;
     float Stamina = 0.0f;
     bool Exhausted = false;
