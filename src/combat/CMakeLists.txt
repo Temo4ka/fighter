@@ -6,7 +6,9 @@ fighter_add_module(combat
         fighter.cpp
         leg_cycle.cpp
         leg_step.cpp
+        move_input.cpp
         moves.cpp
+        moveset.cpp
         reactions.cpp
         snapshot.cpp
         tuning.cpp

@@ -53,8 +53,8 @@ TEST_CASE("InputSystem: default layout gives each player all actions", "[app][in
     for (const auto Key : {Scan::Up, Scan::Down, Scan::RShift, Scan::K, Scan::L, Scan::I, Scan::O}) {
         Input.onKey(Key, true);
     }
-    const PlayerCommands All{.Up = true, .Down = true, .Block = true, .Jab = true, .HeavyPunch = true,
-                             .BodyKick = true, .LowKick = true};
+    const PlayerCommands All{.Up = true, .Down = true, .Block = true, .Light = true, .Heavy = true,
+                             .Kick = true, .Special = true};
     CHECK(Input.getCommands(0) == All);
     CHECK(Input.getCommands(1) == All);
 }

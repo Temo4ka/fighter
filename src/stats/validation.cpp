@@ -93,7 +93,7 @@ void validateItem(const EquipmentItem& Item) {
     if (Item.Slot != EquipmentSlot::Weapon) {
         throw DataError(std::format("item '{}' has weapon properties but is not in the Weapon slot", Item.Id));
     }
-    if (Weapon.Class.empty()) throw DataError(std::format("weapon '{}' has an empty class", Item.Id));
+    if (Weapon.MoveSet.empty()) throw DataError(std::format("weapon '{}' has an empty moveset", Item.Id));
     checkItemRange(Item, "reach", Weapon.ReachM, MaxWeaponReachM, " m");
     const auto CheckScale = [&](std::string_view Name, float Scale) {
         if (Scale >= MinWeaponScale && Scale <= MaxWeaponScale) return;

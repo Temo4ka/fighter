@@ -44,10 +44,7 @@ constexpr float CalmKnockback = 0.05f;
 constexpr float BlockBarOffsetM = 0.3f;
 constexpr float BlockBarHalfWidthM = 0.04f;
 
-constexpr std::array AttackButtons = {MoveButton::Jab, MoveButton::HeavyPunch, MoveButton::BodyKick,
-                                      MoveButton::LowKick};
 
-std::string_view getWeaponClass(const std::optional<stats::WeaponProps>& Weapon);
 bool hasUpperJoints(const anim::Clip& Source);
 
 } // namespace
@@ -59,6 +56,7 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
     if (NewWeapon) Weapon = *NewWeapon;
+    Set = &NewRules.Moves.selectSet(Weapon ? std::string_view(Weapon->MoveSet) : std::string_view(), {});
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
@@ -255,7 +253,7 @@ std::string_view Fighter::getMoveId() const {
 }
 
 float Fighter::getPowerScale(const MoveDef& Attack) const {
-    return !Attack.Weapon.empty() && Weapon ? Weapon->PowerScale : 1.0f;
+    return Attack.UsesWeapon && Weapon ? Weapon->PowerScale : 1.0f;
 }
 
 std::string Fighter::describeClip() const {
@@ -412,12 +410,12 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
     } else {
         AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
     }
-    // A press (not a held button) of a chain button asks for the next strike;
-    // it is kept until the cancel window.
-    for (const MoveButton Button : AttackButtons) {
-        if (isPressed(Cmd, Button) && !isPressed(PreviousCmd, Button) && Move->canChainTo(Button)) {
-            ChainRequest = Button;
-        }
+    // A press (not a held button) of a move the current one chains into asks
+    // for it; it is kept until the cancel window.
+    if (const ButtonSet Pressed = getNewlyPressed(Cmd, PreviousCmd); !Pressed.isEmpty()) {
+        const MoveDef* Next = Rules->Moves.findMove(*Set, getInputDirection(Cmd, Body.isFacingRight()), Pressed,
+                                                    getHeldButtons(Cmd));
+        if (Next && Move->canChainTo(Next->Id)) ChainRequest = Next;
     }
     if (AttackTime >= AttackClip->ActiveEndSec) {
         RecoverySec += Dt;
@@ -425,10 +423,9 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
         const bool CanChain = AttackHitClean && ChainRequest && ChainLength < Tuning.MaxChainLength &&
                               RecoverySec <= Tuning.ChainWindowSec;
         if (CanChain) {
-            if (const MoveDef* Next = findMove(Rules->Moves, *ChainRequest, getWeaponClass(Weapon))) {
-                startMove(*Next, Around, ChainLength + 1);
-                return Next;
-            }
+            const MoveDef* Next = ChainRequest;
+            startMove(*Next, Around, ChainLength + 1);
+            return Next;
         }
     }
     if (AttackClip->isFinishedAt(AttackTime)) setState(FighterState::Idle);
@@ -439,7 +436,7 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
     if (const std::optional<BlockZone> Zone = getBlockZone(Cmd, Body.isFacingRight())) {
         if (State != FighterState::Blocking || *Zone != Guard) StateSec = 0.0f;
         Guard = *Zone;
-        PendingAttack.reset();
+        PendingAttack = nullptr;
         setState(FighterState::Blocking);
         return nullptr;
     }
@@ -448,21 +445,21 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
     if (PendingAttack) {
         StandUpLeftSec -= Dt;
         if (StandUpLeftSec > 0.0f) return nullptr;
-        const MoveButton Button = *std::exchange(PendingAttack, std::nullopt);
-        if (const MoveDef* Next = findMove(Rules->Moves, Button, getWeaponClass(Weapon))) {
-            startMove(*Next, Around, 1);
-            return Next;
-        }
+        const MoveDef* Next = std::exchange(PendingAttack, nullptr);
+        startMove(*Next, Around, 1);
+        return Next;
     }
-    // Holding an attack button repeats the attack.
-    for (const MoveButton Button : AttackButtons) {
-        if (!isPressed(Cmd, Button)) continue;
-        const MoveDef* Next = findMove(Rules->Moves, Button, getWeaponClass(Weapon));
-        if (!Next) continue;
-        // Crouched, only the low kick starts at once; the rest stand up first.
-        if (State == FighterState::Crouching && Button != MoveButton::LowKick &&
+    // Holding attack buttons repeats the attack.
+    const ButtonSet Held = getHeldButtons(Cmd);
+    const MoveSetEntry* Entry =
+        Held.isEmpty() ? nullptr
+                       : Rules->Moves.findEntry(*Set, getInputDirection(Cmd, Body.isFacingRight()), Held, Held);
+    if (const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr) {
+        // Crouched, a move mapped to a downward direction (the low kick)
+        // starts at once; the rest stand up first.
+        if (State == FighterState::Crouching && !isDownward(Entry->Input.Direction) &&
             Rules->Tuning.CrouchStandUpSec > 0.0f) {
-            PendingAttack = Button;
+            PendingAttack = Next;
             StandUpLeftSec = Rules->Tuning.CrouchStandUpSec;
             setState(FighterState::Idle);
             return nullptr;
@@ -490,7 +487,7 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     spendStamina(Next.Stamina);
 
     float Rate = Profile.AttackSpeedScale;
-    if (!Next.Weapon.empty() && Weapon) Rate *= Weapon->SpeedScale;
+    if (Next.UsesWeapon && Weapon) Rate *= Weapon->SpeedScale;
     if (Exhausted) Rate *= Rules->Tuning.ExhaustedSpeedScale;
 
     const bool FromCrouch = State == FighterState::Crouching;
@@ -510,7 +507,7 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     AttackHitClean = false;
     RecoverySec = 0.0f;
     ChainLength = ChainPosition;
-    ChainRequest.reset();
+    ChainRequest = nullptr;
 }
 
 float Fighter::planWalking(const PlayerCommands& Cmd) {
@@ -1174,7 +1171,7 @@ anim::Pose Fighter::getStanceLegs(BodyPart FrontFoot) const {
 
 std::string Fighter::describeLegs() const {
     if (PendingAttack) {
-        return std::format("standing up {:.2f} s -> {}", StandUpLeftSec, getMoveButtonName(*PendingAttack));
+        return std::format("standing up {:.2f} s -> {}", StandUpLeftSec, PendingAttack->Id);
     }
     const std::string Steps = Step.isActive() ? ", " + Step.describe() : "";
     if (State == FighterState::Crouching) {
@@ -1357,10 +1354,6 @@ void Fighter::react(ReactionLevel Level, float Impulse, float Direction, Vec2 Po
 }
 
 namespace {
-
-std::string_view getWeaponClass(const std::optional<stats::WeaponProps>& Weapon) {
-    return Weapon ? std::string_view(Weapon->Class) : std::string_view();
-}
 
 /// Does the clip pose a joint of the upper body (not only the legs)?
 bool hasUpperJoints(const anim::Clip& Source) {

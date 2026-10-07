@@ -1,0 +1,8 @@
+{
+    "moves": {
+        "Light": "jab",
+        "Heavy": "heavy_punch",
+        "Kick": "body_kick",
+        "Down+Kick": "low_kick"
+    }
+}

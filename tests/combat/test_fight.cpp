@@ -32,15 +32,6 @@ using Catch::Approx;
 
 namespace {
 
-PlayerCommands press(MoveButton Button) {
-    PlayerCommands Cmd;
-    Cmd.Jab = Button == MoveButton::Jab;
-    Cmd.HeavyPunch = Button == MoveButton::HeavyPunch;
-    Cmd.BodyKick = Button == MoveButton::BodyKick;
-    Cmd.LowKick = Button == MoveButton::LowKick;
-    return Cmd;
-}
-
 bool isFree(const FighterView& View) { return View.State == FighterState::Idle || View.State == FighterState::Walking; }
 
 /// How P1 attacks P2 in strike().
@@ -335,7 +326,7 @@ TEST_CASE("Fight: the commands choose the free state", "[combat][fight]") {
     CHECK(getLeft(Fight).State == FighterState::Blocking);
     CHECK(getLeft(Fight).Block == BlockZone::Low);
     // The block wins over an attack button.
-    run(Fight, {.Up = true, .Block = true, .Jab = true}, {}, 2);
+    run(Fight, {.Up = true, .Block = true, .Light = true}, {}, 2);
     CHECK(getLeft(Fight).State == FighterState::Blocking);
     CHECK(getLeft(Fight).Block == BlockZone::High);
     run(Fight, {}, {}, 2);
@@ -444,7 +435,7 @@ TEST_CASE("Fight: a hit may be chained into the next strike", "[combat][fight]")
     const auto tapTwice = [&](Battle& Fight) {
         std::vector<int> Starts;
         for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
-            Fight.update({.Jab = Tick < 2 || (Tick >= 10 && Tick < 12)}, {}, Dt);
+            Fight.update({.Light = Tick < 2 || (Tick >= 10 && Tick < 12)}, {}, Dt);
             for (const BattleEvent& Event : Fight.getEvents()) {
                 if (std::holds_alternative<StrikeStarted>(Event)) Starts.push_back(Tick);
             }
@@ -494,7 +485,7 @@ TEST_CASE("Fight: DEX speeds strikes up within the O.7 corridor", "[combat][figh
         BattleConfig Config = makeConfig();
         Config.Left.Stats.Dexterity = Dexterity;
         Battle Fight(Config);
-        Fight.update({.Jab = true}, {}, Dt);
+        Fight.update({.Light = true}, {}, Dt);
         int Startup = 1;
         int Total = 1;
         while (getLeft(Fight).State == FighterState::Attacking && Total < 2 * TicksPerSecond) {

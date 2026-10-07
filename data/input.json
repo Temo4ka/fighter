@@ -1,0 +1,9 @@
+{
+    "combo_window_sec": 0.05,
+    "fallbacks": {
+        "UpForward": ["Up"],
+        "UpBack": ["Up"],
+        "DownForward": ["Down"],
+        "DownBack": ["Down"]
+    }
+}

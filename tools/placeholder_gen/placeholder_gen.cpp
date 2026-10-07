@@ -521,7 +521,7 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, const Part
         return [Center, Half](Vec2 Point) { return getSdfBox(Point, Center, Half, 0.0f); };
     };
 
-    if (Weapon.Class == "sword") {
+    if (Weapon.MoveSet == "sword") {
         const float HalfWidth = 0.024f;
         const float TipLength = 0.05f;
         const float BladeTop = Fist - 0.016f;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <initializer_list>
+#include <ranges>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -19,21 +20,26 @@ using Json = nlohmann::json;
 void checkFieldNames(const Json& Root, std::initializer_list<std::string_view> Allowed);
 const Json& getField(const Json& Root, std::string_view Key);
 float readNonNegative(const Json& Root, std::string_view Key);
-std::optional<MoveButton> findMoveButton(std::string_view Name);
+std::vector<std::string> readNames(const Json& Root, std::string_view Key);
+MoveIntent readIntent(const Json& Node);
 
 } // namespace
 
-const MoveDef* findMove(std::span<const MoveDef> Moves, MoveButton Button, std::string_view WeaponClass) {
-    const MoveDef* Unarmed = nullptr;
-    for (const MoveDef& Move : Moves) {
-        if (Move.Button != Button) continue;
-        if (!WeaponClass.empty() && Move.Weapon == WeaponClass) return &Move;
-        if (Move.Weapon.empty() && !Unarmed) Unarmed = &Move;
+bool MoveDef::canChainTo(std::string_view NextId) const { return std::ranges::find(ChainTo, NextId) != ChainTo.end(); }
+
+bool MoveDef::hasTag(std::string_view Tag) const { return std::ranges::find(Tags, Tag) != Tags.end(); }
+
+std::string_view MoveDef::getHeight() const {
+    for (const std::string_view Height : HeightTags) {
+        if (hasTag(Height)) return Height;
     }
-    return Unarmed;
+    return {};
 }
 
-bool MoveDef::canChainTo(MoveButton Next) const { return std::ranges::find(ChainTo, Next) != ChainTo.end(); }
+const MoveDef* findMoveById(std::span<const MoveDef> Moves, std::string_view Id) {
+    const auto Found = std::ranges::find(Moves, Id, &MoveDef::Id);
+    return Found != Moves.end() ? &*Found : nullptr;
+}
 
 MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
     MoveDef Move;
@@ -41,24 +47,12 @@ MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
     try {
         const Json Root = Json::parse(JsonText);
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
-        checkFieldNames(Root, {"button", "clip", "weapon", "damage", "min_reaction", "stamina",
-                               "close_clip", "close_range_m", "chain_to"});
-
-        const auto ButtonName = getField(Root, "button").get<std::string>();
-        const std::optional<MoveButton> Button = findMoveButton(ButtonName);
-        if (!Button) {
-            throw std::runtime_error(
-                std::format("field 'button': unknown button '{}' (expected Jab, HeavyPunch, BodyKick or LowKick)",
-                            ButtonName));
-        }
-        Move.Button = *Button;
+        checkFieldNames(Root, {"clip", "uses_weapon", "damage", "min_reaction", "stamina", "close_clip",
+                               "close_range_m", "chain_to", "tags", "ai"});
 
         Move.Clip = getField(Root, "clip").get<std::string>();
         if (Move.Clip.empty()) throw std::runtime_error("field 'clip': must not be empty");
-        if (Root.contains("weapon")) {
-            Move.Weapon = Root.at("weapon").get<std::string>();
-            if (Move.Weapon.empty()) throw std::runtime_error("field 'weapon': must not be empty (omit it instead)");
-        }
+        if (Root.contains("uses_weapon")) Move.UsesWeapon = Root.at("uses_weapon").get<bool>();
 
         Move.Damage = readNonNegative(Root, "damage");
         if (Root.contains("min_reaction")) {
@@ -83,29 +77,20 @@ MoveDef parseMoveDef(std::string_view JsonText, std::string Id) {
             if (Move.CloseClip.empty()) throw std::runtime_error("field 'close_clip': must not be empty");
             Move.CloseRangeM = readNonNegative(Root, "close_range_m");
         }
-        if (Root.contains("chain_to")) {
-            const Json& Buttons = Root.at("chain_to");
-            if (!Buttons.is_array()) throw std::runtime_error("field 'chain_to': must be a list of buttons");
-            for (const auto& Entry : Buttons) {
-                const auto Name = Entry.get<std::string>();
-                const std::optional<MoveButton> Next = findMoveButton(Name);
-                if (!Next) {
-                    throw std::runtime_error(std::format(
-                        "field 'chain_to': unknown button '{}' (expected Jab, HeavyPunch, BodyKick or LowKick)", Name));
-                }
-                if (Move.canChainTo(*Next)) {
-                    throw std::runtime_error(std::format("field 'chain_to': button '{}' is listed twice", Name));
-                }
-                Move.ChainTo.push_back(*Next);
-            }
-        }
+        Move.ChainTo = readNames(Root, "chain_to");
+        Move.Tags = readNames(Root, "tags");
+        const auto Heights = std::ranges::count_if(Move.Tags, [](const std::string& Tag) {
+            return std::ranges::find(HeightTags, Tag) != HeightTags.end();
+        });
+        if (Heights > 1) throw std::runtime_error("field 'tags': more than one height (high, mid, low)");
+        if (Root.contains("ai")) Move.Intent = readIntent(Root.at("ai"));
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());
     }
     return Move;
 }
 
-std::vector<MoveDef> loadMoveSet(const std::filesystem::path& Dir) {
+std::vector<MoveDef> loadMoves(const std::filesystem::path& Dir) {
     std::error_code Error;
     std::vector<std::filesystem::path> Files;
     for (const auto& Entry : std::filesystem::directory_iterator(Dir, Error)) {
@@ -118,18 +103,17 @@ std::vector<MoveDef> loadMoveSet(const std::filesystem::path& Dir) {
     std::vector<MoveDef> Moves;
     for (const auto& File : Files) {
         try {
-            MoveDef Move = parseMoveDef(readTextFile(File), File.stem().string());
-            const auto Clash = std::ranges::find_if(Moves, [&](const MoveDef& Other) {
-                return Other.Button == Move.Button && Other.Weapon == Move.Weapon;
-            });
-            if (Clash != Moves.end()) {
-                throw std::runtime_error(std::format("button {} is already taken by '{}'{}",
-                                                     getMoveButtonName(Move.Button), Clash->Id,
-                                                     Move.Weapon.empty() ? "" : " for weapon " + Move.Weapon));
-            }
-            Moves.push_back(std::move(Move));
+            Moves.push_back(parseMoveDef(readTextFile(File), File.stem().string()));
         } catch (const std::runtime_error& Failure) {
             throw std::runtime_error(std::format("{}: {}", File.string(), Failure.what()));
+        }
+    }
+    for (const auto& [Move, File] : std::views::zip(Moves, Files)) {
+        for (const std::string& Next : Move.ChainTo) {
+            if (!findMoveById(Moves, Next)) {
+                throw std::runtime_error(
+                    std::format("{}: field 'chain_to': there is no move '{}' in {}", File.string(), Next, Dir.string()));
+            }
         }
     }
     return Moves;
@@ -157,12 +141,47 @@ float readNonNegative(const Json& Root, std::string_view Key) {
     return Value;
 }
 
-std::optional<MoveButton> findMoveButton(std::string_view Name) {
-    for (size_t Index = 0; Index < MoveButtonCount; ++Index) {
-        const auto Button = static_cast<MoveButton>(Index);
-        if (getMoveButtonName(Button) == Name) return Button;
+std::vector<std::string> readNames(const Json& Root, std::string_view Key) {
+    std::vector<std::string> Names;
+    const auto Found = Root.find(Key);
+    if (Found == Root.end()) return Names;
+    if (!Found->is_array()) throw std::runtime_error(std::format("field '{}': must be a list of names", Key));
+    for (const Json& Entry : *Found) {
+        auto Name = Entry.get<std::string>();
+        if (Name.empty()) throw std::runtime_error(std::format("field '{}': a name must not be empty", Key));
+        if (std::ranges::find(Names, Name) != Names.end()) {
+            throw std::runtime_error(std::format("field '{}': '{}' is listed twice", Key, Name));
+        }
+        Names.push_back(std::move(Name));
     }
-    return std::nullopt;
+    return Names;
+}
+
+MoveIntent readIntent(const Json& Node) {
+    if (!Node.is_object()) throw std::runtime_error("field 'ai': must be an object");
+    for (const auto& Field : Node.items()) {
+        if (Field.key() != "range_m" && Field.key() != "role" && Field.key() != "weight") {
+            throw std::runtime_error(std::format("field 'ai.{}': unknown field", Field.key()));
+        }
+    }
+    MoveIntent Intent;
+    if (const auto Range = Node.find("range_m"); Range != Node.end()) {
+        if (!Range->is_array() || Range->size() != 2) {
+            throw std::runtime_error("field 'ai.range_m': must be [min, max]");
+        }
+        Intent.MinRangeM = (*Range)[0].get<float>();
+        Intent.MaxRangeM = (*Range)[1].get<float>();
+        if (Intent.MinRangeM < 0.0f || Intent.MaxRangeM < Intent.MinRangeM) {
+            throw std::runtime_error(
+                std::format("field 'ai.range_m': [{}, {}] must have 0 <= min <= max", Intent.MinRangeM, Intent.MaxRangeM));
+        }
+    }
+    if (const auto Role = Node.find("role"); Role != Node.end()) Intent.Role = Role->get<std::string>();
+    if (const auto Weight = Node.find("weight"); Weight != Node.end()) {
+        Intent.Weight = Weight->get<float>();
+        if (Intent.Weight < 0.0f) throw std::runtime_error(std::format("field 'ai.weight': {} must not be negative", Intent.Weight));
+    }
+    return Intent;
 }
 
 } // namespace

@@ -1,0 +1,6 @@
+{
+    "inherit": "unarmed",
+    "moves": {
+        "Heavy": "sword_slash"
+    }
+}

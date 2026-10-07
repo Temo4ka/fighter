@@ -8,7 +8,7 @@
             "mass_kg": 1.2,
             "armor": 0.0,
             "weapon": {
-                "class": "sword",
+                "moveset": "sword",
                 "reach_m": 0.55,
                 "speed_scale": 1.0,
                 "power_scale": 1.15
@@ -22,7 +22,7 @@
             "mass_kg": 3.5,
             "armor": 0.0,
             "weapon": {
-                "class": "hammer",
+                "moveset": "hammer",
                 "reach_m": 0.45,
                 "speed_scale": 0.8,
                 "power_scale": 1.5

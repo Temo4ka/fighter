@@ -71,16 +71,16 @@ public:
             case Act::Approach: Cmd.MoveX = Forward; break;
             case Act::Retreat: Cmd.MoveX = -Forward; break;
             case Act::Hold: break;
-            case Act::Jab: Cmd.Jab = Age % 20 < 2; break;
-            case Act::Heavy: Cmd.HeavyPunch = Age == 1; break;
-            case Act::BodyKick: Cmd.BodyKick = Age == 1; break;
-            case Act::LowKick: Cmd.LowKick = Age == 1; break;
+            case Act::Jab: Cmd.Light = Age % 20 < 2; break;
+            case Act::Heavy: Cmd.Heavy = Age == 1; break;
+            case Act::BodyKick: Cmd.Kick = Age == 1; break;
+            case Act::LowKick: Cmd.Down = Cmd.Kick = Age == 1; break;
             case Act::Crouch: Cmd.Down = true; break;
-            case Act::CrouchKick: Cmd.Down = true; Cmd.LowKick = Age == 6; break;
+            case Act::CrouchKick: Cmd.Down = true; Cmd.Kick = Age == 6; break;
             case Act::BlockHigh: Cmd.Block = true; Cmd.Up = true; Cmd.MoveX = 0.0f; break;
             case Act::BlockMid: Cmd.Block = true; break;
             case Act::BlockLow: Cmd.Block = true; Cmd.Down = true; break;
-            case Act::Chain: Cmd.Jab = Age % 12 < 2 && Age < 30; Cmd.HeavyPunch = Age == 30; break;
+            case Act::Chain: Cmd.Light = Age % 12 < 2 && Age < 30; Cmd.Heavy = Age == 30; break;
             case Act::Count: break;
         }
         return Cmd;

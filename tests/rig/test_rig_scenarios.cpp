@@ -81,7 +81,7 @@ JabTrace traceJab(Battle& Fight) {
     Trace.Longest = Trace.Guard;
     float Previous = Trace.Guard;
     for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) {
-        Fight.update({.Jab = Tick == 0}, {}, Dt);
+        Fight.update({.Light = Tick == 0}, {}, Dt);
         const float Reach = getReach(Fight.getSnapshot().Fighters[0]);
         Trace.Longest = std::max(Trace.Longest, Reach);
         Trace.PeakSpeed = std::max(Trace.PeakSpeed, (Reach - Previous) / static_cast<float>(Dt));
@@ -106,8 +106,8 @@ float pressToWall(Battle& Fight, bool Exchange) {
     float Closest = 1e9f;
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
         const PlayerCommands Left{.MoveX = getPelvisGap(Fight) > CloseJabGap ? 1.0f : 0.0f,
-                                  .Jab = Exchange && Tick % 25 < 3};
-        const PlayerCommands Right{.Jab = Exchange && Tick % 29 < 3};
+                                  .Light = Exchange && Tick % 25 < 3};
+        const PlayerCommands Right{.Light = Exchange && Tick % 29 < 3};
         Fight.update(Left, Right, Dt);
         if (Tick >= 9 * TicksPerSecond) Closest = std::min(Closest, getPelvisGap(Fight));
     }
@@ -202,7 +202,7 @@ std::optional<int> kickDown(Battle& Fight, int Ticks) {
     bool Kicked = false;
     for (int Tick = 0; Tick < Ticks; ++Tick) {
         const bool InRange = getGap(Fight) <= KickRange;
-        Fight.update({.MoveX = InRange || Kicked ? 0.0f : 1.0f, .BodyKick = InRange && !Kicked}, {}, Dt);
+        Fight.update({.MoveX = InRange || Kicked ? 0.0f : 1.0f, .Kick = InRange && !Kicked}, {}, Dt);
         Kicked = Kicked || InRange;
         if (isKnockedDown(Fight, 1)) return Tick;
     }

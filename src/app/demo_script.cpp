@@ -66,11 +66,11 @@ DemoInput getDemoInput(DemoScript Script, uint64_t Tick, const combat::RenderSna
                 if (Distance < KickRange - KickRangeSlack) {
                     Left.MoveX = -1.0f;
                 } else {
-                    Left.BodyKick = true;
+                    Left.Kick = true;
                 }
                 break;
             }
-            Left.Jab = Tick % AttackPeriod < JabHoldTicks;
+            Left.Light = Tick % AttackPeriod < JabHoldTicks;
             break;
         }
         case DemoScript::Kick:
@@ -78,7 +78,7 @@ DemoInput getDemoInput(DemoScript Script, uint64_t Tick, const combat::RenderSna
                 Left.MoveX = 1.0f;
                 break;
             }
-            Left.BodyKick = isPressedEvery(Tick, TicksPerSecond * 3 / 2);
+            Left.Kick = isPressedEvery(Tick, TicksPerSecond * 3 / 2);
             break;
     }
     return Input;

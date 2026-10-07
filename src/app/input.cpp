@@ -11,14 +11,14 @@ std::vector<Binding> InputSystem::getDefaultBindings() {
     return {
         {Scan::A, 0, Action::Left},       {Scan::D, 0, Action::Right},
         {Scan::W, 0, Action::Up},         {Scan::S, 0, Action::Down},
-        {Scan::F, 0, Action::Jab},        {Scan::G, 0, Action::HeavyPunch},
-        {Scan::R, 0, Action::BodyKick},   {Scan::T, 0, Action::LowKick},
+        {Scan::F, 0, Action::Light},        {Scan::G, 0, Action::Heavy},
+        {Scan::R, 0, Action::Kick},   {Scan::T, 0, Action::Special},
         {Scan::LShift, 0, Action::Block},
 
         {Scan::Left, 1, Action::Left},    {Scan::Right, 1, Action::Right},
         {Scan::Up, 1, Action::Up},        {Scan::Down, 1, Action::Down},
-        {Scan::K, 1, Action::Jab},        {Scan::L, 1, Action::HeavyPunch},
-        {Scan::I, 1, Action::BodyKick},   {Scan::O, 1, Action::LowKick},
+        {Scan::K, 1, Action::Light},        {Scan::L, 1, Action::Heavy},
+        {Scan::I, 1, Action::Kick},   {Scan::O, 1, Action::Special},
         {Scan::RShift, 1, Action::Block},
     };
 }
@@ -48,10 +48,10 @@ combat::PlayerCommands InputSystem::getCommands(int Player) const {
     Cmd.Up = IsHeld(Action::Up);
     Cmd.Down = IsHeld(Action::Down);
     Cmd.Block = IsHeld(Action::Block);
-    Cmd.Jab = IsHeld(Action::Jab);
-    Cmd.HeavyPunch = IsHeld(Action::HeavyPunch);
-    Cmd.BodyKick = IsHeld(Action::BodyKick);
-    Cmd.LowKick = IsHeld(Action::LowKick);
+    Cmd.Light = IsHeld(Action::Light);
+    Cmd.Heavy = IsHeld(Action::Heavy);
+    Cmd.Kick = IsHeld(Action::Kick);
+    Cmd.Special = IsHeld(Action::Special);
     return Cmd;
 }
 

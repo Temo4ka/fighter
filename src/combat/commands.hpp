@@ -25,13 +25,15 @@ namespace fighter::combat {
 
 struct PlayerCommands {
     float MoveX = 0.0f;   ///< -1 ... 1, world space: > 0 is to the right.
-    bool Up = false;      ///< Selects the high block zone; a jump later (O.3).
-    bool Down = false;    ///< Crouch, or the low block zone while blocking.
+    bool Up = false;      ///< The high block zone, or a direction of a strike; a jump later (O.3).
+    bool Down = false;    ///< Crouch, the low block zone, or a direction of a strike.
     bool Block = false;
-    bool Jab = false;
-    bool HeavyPunch = false;
-    bool BodyKick = false;
-    bool LowKick = false;
+    /// The attack buttons (AttackButton in combat/move_input.hpp). Which move
+    /// they start depends on the direction held and the fighter's moveset.
+    bool Light = false;
+    bool Heavy = false;
+    bool Kick = false;
+    bool Special = false;   ///< A weapon's own strike.
 
     constexpr bool operator==(const PlayerCommands&) const = default;
 };

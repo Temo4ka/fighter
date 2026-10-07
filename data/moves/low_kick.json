@@ -1,7 +1,10 @@
 {
-    "button": "LowKick",
     "clip": "low_kick",
     "damage": 0.8,
     "min_reaction": "Touch",
-    "stamina": 8
+    "stamina": 8,
+    "tags": ["low", "kick"],
+    "ai": {
+        "role": "low"
+    }
 }

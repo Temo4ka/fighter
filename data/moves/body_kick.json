@@ -1,7 +1,10 @@
 {
-    "button": "BodyKick",
     "clip": "kick",
     "damage": 1.2,
     "min_reaction": "Flinch",
-    "stamina": 12
+    "stamina": 12,
+    "tags": ["mid", "kick"],
+    "ai": {
+        "role": "heavy"
+    }
 }

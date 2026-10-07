@@ -20,7 +20,7 @@ const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 } // namespace
 
 TEST_CASE("ClipLibrary: loads the state machine clips and every move clip", "[combat][clips][data]") {
-    const std::vector<MoveDef> Moves = loadMoveSet(DataDir / "moves");
+    const std::vector<MoveDef> Moves = loadMoves(DataDir / "moves");
     const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", Moves);
     for (const MoveDef& Move : Moves) {
         CHECK(Clips.get(Move.Clip).Name == Move.Clip);
@@ -47,12 +47,12 @@ TEST_CASE("ClipLibrary: a missing clip names its file", "[combat][clips]") {
     // A move's clip is required too.
     const test::ScratchData Moves("clip_library_moves");
     std::filesystem::remove(Moves.getDir() / "poses" / "jab_close.json");
-    CHECK_THROWS_WITH(ClipLibrary::load(Moves.getDir() / "poses", loadMoveSet(Moves.getDir() / "moves")),
+    CHECK_THROWS_WITH(ClipLibrary::load(Moves.getDir() / "poses", loadMoves(Moves.getDir() / "moves")),
                       ContainsSubstring("jab_close.json"));
 }
 
 TEST_CASE("ClipLibrary: the clips that pose the legs have a mirrored copy", "[combat][clips][data]") {
-    const std::vector<MoveDef> Moves = loadMoveSet(DataDir / "moves");
+    const std::vector<MoveDef> Moves = loadMoves(DataDir / "moves");
     const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", Moves);
     for (const char* Name : {"kick", "low_kick", "crouch", "crouch_walk", "block_low"}) {
         INFO(Name);
