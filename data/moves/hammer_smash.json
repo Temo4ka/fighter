@@ -1,8 +1,11 @@
 {
-    "button": "HeavyPunch",
     "clip": "hammer_smash",
-    "weapon": "hammer",
+    "uses_weapon": true,
     "damage": 1.8,
     "min_reaction": "Stagger",
-    "stamina": 20
+    "stamina": 20,
+    "tags": ["high", "swing"],
+    "ai": {
+        "role": "heavy"
+    }
 }

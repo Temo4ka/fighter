@@ -25,6 +25,7 @@
 #include <format>
 #include <fstream>
 #include <optional>
+#include <string_view>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -32,12 +33,43 @@
 #include <vector>
 
 #include "combat/battle.hpp"
+#include "combat/commands.hpp"
 #include "physics/world.hpp"
 #include "rig/rig_def.hpp"
 #include "stats/fighter_sheet.hpp"
 #include "stats/loading.hpp"
 
 namespace fighter::combat::test {
+
+/// The four strikes of the "unarmed" moveset, as the tests press them.
+enum class MoveButton : uint8_t { Jab, HeavyPunch, BodyKick, LowKick, Count };
+
+inline constexpr size_t MoveButtonCount = static_cast<size_t>(MoveButton::Count);
+
+constexpr std::string_view getMoveButtonName(MoveButton Button) {
+    constexpr std::array<std::string_view, MoveButtonCount> Names = {"Jab", "HeavyPunch", "BodyKick", "LowKick"};
+    return Names[static_cast<size_t>(Button)];
+}
+
+/// Holds the input of \p Button in \p Cmd if \p Held: Light, Heavy, Kick,
+/// or Down+Kick for the low kick.
+constexpr void pressMove(PlayerCommands& Cmd, MoveButton Button, bool Held = true) {
+    if (!Held) return;
+    switch (Button) {
+        case MoveButton::Jab: Cmd.Light = true; break;
+        case MoveButton::HeavyPunch: Cmd.Heavy = true; break;
+        case MoveButton::BodyKick: Cmd.Kick = true; break;
+        case MoveButton::LowKick: Cmd.Down = Cmd.Kick = true; break;
+        case MoveButton::Count: break;
+    }
+}
+
+/// Commands that hold only the input of \p Button.
+constexpr PlayerCommands press(MoveButton Button) {
+    PlayerCommands Cmd;
+    pressMove(Cmd, Button);
+    return Cmd;
+}
 
 inline constexpr double Dt = 1.0 / 60.0;
 inline constexpr int TicksPerSecond = 60;

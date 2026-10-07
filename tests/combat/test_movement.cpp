@@ -64,15 +64,6 @@ const rig::RigDef& getRigDef() {
 
 const rig::ControlParams& getControl() { return getRigDef().Control; }
 
-PlayerCommands press(MoveButton Button) {
-    PlayerCommands Cmd;
-    Cmd.Jab = Button == MoveButton::Jab;
-    Cmd.HeavyPunch = Button == MoveButton::HeavyPunch;
-    Cmd.BodyKick = Button == MoveButton::BodyKick;
-    Cmd.LowKick = Button == MoveButton::LowKick;
-    return Cmd;
-}
-
 float getFootX(const FighterView& View, BodyPart Foot) { return getPart(View, Foot).Position.X; }
 
 /// The lowest point of a foot above the floor, from its turned bounding box.
@@ -436,7 +427,7 @@ TEST_CASE("Movement: from the crouch a low kick starts at once, a low block too"
     Battle Fight(makeConfig());
     const float StandingPelvis = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
     run(Fight, {.Down = true}, {}, TicksPerSecond / 2);
-    run(Fight, {.Down = true, .LowKick = true}, {}, 1);
+    run(Fight, {.Down = true, .Kick = true}, {}, 1);
     CHECK(getLeft(Fight).State == FighterState::Attacking);
     CHECK(getLeft(Fight).MoveId == "low_kick");
     // Kicked from the crouch: the right leg stays bent, the pelvis lower than
@@ -453,7 +444,8 @@ TEST_CASE("Movement: from the crouch a low kick starts at once, a low block too"
 }
 
 TEST_CASE("Movement: from the crouch other strikes stand up first", "[combat][movement]") {
-    for (const MoveButton Button : {MoveButton::Jab, MoveButton::HeavyPunch, MoveButton::BodyKick}) {
+    // The kick is not here: with Down held it is Down+Kick, the low kick.
+    for (const MoveButton Button : {MoveButton::Jab, MoveButton::HeavyPunch}) {
         INFO(getMoveButtonName(Button));
         Battle Fight(makeConfig());
         run(Fight, {.Down = true}, {}, TicksPerSecond / 2);

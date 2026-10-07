@@ -13,10 +13,12 @@
 /// The state machine (FighterState in the snapshot) decides who may do what:
 ///
 ///   Idle, Walking, Crouching, Blocking -- free: the commands choose the
-///       next state; an attack button starts the move findMove() gives for
-///       the button and the weapon held. Block wins over attacking, attacking
-///       over crouching, crouching over walking. Crouched, the fighter walks
-///       slowly with bent knees (the crouch_walk clip) and may low kick or
+///       next state; attack buttons start the move the fighter's moveset
+///       gives for them and the direction held (MoveLibrary::findMove()).
+///       Block wins over attacking, attacking over crouching, crouching
+///       over walking. Crouched, the fighter walks slowly with bent knees
+///       (the crouch_walk clip) and may strike with a move mapped to a
+///       downward direction (Down+Kick: the low kick) or
 ///       block low; any other strike stands it up first (Idle for
 ///       CombatTuning::CrouchStandUpSec), then starts. Blocking, it can only
 ///       step back, slowly.
@@ -76,6 +78,7 @@
 #include "combat/leg_cycle.hpp"
 #include "combat/leg_step.hpp"
 #include "combat/moves.hpp"
+#include "combat/moveset.hpp"
 #include "combat/reactions.hpp"
 #include "combat/snapshot.hpp"
 #include "combat/tuning.hpp"
@@ -89,7 +92,7 @@ namespace fighter::combat {
 
 /// The data both fighters of a battle play by. It outlives them.
 struct BattleRules {
-    std::vector<MoveDef> Moves;
+    MoveLibrary Moves;
     ClipLibrary Clips;
     CombatTuning Tuning;
     ReactionTable Reactions;
@@ -205,7 +208,7 @@ public:
     bool isStopping() const { return Walk.isStopping() || CrouchWalk.isStopping(); }
     bool isCrouchWalking() const { return State == FighterState::Crouching && CrouchWalk.isPlaying(); }
     /// A strike pressed while crouched waits until the fighter stands up.
-    bool isStandingUp() const { return PendingAttack.has_value(); }
+    bool isStandingUp() const { return PendingAttack != nullptr; }
     /// The legs step into the pose of the action on top (LegStep).
     const LegStep& getLegStep() const { return Step; }
     /// The leg action on top plays with the legs swapped (the right foot was
@@ -364,6 +367,7 @@ private:
     const BattleRules* Rules = nullptr;
     stats::PhysicalProfile Profile;
     std::optional<stats::WeaponProps> Weapon;
+    const MoveSet* Set = nullptr;          ///< From the weapon: which input starts which move, and the block.
     float Hp = 0.0f;
     float Stamina = 0.0f;
     bool Exhausted = false;
@@ -461,7 +465,7 @@ private:
     std::optional<StrideAnchor> Anchor;
     std::string LastRestep;                ///< The last one, for the debug panel.
     bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
-    std::optional<MoveButton> PendingAttack; ///< Pressed while crouched: starts once the fighter stood up.
+    const MoveDef* PendingAttack = nullptr; ///< Pressed while crouched: starts once the fighter stood up.
     float StandUpLeftSec = 0.0f;
 
     BlockZone Guard = BlockZone::Mid;      ///< Meaningful while Blocking.
@@ -479,7 +483,7 @@ private:
     bool AttackHitClean = false;
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.
     int ChainLength = 0;                   ///< Strikes in the current chain, this one included.
-    std::optional<MoveButton> ChainRequest;
+    const MoveDef* ChainRequest = nullptr;
 
     ReactionLevel Reaction = ReactionLevel::None;   ///< While Reacting.
     float StunLeftSec = 0.0f;

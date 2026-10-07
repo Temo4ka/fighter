@@ -14,6 +14,7 @@
 #include "combat/clip_library.hpp"
 #include "combat/fighter.hpp"
 #include "combat/moves.hpp"
+#include "combat/moveset.hpp"
 #include "combat/reactions.hpp"
 #include "combat/tuning.hpp"
 #include "core/log.hpp"
@@ -83,8 +84,8 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     const stats::BalanceTable Balance = stats::loadBalanceTable(Cfg.DataDir / "balance.json");
     const CombatTuning Tuning = loadCombatTuning(Cfg.DataDir / "combat.json");
 
-    std::vector<MoveDef> Moves = loadMoveSet(Cfg.DataDir / "moves");
-    ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves);
+    MoveLibrary Moves = MoveLibrary::load(Cfg.DataDir);
+    ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves.getMoves());
 
     Sim = std::make_unique<Simulation>(Simulation{
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity,

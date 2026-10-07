@@ -253,7 +253,7 @@ TEST_CASE("Blends: a strike shows its own pose before its active phase", "[comba
         Battle Fight(makeConfig());
         if (FromWalk) run(Fight, {.MoveX = 1.0f}, {}, TicksPerSecond / 2);
         for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
-            Fight.update({.MoveX = FromWalk ? 1.0f : 0.0f, .Jab = Tick == 0}, {}, Dt);
+            Fight.update({.MoveX = FromWalk ? 1.0f : 0.0f, .Light = Tick == 0}, {}, Dt);
             if (getLeft(Fight).Phase != AttackPhase::Active) continue;
 #if FIGHTER_DEBUG
             for (const auto& [Name, Value] : debug::getDrawList().getPanel()) {
@@ -282,7 +282,7 @@ TEST_CASE("Spacing: a kick jammed on a fighter at the wall does not throw the at
     for (int Tick = 0; Tick < 7 * TicksPerSecond; ++Tick) {
         const float Gap = getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight));
         const bool Close = Gap <= 0.66f;
-        Fight.update({.MoveX = Close || Kicked ? 0.0f : 1.0f, .BodyKick = Close && !Kicked}, {}, Dt);
+        Fight.update({.MoveX = Close || Kicked ? 0.0f : 1.0f, .Kick = Close && !Kicked}, {}, Dt);
         Kicked = Kicked || Close;
         const float Now = getPelvisX(getLeft(Fight));
         Fastest = std::max(Fastest, static_cast<float>(std::abs(Now - Before) / Dt));

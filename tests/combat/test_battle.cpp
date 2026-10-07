@@ -1,5 +1,6 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -74,9 +75,7 @@ AttackLog attackDummy(Battle& Fight, MoveButton Button, int Period, int Ticks, f
             LeftCmd.MoveX = 1.0f;
         } else {
             const bool Press = AttackTick++ % Period < 3;
-            LeftCmd.Jab = Press && Button == MoveButton::Jab;
-            LeftCmd.BodyKick = Press && Button == MoveButton::BodyKick;
-            LeftCmd.LowKick = Press && Button == MoveButton::LowKick;
+            pressMove(LeftCmd, Button, Press);
         }
         Fight.update(LeftCmd, {}, Dt);
 
@@ -233,7 +232,7 @@ TEST_CASE("Battle: a jab moves the fist forward", "[combat][dod]") {
     const float GuardReach = getReach();
 
     float LongestReach = GuardReach;
-    Fight.update({.Jab = true}, {}, Dt);
+    Fight.update({.Light = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) {
         Fight.update({}, {}, Dt);
         LongestReach = std::max(LongestReach, getReach());
@@ -250,7 +249,7 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
     const Vec2 Start = getPart(getLeft(Fight), BodyPart::FootL).Position;
 
     Vec2 Highest = Start;
-    Fight.update({.BodyKick = true}, {}, Dt);
+    Fight.update({.Kick = true}, {}, Dt);
     for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
         Fight.update({}, {}, Dt);
         const Vec2 Foot = getPart(getLeft(Fight), BodyPart::FootL).Position;
@@ -383,7 +382,7 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     bool GotUp = false;
     for (int Tick = 0; Tick < Ticks && !(UpTick && GotUp); ++Tick) {
         const bool InRange = getRight(Again).Position.X - getLeft(Again).Position.X <= KickRange;
-        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .LowKick = InRange && !HitTick}, {}, Dt);
+        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .Down = InRange && !HitTick, .Kick = InRange && !HitTick}, {}, Dt);
         if (!HitTick && !getHits(Again).empty()) HitTick = Tick;
         if (!UpTick && HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
         GotUp = GotUp || std::ranges::any_of(Again.getEvents(), [](const BattleEvent& Event) {
@@ -433,12 +432,12 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
         Kicked = Kicked || Kick;
         const PlayerCommands LeftCmd{
             .MoveX = Distance > PelvisKickRange ? 1.0f : 0.0f,
-            .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .BodyKick = Kick,
+            .Light = Phase > 40 && Phase < 120 && Tick % 37 == 0,
+            .Kick = Kick,
         };
         // P2 backs away now and then, but stands still while P1 kicks: a
         // kick that meets the legs at close range is weak (legs collide).
-        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 1 ? 1.0f : 0.0f, .Jab = Tick % 53 == 0};
+        const PlayerCommands RightCmd{.MoveX = (Tick / 70) % 3 == 1 ? 1.0f : 0.0f, .Light = Tick % 53 == 0};
         First.update(LeftCmd, RightCmd, Dt);
         Second.update(LeftCmd, RightCmd, Dt);
         REQUIRE(getHits(First).size() == getHits(Second).size());
@@ -485,8 +484,12 @@ TEST_CASE("Battle: tuning is read from the data directory", "[combat][dod]") {
         CHECK_THROWS_AS(Battle(Config), std::runtime_error);
     }
     SECTION("a broken move is reported") {
-        Data.replace("moves/jab.json", "\"Jab\"", "\"Uppercut\"");
+        Data.replace("moves/jab.json", "\"clip\"", "\"clop\"");
         CHECK_THROWS_AS(Battle(Config), std::runtime_error);
+    }
+    SECTION("a moveset naming a missing move is reported") {
+        Data.replace("movesets/unarmed.json", "\"jab\"", "\"uppercut\"");
+        CHECK_THROWS_WITH(Battle(Config), Catch::Matchers::ContainsSubstring("there is no move 'uppercut'"));
     }
     SECTION("a missing clip without a stand-in is reported") {
         std::filesystem::remove(Data.getDir() / "poses" / "walk.json");
@@ -518,7 +521,7 @@ TEST_CASE("Battle: a knockdown kick is told by events and the result", "[combat]
     bool Kicked = false;
     while (!Fight.getResult()) {
         const bool InRange = getRight(Fight).Position.X - getLeft(Fight).Position.X <= KickRange;
-        Fight.update({.MoveX = Kicked || InRange ? 0.0f : 1.0f, .BodyKick = InRange && !Kicked}, {}, Dt);
+        Fight.update({.MoveX = Kicked || InRange ? 0.0f : 1.0f, .Kick = InRange && !Kicked}, {}, Dt);
         Kicked = Kicked || InRange;
         std::ranges::copy(Fight.getEvents(), std::back_inserter(Log));
     }
@@ -593,7 +596,7 @@ TEST_CASE("Battle: the snapshot shows the phases of an attack", "[combat][snapsh
     CHECK(getLeft(Fight).State == FighterState::Idle);
     CHECK(getLeft(Fight).MoveId.empty());
 
-    Fight.update({.Jab = true}, {}, Dt);
+    Fight.update({.Light = true}, {}, Dt);
     std::vector<AttackPhase> Phases;
     for (int Tick = 0; Tick < TicksPerSecond && getLeft(Fight).State == FighterState::Attacking; ++Tick) {
         CHECK(getLeft(Fight).MoveId == "jab");

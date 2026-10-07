@@ -163,9 +163,9 @@ EquipmentItem readItem(const JsonValue& Value) {
 
 WeaponProps readWeapon(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"class", "reach_m", "speed_scale", "power_scale"});
+    checkFieldNames(Value, {"moveset", "reach_m", "speed_scale", "power_scale"});
     return {
-        .Class = readStringField(Value, "class"),
+        .MoveSet = readStringField(Value, "moveset"),
         .ReachM = readFloatField(Value, "reach_m"),
         .SpeedScale = readFloatField(Value, "speed_scale"),
         .PowerScale = readFloatField(Value, "power_scale"),

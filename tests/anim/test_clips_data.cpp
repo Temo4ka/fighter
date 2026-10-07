@@ -141,7 +141,7 @@ TEST_CASE("Clips: startup of the attacks is inside the corridor of O.7", "[anim]
 }
 
 TEST_CASE("Clips: every move names an existing clip", "[anim][clips]") {
-    const auto Moves = combat::loadMoveSet(DataDir / "moves");
+    const auto Moves = combat::loadMoves(DataDir / "moves");
     REQUIRE_FALSE(Moves.empty());
     for (const auto& Move : Moves) {
         INFO(Move.Id << " -> clip " << Move.Clip);

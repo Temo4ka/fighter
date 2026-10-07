@@ -1,8 +1,11 @@
 {
-    "button": "HeavyPunch",
     "clip": "sword_slash",
-    "weapon": "sword",
+    "uses_weapon": true,
     "damage": 1.4,
     "min_reaction": "Flinch",
-    "stamina": 14
+    "stamina": 14,
+    "tags": ["mid", "swing"],
+    "ai": {
+        "role": "heavy"
+    }
 }

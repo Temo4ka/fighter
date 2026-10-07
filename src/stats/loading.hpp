@@ -30,7 +30,7 @@
 ///   {"items": [
 ///     {"id": "short_sword", "slot": "Weapon", "covers": ["ForearmR"],
 ///      "mass_kg": 1.2, "armor": 0.0,
-///      "weapon": {"class": "sword", "reach_m": 0.55,
+///      "weapon": {"moveset": "sword", "reach_m": 0.55,
 ///                 "speed_scale": 1.0, "power_scale": 1.2}}
 ///   ]}
 ///

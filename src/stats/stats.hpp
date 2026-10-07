@@ -58,9 +58,9 @@ enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, Weapon };
 
 /// What makes an item in the Weapon slot a weapon (decision O.12).
 struct WeaponProps {
-    /// "sword", "hammer": moves whose "weapon" field names this class
-    /// (data/moves/) replace the unarmed moves on the same button.
-    std::string Class;
+    /// The moveset of the weapon, data/movesets/<MoveSet>.json: its strikes
+    /// and its block.
+    std::string MoveSet;
     float ReachM = 0.0f;       ///< How far it sticks out beyond the fist, m.
     float SpeedScale = 1.0f;   ///< Multiplies the speed of strikes.
     float PowerScale = 1.0f;   ///< Multiplies the damage of strikes.

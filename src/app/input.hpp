@@ -29,7 +29,7 @@
 
 namespace fighter::app {
 
-enum class Action : uint8_t { Left, Right, Up, Down, Block, Jab, HeavyPunch, BodyKick, LowKick, Count };
+enum class Action : uint8_t { Left, Right, Up, Down, Block, Light, Heavy, Kick, Special, Count };
 
 struct Binding {
     sf::Keyboard::Scancode Key;

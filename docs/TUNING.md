@@ -55,7 +55,7 @@
      капсула в `Hurtbox` с подписью `weapon`.
    - бой (задача 2.3): `P1 action` — состояние бойца («attacking jab (active) speed x1.00», «blocking high»,
      «reacting Stagger», «, exhausted», «, against the wall»); `P1 hp`; `P1 stamina` (запас, восстановление,
-     EXHAUSTED); `P1 poise` — накопление, стойкость и во сколько раз сейчас снижены пороги ступеней;
+     EXHAUSTED); `P1 moveset` — набор движений бойца и ввод, зажатый сейчас («sword, input DownForward+Kick»); `P1 poise` — накопление, стойкость и во сколько раз сейчас снижены пороги ступеней;
      `P1 last hit` — последнее полученное попадание: удар, часть тела, сила (м/с), ступень, урон, блок;
      `P1 clip` — клип сверху, его время, скорость и переход; `P1 blend` — идущие переходы позы:
      `pose walk -> strike 0.05 s, 0.40; legs stance -> walk 0.15 s, 0.70` (какой вид позы в какой,

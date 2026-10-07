@@ -1,13 +1,14 @@
 {
-    "button": "Jab",
     "clip": "jab",
     "damage": 0.6,
     "min_reaction": "Touch",
     "stamina": 5,
     "close_clip": "jab_close",
     "close_range_m": 0.6,
-    "chain_to": [
-        "Jab",
-        "HeavyPunch"
-    ]
+    "chain_to": ["jab", "heavy_punch", "sword_slash", "hammer_smash"],
+    "tags": ["high", "punch"],
+    "ai": {
+        "range_m": [0.6, 0.9],
+        "role": "poke"
+    }
 }

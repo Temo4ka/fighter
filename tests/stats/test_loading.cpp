@@ -185,19 +185,19 @@ TEST_CASE("parseItemCatalog: applies item validation", "[stats][loading]") {
                       Equals("a.json: items[0]: item 'cap' covers Head twice"));
 
     const std::string_view Sword = R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1,
-        "armor": 0, "weapon": {"class": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1.2}})";
-    CHECK(Parse(Sword).findItem("sword")->Weapon->Class == "sword");
+        "armor": 0, "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1.2}})";
+    CHECK(Parse(Sword).findItem("sword")->Weapon->MoveSet == "sword");
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1, "armor": 0,
-        "weapon": {"class": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
+        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
                       Equals("a.json: items[0]: item 'cap' has weapon properties but is not in the Weapon slot"));
     CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"class": "", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
-                      Equals("a.json: items[0]: weapon: field 'class': must not be empty"));
+        "weapon": {"moveset": "", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
+                      Equals("a.json: items[0]: weapon: field 'moveset': must not be empty"));
     CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"class": "sword", "reach_m": 0.5, "speed_scale": 0, "power_scale": 1}})"),
+        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 0, "power_scale": 1}})"),
                       Equals("a.json: items[0]: weapon 'sword': speed scale 0 is out of [0.25, 4]"));
     CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"class": "sword", "reach_m": 0.5, "speed_scale": 1}})"),
+        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1}})"),
                       Equals("a.json: items[0]: weapon: missing field 'power_scale'"));
 
     const std::string Duplicate = R"({"items": [
@@ -326,7 +326,7 @@ TEST_CASE("computeProfile: a resolved loadout adds its item masses", "[stats][lo
     CHECK(Armored.Parts[Head].Armor == Approx(Helmet->Armor));
 
     REQUIRE(Knight.Gear.findWeapon() != nullptr);
-    CHECK(Knight.Gear.findWeapon()->Class == "hammer");
+    CHECK(Knight.Gear.findWeapon()->MoveSet == "hammer");
     CHECK(Loadout{}.findWeapon() == nullptr);
 }
 

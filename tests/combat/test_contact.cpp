@@ -74,9 +74,9 @@ KickLog kickOnce(const std::string& Name, MoveButton Button, float Distance,
 
     KickLog Log;
     for (int Tick = 0; Tick < 2 * TicksPerSecond; ++Tick) {
-        Fight.update({.BodyKick = Button == MoveButton::BodyKick && Tick == 0,
-                      .LowKick = Button == MoveButton::LowKick && Tick == 0},
-                     {}, Dt);
+        PlayerCommands Cmd;
+        pressMove(Cmd, Button, Tick == 0);
+        Fight.update(Cmd, {}, Dt);
         for (const BattleEvent& Event : Fight.getEvents()) {
             if (const auto* Hit = std::get_if<StrikeLanded>(&Event)) Log.Hits.push_back(*Hit);
         }
@@ -197,7 +197,7 @@ TEST_CASE("Contact: a jab hits the raised guard", "[combat][contact]") {
     run(Fight, {}, {}, TicksPerSecond / 2);
     std::vector<physics::HitEvent> Hits;
     for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
-        Fight.update({.Jab = Tick == 0}, {}, Dt);
+        Fight.update({.Light = Tick == 0}, {}, Dt);
         for (const auto& Hit : getHits(Fight)) Hits.push_back(Hit);
     }
     REQUIRE(Hits.size() == 1);
