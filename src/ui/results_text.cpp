@@ -32,6 +32,16 @@ ResultsText describeResult(const combat::BattleResult& Result, const std::array<
     addRow(Text, "Taken", std::format("{:.1f}", Left.DamageTaken), std::format("{:.1f}", Right.DamageTaken));
     addRow(Text, "Knockdowns", std::format("{}", Left.Knockdowns), std::format("{}", Right.Knockdowns));
 
+    addHeader(Text, "Strikes (thrown/landed/blocked)");
+    std::set<std::string> MoveIds;
+    for (const combat::FighterReport& Report : Result.Fighters) {
+        for (const auto& Entry : Report.Moves) MoveIds.insert(Entry.first);
+    }
+    for (const std::string& MoveId : MoveIds)
+        addRow(Text, MoveId, formatStrikes(Left, MoveId), formatStrikes(Right, MoveId));
+    if (MoveIds.empty()) addRow(Text, "none", "", "");
+
+    // Last: the screen puts the hits in a pane of their own.
     addHeader(Text, "Hits taken (count, damage)");
     bool AnyHit = false;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
@@ -44,14 +54,6 @@ ResultsText describeResult(const combat::BattleResult& Result, const std::array<
     }
     if (!AnyHit) addRow(Text, "none", "", "");
 
-    addHeader(Text, "Strikes (thrown/landed/blocked)");
-    std::set<std::string> MoveIds;
-    for (const combat::FighterReport& Report : Result.Fighters) {
-        for (const auto& Entry : Report.Moves) MoveIds.insert(Entry.first);
-    }
-    for (const std::string& MoveId : MoveIds)
-        addRow(Text, MoveId, formatStrikes(Left, MoveId), formatStrikes(Right, MoveId));
-    if (MoveIds.empty()) addRow(Text, "none", "", "");
     return Text;
 }
 

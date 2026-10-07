@@ -45,7 +45,6 @@ sf::Color withAlpha(sf::Color Color, int Alpha);
 sf::Color scaled(sf::Color Color, float Factor);
 float drawText(const Canvas& Surface, std::string_view Line, unsigned Size, sf::Vector2f Position, sf::Color Color,
                Align Alignment);
-float measureText(const Canvas& Surface, std::string_view Line, unsigned Size);
 float getLineHeight(const Canvas& Surface, unsigned Size);
 void fillRect(const Canvas& Surface, sf::Vector2f Position, sf::Vector2f Size, sf::Color Color);
 void frameRect(const Canvas& Surface, sf::Vector2f Position, sf::Vector2f Size, float Thickness, sf::Color Color);
@@ -143,10 +142,6 @@ sf::Color scaled(sf::Color Color, float Factor) {
 
 sf::Text makeText(const Canvas& Surface, std::string_view Line, unsigned Size) {
     return sf::Text(Surface.Font, sf::String::fromUtf8(Line.begin(), Line.end()), Size);
-}
-
-float measureText(const Canvas& Surface, std::string_view Line, unsigned Size) {
-    return makeText(Surface, Line, Size).getLocalBounds().size.x;
 }
 
 float getLineHeight(const Canvas& Surface, unsigned Size) {
@@ -447,9 +442,7 @@ void drawResults(const Canvas& Surface, const ScreenFlow& Flow, const ScreenCont
     drawText(Surface, Text.Detail, BodySize, {Position.x + Size.x * 0.5f, Y}, Canvas::toColor(Colors.Dim), Align::Center);
     Y += getLineHeight(Surface, BodySize) + Surface.Grid * 1.0f;
 
-    // Table columns: label on the left, one centred cell per fighter.
     const float LabelX = Position.x + Pad;
-    const std::array<float, 2> CellX = {Position.x + Size.x * 0.58f, Position.x + Size.x * 0.84f};
 
     // HP bars, one per fighter, above the columns.
     const float BarHeight = Surface.Grid * 0.9f;
@@ -466,35 +459,49 @@ void drawResults(const Canvas& Surface, const ScreenFlow& Flow, const ScreenCont
     }
     Y += 2.0f * (getLineHeight(Surface, BodySize) + BarHeight + Surface.Grid * 0.8f) + Surface.Grid * 0.6f;
 
-    // Column heads, then the rows that fit above the buttons.
-    for (size_t Side = 0; Side < 2; ++Side)
-        drawText(Surface, Context.Names[Side], BodySize, {CellX[Side], Y}, Surface.getPlayerColor(static_cast<int>(Side)),
-                 Align::Center);
-    Y += getLineHeight(Surface, BodySize) * 1.3f;
-    fillRect(Surface, {LabelX, Y}, {Size.x - Pad * 2.0f, 1.0f}, Canvas::toColor(Colors.Track));
-    Y += Surface.Grid * 0.4f;
-
+    // Two panes side by side, each with the fighters' names as column heads:
+    // damage and strikes on the left, hits taken on the right.
     const float ButtonHeight = Surface.Grid * 2.6f;
     const float ButtonsY = Position.y + Size.y - Pad - ButtonHeight;
     const float RowStep = getLineHeight(Surface, BodySize) * 1.12f;
     const float RowsBottom = ButtonsY - Surface.Grid * 1.0f;
-    bool Cut = false;
-    for (const ResultsRow& Row : Text.Rows) {
-        if (Y + RowStep > RowsBottom) {
-            Cut = true;
-            break;
-        }
-        if (Row.IsHeader) {
-            Y += RowStep * 0.25f;
-            drawText(Surface, Row.Label, BodySize, {LabelX, Y}, Canvas::toColor(Colors.Accent), Align::Left);
-        } else {
-            drawText(Surface, Row.Label, BodySize, {LabelX + Surface.Grid, Y}, Canvas::toColor(Colors.Dim), Align::Left);
-            for (size_t Side = 0; Side < 2; ++Side)
-                drawText(Surface, Row.Cells[Side], BodySize, {CellX[Side], Y}, Canvas::toColor(Colors.Text), Align::Center);
-        }
-        Y += RowStep;
+    const float PaneWidth = (Size.x - Pad * 3.0f) * 0.5f;
+
+    size_t FirstHitRow = Text.Rows.size();
+    for (size_t Index = 0; Index < Text.Rows.size(); ++Index) {
+        if (Text.Rows[Index].IsHeader && Text.Rows[Index].Label.starts_with("Hits")) FirstHitRow = Index;
     }
-    if (Cut) drawText(Surface, "...", BodySize, {LabelX + Surface.Grid, Y - RowStep * 0.5f}, Canvas::toColor(Colors.Dim), Align::Left);
+    const auto DrawPane = [&](size_t First, size_t End, float PaneLeft) {
+        const std::array<float, 2> CellX = {PaneLeft + PaneWidth * 0.62f, PaneLeft + PaneWidth * 0.88f};
+        float RowY = Y;
+        for (size_t Side = 0; Side < 2; ++Side)
+            drawText(Surface, Context.Names[Side], BodySize, {CellX[Side], RowY},
+                     Surface.getPlayerColor(static_cast<int>(Side)), Align::Center);
+        RowY += getLineHeight(Surface, BodySize) * 1.3f;
+        fillRect(Surface, {PaneLeft, RowY}, {PaneWidth, 1.0f}, Canvas::toColor(Colors.Track));
+        RowY += Surface.Grid * 0.4f;
+        for (size_t Index = First; Index < End; ++Index) {
+            const ResultsRow& Row = Text.Rows[Index];
+            if (RowY + RowStep > RowsBottom) {
+                drawText(Surface, "...", BodySize, {PaneLeft + Surface.Grid, RowY - RowStep * 0.5f},
+                         Canvas::toColor(Colors.Dim), Align::Left);
+                break;
+            }
+            if (Row.IsHeader) {
+                RowY += RowStep * 0.25f;
+                drawText(Surface, Row.Label, BodySize, {PaneLeft, RowY}, Canvas::toColor(Colors.Accent), Align::Left);
+            } else {
+                drawText(Surface, Row.Label, BodySize, {PaneLeft + Surface.Grid, RowY}, Canvas::toColor(Colors.Dim),
+                         Align::Left);
+                for (size_t Side = 0; Side < 2; ++Side)
+                    drawText(Surface, Row.Cells[Side], BodySize, {CellX[Side], RowY}, Canvas::toColor(Colors.Text),
+                             Align::Center);
+            }
+            RowY += RowStep;
+        }
+    };
+    DrawPane(0, FirstHitRow, LabelX);
+    DrawPane(FirstHitRow, Text.Rows.size(), LabelX + PaneWidth + Pad);
 
     drawButtons(Surface, Flow.getItems(), Flow.getCursor(), HighlightPos, {LabelX, ButtonsY}, {Size.x - Pad * 2.0f, ButtonHeight});
     drawHint(Surface, "\xE2\x86\x90\xE2\x86\x92 choose  \xC2\xB7  Enter confirm  \xC2\xB7  Esc main menu");
