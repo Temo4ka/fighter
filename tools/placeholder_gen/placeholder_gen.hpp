@@ -10,11 +10,12 @@
 /// overlays for the items named in data/visuals.json. The rules the pictures
 /// follow are in docs/ART.md.
 ///
-/// A picture covers the part's shape plus a joint overlap at both ends of its
-/// long axis, and is centred on the shape centre, which is where combat puts
-/// PartTransform::Position. The overlap runs along Y for limbs, torso, pelvis
-/// and head, and along X for a part lying on the floor (the foot, whose toe
-/// points right). Two variants share the geometry: Pixel (hard edges, 1-px
+/// A picture covers exactly the part's shape, so it matches the debug shapes,
+/// and is centred on the shape centre, which is where combat puts
+/// PartTransform::Position. An optional joint overlap (none by default)
+/// extends it at both ends of its long axis: along Y for limbs, torso, pelvis
+/// and head, along X for a part lying on the floor (the foot, whose toe points
+/// right). The head always gets room below for a neck stub. Two variants share the geometry: Pixel (hard edges, 1-px
 /// outline, flat colours, 32 px/m) and Smooth (anti-aliased, soft shading,
 /// 64 px/m).
 ///
@@ -48,8 +49,13 @@ namespace fighter::tools {
 
 enum class Variant { Pixel, Smooth };
 
-/// Share of the shape's length that the picture extends past each end.
-inline constexpr float DefaultOverlap = 0.15f;
+/// Share of the shape's length that the picture extends past each end. None:
+/// capsule caps already cover the joints, and an overlap sticks out at the free
+/// ends (fist, toe, top of the torso).
+inline constexpr float DefaultOverlap = 0.0f;
+
+/// Room below the head for the neck stub, as a share of the head's diameter.
+inline constexpr float NeckShare = 0.15f;
 
 std::string_view getVariantName(Variant Kind);
 float getDefaultPixelsPerMeter(Variant Kind);
