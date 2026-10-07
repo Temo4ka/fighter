@@ -1,6 +1,19 @@
 {
     "pixels_per_meter": 64,
     "default_skin": "placeholder_smooth",
+    "style": "smooth",
+    "styles": {
+        "smooth": {
+            "skin": "placeholder_smooth"
+        },
+        "pixel": {
+            "skin": "placeholder_pixel",
+            "pixel_art": {
+                "scale": 0,
+                "letterbox": true
+            }
+        }
+    },
     "background": "assets/backgrounds/bg.jpeg",
     "skins": {
         "placeholder_smooth": {

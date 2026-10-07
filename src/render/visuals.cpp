@@ -26,6 +26,11 @@ SkinDef parseSkin(const Json& Value, const std::string& Path, float DefaultPixel
 ItemVisualDef parseItem(const Json& Value, const std::string& Path);
 EffectsParams parseEffects(const Json& Value, const std::string& Path);
 HudParams parseHud(const Json& Value, const std::string& Path);
+StyleDef parseStyle(const Json& Value, const std::string& Path, const Visuals& Vis);
+bool readBool(const Json& Object, const std::string& Path, std::string_view Key);
+
+/// The style of a file without styles, and of an unknown style name.
+const StyleDef PlainStyle{};
 
 // Bounds that only catch typos (a density of 0, a 30-second flash); the
 // values themselves are tuned in sessions (docs/TUNING.md).
@@ -40,7 +45,8 @@ Visuals parseVisuals(std::string_view JsonText) {
         const Json Root = Json::parse(JsonText);
         requireObject(Root, "");
         checkFieldNames(Root, "",
-                        {"pixels_per_meter", "default_skin", "background", "skins", "items", "effects", "hud"});
+                        {"pixels_per_meter", "default_skin", "style", "styles", "background", "skins", "items", "effects",
+                         "hud"});
 
         if (Root.contains("pixels_per_meter"))
             Result.PixelsPerMeter = readFloat(Root, "", "pixels_per_meter", 1.0f, MaxPixelsPerMeter);
@@ -61,12 +67,33 @@ Visuals parseVisuals(std::string_view JsonText) {
                     std::format("field 'default_skin': '{}' is not one of 'skins'", Result.DefaultSkin));
             }
         }
+        if (Root.contains("styles")) {
+            for (const auto& [Id, Value] : requireObject(Root.at("styles"), "styles").items())
+                Result.Styles.emplace(Id, parseStyle(Value, joinPath("styles", Id), Result));
+        }
+        if (Root.contains("style")) {
+            Result.Style = readString(Root, "", "style");
+            if (!Result.Styles.contains(Result.Style))
+                throw std::runtime_error(std::format("field 'style': '{}' is not one of 'styles'", Result.Style));
+        } else if (!Result.Styles.empty()) {
+            throw std::runtime_error("missing field 'style': it must name one of 'styles'");
+        }
         if (Root.contains("effects")) Result.Effects = parseEffects(Root.at("effects"), "effects");
         if (Root.contains("hud")) Result.Hud = parseHud(Root.at("hud"), "hud");
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());
     }
     return Result;
+}
+
+const StyleDef& getStyle(const Visuals& Vis, std::string_view Name) {
+    const auto Found = Vis.Styles.find(Name);
+    return Found == Vis.Styles.end() ? PlainStyle : Found->second;
+}
+
+std::string_view getStyleSkin(const Visuals& Vis, std::string_view Name) {
+    const StyleDef& Style = getStyle(Vis, Name);
+    return Style.Skin.empty() ? std::string_view(Vis.DefaultSkin) : std::string_view(Style.Skin);
 }
 
 Visuals loadVisuals(const std::filesystem::path& Path) {
@@ -251,6 +278,45 @@ HudParams parseHud(const Json& Value, const std::string& Path) {
     if (Value.contains("timer_font_px"))
         Hud.TimerFontPx = static_cast<unsigned>(readFloat(Value, Path, "timer_font_px", 6.0f, 256.0f));
     return Hud;
+}
+
+StyleDef parseStyle(const Json& Value, const std::string& Path, const Visuals& Vis) {
+    requireObject(Value, Path);
+    checkFieldNames(Value, Path, {"skin", "pixel_art"});
+    StyleDef Style;
+    if (Value.contains("skin")) {
+        Style.Skin = readString(Value, Path, "skin");
+        if (!Vis.Skins.contains(Style.Skin)) {
+            throw std::runtime_error(
+                std::format("field '{}': '{}' is not one of 'skins'", joinPath(Path, "skin"), Style.Skin));
+        }
+    }
+    if (Value.contains("pixel_art")) {
+        const std::string Sub = joinPath(Path, "pixel_art");
+        const Json& Pixel = requireObject(Value.at("pixel_art"), Sub);
+        checkFieldNames(Pixel, Sub, {"pixels_per_meter", "scale", "letterbox"});
+        PixelArtParams Params;
+        if (Pixel.contains("pixels_per_meter"))
+            Params.PixelsPerMeter = readFloat(Pixel, Sub, "pixels_per_meter", 1.0f, MaxPixelsPerMeter);
+        if (Pixel.contains("scale")) {
+            const float Scale = readFloat(Pixel, Sub, "scale", 0.0f, 16.0f);
+            if (Scale != static_cast<float>(static_cast<int>(Scale)))
+                throw std::runtime_error(
+                    std::format("field '{}': {} is not a whole number", joinPath(Sub, "scale"), Scale));
+            Params.Scale = static_cast<int>(Scale);
+        }
+        if (Pixel.contains("letterbox")) Params.Letterbox = readBool(Pixel, Sub, "letterbox");
+        Style.PixelArt = Params;
+    }
+    return Style;
+}
+
+bool readBool(const Json& Object, const std::string& Path, std::string_view Key) {
+    const Json& Value = getField(Object, Path, Key);
+    if (!Value.is_boolean())
+        throw std::runtime_error(
+            std::format("field '{}': {} is not true or false", joinPath(Path, Key), Value.dump()));
+    return Value.get<bool>();
 }
 
 } // namespace

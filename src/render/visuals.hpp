@@ -92,8 +92,33 @@ struct HudParams {
     unsigned TimerFontPx = 28;
 };
 
+/// The pixel render mode (T.4): the world is drawn into a low-resolution
+/// picture and scaled up a whole number of times without smoothing, so pixel
+/// art keeps square pixels of one size even on rotated body parts.
+struct PixelArtParams {
+    /// Low-resolution pixels per meter of world; nullopt: the density of the
+    /// style's skin, so its pictures land one texel per pixel.
+    std::optional<float> PixelsPerMeter;
+    /// How many window pixels one low-resolution pixel takes; 0: the largest
+    /// whole number at which the camera's view height fits the window.
+    int Scale = 0;
+    /// true: the view height in meters is kept and the rest of the window
+    /// stays black; false: the picture fills the window and the view grows.
+    bool Letterbox = true;
+};
+
+/// A look of the whole fight: which pictures and how they are drawn. Styles
+/// are compared on the same fighter (T.5), switched in the file or by a key.
+struct StyleDef {
+    std::string Skin;                         ///< Empty: Visuals::DefaultSkin.
+    std::optional<PixelArtParams> PixelArt;   ///< nullopt: drawn at window resolution.
+};
+
 struct Visuals {
     float PixelsPerMeter = 64.0f;
+    /// The active style, a key of Styles; empty when there are no styles.
+    std::string Style;
+    std::map<std::string, StyleDef, std::less<>> Styles;
     /// The skin of a fighter whose look does not name one.
     std::string DefaultSkin;
     /// The arena background; empty or missing: a plain color.
@@ -107,6 +132,13 @@ struct Visuals {
 /// Parses visuals.json text. Every key is checked: an unknown key or a bad
 /// value throws std::runtime_error naming the field and the value.
 Visuals parseVisuals(std::string_view JsonText);
+
+/// The style \p Name of \p Vis; an unknown or empty name gives the plain
+/// style (default skin, window resolution).
+const StyleDef& getStyle(const Visuals& Vis, std::string_view Name);
+
+/// The skin a fighter of \p Name style wears when its look names none.
+std::string_view getStyleSkin(const Visuals& Vis, std::string_view Name);
 
 /// Reads and parses a visuals file; errors name the file.
 Visuals loadVisuals(const std::filesystem::path& Path);
