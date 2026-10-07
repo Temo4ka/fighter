@@ -84,6 +84,22 @@ const MoveSetEntry* MoveLibrary::findEntry(const MoveSet& Set, InputDirection Di
     return nullptr;
 }
 
+bool MoveLibrary::canGrowCombo(const MoveSet& Set, InputDirection Direction, ButtonSet Buttons) const {
+    if (Buttons.isEmpty()) return false;
+    for (const InputDirection Tried : Input.getTryOrder(Direction)) {
+        for (const MoveSet* Current = &Set; Current; Current = findSet(Current->Inherit)) {
+            for (const MoveSetEntry& Entry : Current->Entries) {
+                if (Entry.Input.Direction == Tried && Entry.Input.Buttons.containsAll(Buttons) &&
+                    Entry.Input.Buttons.getSize() > Buttons.getSize()) {
+                    return true;
+                }
+            }
+            if (Current->Inherit.empty()) break;
+        }
+    }
+    return false;
+}
+
 BlockRules MoveLibrary::getBlock(const MoveSet& Set, const BlockRules& Defaults) const {
     // The chain from the set to its root; the root's values go in first and
     // every child overrides what it gives.

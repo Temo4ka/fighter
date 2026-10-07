@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -140,6 +141,26 @@ InputRules parseInputRules(std::string_view JsonText) {
     }
     return Rules;
 }
+
+void PressWindow::update(ButtonSet Pressed, float WindowSec, float Dt) {
+    for (auto&& [Age, Button] : std::views::zip(AgeSec, AttackButtons)) {
+        if (Age >= 0.0f) Age += Dt;
+        if (Age > WindowSec) Age = -1.0f;
+        if (Pressed.contains(Button)) Age = 0.0f;
+    }
+}
+
+void PressWindow::clear() { AgeSec.fill(-1.0f); }
+
+ButtonSet PressWindow::getButtons() const {
+    ButtonSet Buttons;
+    for (auto&& [Age, Button] : std::views::zip(AgeSec, AttackButtons)) {
+        if (Age >= 0.0f) Buttons.add(Button);
+    }
+    return Buttons;
+}
+
+float PressWindow::getAgeSec() const { return std::max(0.0f, std::ranges::max(AgeSec)); }
 
 InputRules loadInputRules(const std::filesystem::path& Path) {
     try {

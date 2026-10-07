@@ -166,3 +166,18 @@ TEST_CASE("MoveLibrary: the sample data loads", "[combat][moveset][data]") {
     CHECK(Library.selectSet("sword", "shield").Id == "sword_shield");
     CHECK(Find(Library.selectSet("sword", "shield"), "Heavy") == "sword_slash");
 }
+
+TEST_CASE("MoveSet: a press waits only when a combination can still grow", "[combat][moveset]") {
+    const MoveLibrary Library = makeLibrary();
+    const MoveSet& Sword = *Library.findSet("sword");
+    const MoveSet& Unarmed = *Library.findSet("unarmed");
+    ButtonSet Both(AttackButton::Light);
+    Both.add(AttackButton::Heavy);
+    // Light and Heavy may become Light+Heavy in the sword set.
+    CHECK(Library.canGrowCombo(Sword, InputDirection::Neutral, ButtonSet(AttackButton::Light)));
+    CHECK(Library.canGrowCombo(Sword, InputDirection::Forward, ButtonSet(AttackButton::Heavy)));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, Both));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, ButtonSet(AttackButton::Kick)));
+    CHECK_FALSE(Library.canGrowCombo(Unarmed, InputDirection::Neutral, ButtonSet(AttackButton::Light)));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, {}));
+}

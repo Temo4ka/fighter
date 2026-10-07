@@ -493,6 +493,13 @@ private:
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.
     int ChainLength = 0;                   ///< Strikes in the current chain, this one included.
     const MoveDef* ChainRequest = nullptr;
+    const MoveSetEntry* ChainEntry = nullptr;   ///< The line of Set that asked for ChainRequest.
+    /// The buttons pressed within the combo window (InputRules::ComboWindowSec).
+    PressWindow Presses;
+    /// A press waits for the rest of a combination in the combo window.
+    bool WaitingForCombo = false;
+    /// The line of Set that chose the last move started (for the panel).
+    const MoveSetEntry* Selected = nullptr;
 
     ReactionLevel Reaction = ReactionLevel::None;   ///< While Reacting.
     float StunLeftSec = 0.0f;

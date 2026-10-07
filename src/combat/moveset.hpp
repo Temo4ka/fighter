@@ -138,6 +138,12 @@ public:
     const MoveSetEntry* findEntry(const MoveSet& Set, InputDirection Direction, ButtonSet Pressed,
                                   ButtonSet Held) const;
 
+    /// Could more buttons pressed with \p Buttons still start another move:
+    /// is there a line in \p Set or its parents, for a direction tried for
+    /// \p Direction, with every button of \p Buttons and more? Then a press
+    /// waits for the rest of the combination (InputRules::ComboWindowSec).
+    bool canGrowCombo(const MoveSet& Set, InputDirection Direction, ButtonSet Buttons) const;
+
     /// The block of \p Set with its parents and the defaults filled in.
     /// \p Defaults are the general rules (reactions.json, the O.2 zones).
     BlockRules getBlock(const MoveSet& Set, const BlockRules& Defaults) const;

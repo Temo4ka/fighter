@@ -78,6 +78,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     OpponentGap = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
     OpponentX = Around.OpponentX;
     StateSec += Dt;
+    Presses.update(getNewlyPressed(Cmd, PreviousCmd), Rules->Moves.getInputRules().ComboWindowSec, Dt);
 
     // Where the opponent is. The body turns only when the fighter is free
     // to act: not during an attack, a reaction, on the floor or getting up.
@@ -426,11 +427,18 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
         AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
     }
     // A press (not a held button) of a move the current one chains into asks
-    // for it; it is kept until the cancel window.
-    if (const ButtonSet Pressed = getNewlyPressed(Cmd, PreviousCmd); !Pressed.isEmpty()) {
-        const MoveDef* Next = Rules->Moves.findMove(*Set, getInputDirection(Cmd, Body.isFacingRight()), Pressed,
-                                                    getHeldButtons(Cmd));
-        if (Next && Move->canChainTo(Next->Id)) ChainRequest = Next;
+    // for it; it is kept until the cancel window. The buttons pressed within
+    // the combo window count together: a later press may turn the request
+    // into a combination.
+    if (!getNewlyPressed(Cmd, PreviousCmd).isEmpty()) {
+        const ButtonSet Recent = Presses.getButtons();
+        const MoveSetEntry* Entry = Rules->Moves.findEntry(*Set, getInputDirection(Cmd, Body.isFacingRight()),
+                                                           Recent, getHeldButtons(Cmd) | Recent);
+        const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr;
+        if (Next && Move->canChainTo(Next->Id)) {
+            ChainRequest = Next;
+            ChainEntry = Entry;
+        }
     }
     if (AttackTime >= AttackClip->ActiveEndSec) {
         RecoverySec += Dt;
@@ -439,6 +447,7 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
                               RecoverySec <= Tuning.ChainWindowSec;
         if (CanChain) {
             const MoveDef* Next = ChainRequest;
+            Selected = ChainEntry;
             startMove(*Next, Around, ChainLength + 1);
             return Next;
         }
@@ -464,11 +473,17 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         startMove(*Next, Around, 1);
         return Next;
     }
-    // Holding attack buttons repeats the attack.
-    const ButtonSet Held = getHeldButtons(Cmd);
+    // Holding attack buttons repeats the attack. A press that may still
+    // become a combination ("Light+Heavy") waits for the rest of it within
+    // the combo window; the buttons pressed in it count as held.
+    const ButtonSet Recent = Presses.getButtons();
+    const ButtonSet Held = getHeldButtons(Cmd) | Recent;
+    const InputDirection Direction = getInputDirection(Cmd, Body.isFacingRight());
+    WaitingForCombo = Presses.getAgeSec() < Rules->Moves.getInputRules().ComboWindowSec &&
+                      Rules->Moves.canGrowCombo(*Set, Direction, Recent);
     const MoveSetEntry* Entry =
-        Held.isEmpty() ? nullptr
-                       : Rules->Moves.findEntry(*Set, getInputDirection(Cmd, Body.isFacingRight()), Held, Held);
+        Held.isEmpty() || WaitingForCombo ? nullptr : Rules->Moves.findEntry(*Set, Direction, Held, Held);
+    if (Entry) Selected = Entry;
     if (const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr) {
         // Crouched, a move mapped to a downward direction (the low kick)
         // starts at once; the rest stand up first.
@@ -523,6 +538,10 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     RecoverySec = 0.0f;
     ChainLength = ChainPosition;
     ChainRequest = nullptr;
+    ChainEntry = nullptr;
+    // The buttons that started it are spent: they do not start another.
+    Presses.clear();
+    WaitingForCombo = false;
 }
 
 float Fighter::planWalking(const PlayerCommands& Cmd) {
