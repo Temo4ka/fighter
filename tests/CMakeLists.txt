@@ -3,6 +3,7 @@
 # Cyrillic turns into "????" and the test is not found.
 add_executable(fighter_tests
     core/test_vec2.cpp
+    core/test_log.cpp
     core/test_signal.cpp
     core/test_fixed_step_loop.cpp
     debug/test_draw_list.cpp

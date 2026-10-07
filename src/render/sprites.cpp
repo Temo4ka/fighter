@@ -42,9 +42,9 @@ FighterSprites resolveFighterSprites(const Visuals& Vis, const FighterLook& Look
         }
         Out.MissingFiles += Missing.size();
         if (Missing.size() == BodyPartCount) {
-            log::warn("{}: no body part pictures in {}, drawing capsules", Look.Name, Skin->Dir);
+            log::warnOnce("{}: no body part pictures in {}, drawing capsules", Look.Name, Skin->Dir);
         } else if (!Missing.empty()) {
-            log::warn("{}: no pictures for {} in {}, drawing capsules", Look.Name, joinNames(Missing), Skin->Dir);
+            log::warnOnce("{}: no pictures for {} in {}, drawing capsules", Look.Name, joinNames(Missing), Skin->Dir);
         }
     }
     for (const ItemLook& Item : Look.Items) resolveItem(Vis, Skin, Item, Load, Out);
@@ -65,12 +65,12 @@ std::string joinNames(const std::vector<BodyPart>& Parts) {
 const SkinDef* findSkin(const Visuals& Vis, const FighterLook& Look) {
     const std::string& Id = Look.Skin.empty() ? Vis.DefaultSkin : Look.Skin;
     if (Id.empty()) {
-        log::warn("{}: no skin chosen and no default_skin in visuals, drawing capsules", Look.Name);
+        log::warnOnce("{}: no skin chosen and no default_skin in visuals, drawing capsules", Look.Name);
         return nullptr;
     }
     const auto Found = Vis.Skins.find(Id);
     if (Found == Vis.Skins.end()) {
-        log::warn("{}: unknown skin '{}', drawing capsules", Look.Name, Id);
+        log::warnOnce("{}: unknown skin '{}', drawing capsules", Look.Name, Id);
         return nullptr;
     }
     return &Found->second;
@@ -109,7 +109,7 @@ void resolveItem(const Visuals& Vis, const SkinDef* Skin, const ItemLook& Item, 
         Out.Overlays[static_cast<size_t>(Part)].push_back(Ref);
     }
     Out.MissingFiles += Missing.size();
-    if (!Missing.empty()) log::warn("item {}: no pictures for {} in {}, not drawn", Item.Id, joinNames(Missing), Dir);
+    if (!Missing.empty()) log::warnOnce("item {}: no pictures for {} in {}, not drawn", Item.Id, joinNames(Missing), Dir);
 }
 
 } // namespace

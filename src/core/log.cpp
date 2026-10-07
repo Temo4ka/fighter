@@ -3,7 +3,10 @@
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <mutex>
+#include <set>
+#include <string>
 
 namespace fighter::log {
 namespace {
@@ -12,6 +15,7 @@ struct LoggerState {
     std::mutex Mutex;
     Level MinLevel = FIGHTER_DEBUG ? Level::Debug : Level::Info;
     std::ofstream File;
+    std::set<std::string, std::less<>> Seen;
     std::chrono::steady_clock::time_point Start = std::chrono::steady_clock::now();
 };
 
@@ -62,6 +66,12 @@ void write(Level Severity, std::string_view Message) {
         State.File << Line;
         if (Severity >= Level::Warn) State.File.flush();
     }
+}
+
+bool isFirstTime(std::string_view Message) {
+    LoggerState& State = getState();
+    std::scoped_lock Lock(State.Mutex);
+    return State.Seen.emplace(Message).second;
 }
 
 } // namespace fighter::log
