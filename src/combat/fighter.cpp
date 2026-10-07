@@ -321,6 +321,14 @@ void Fighter::drawDebug(std::string_view Name) const {
         debug::setPanel(std::format("{} stamina", Name),
                         std::format("{:.0f} / {:.0f} (+{:.0f}/s){}", Stamina, Profile.MaxStamina,
                                     Profile.StaminaRegen, Exhausted ? "  EXHAUSTED" : ""));
+        // The moveset and the input held in the last step (PreviousCmd is
+        // that step's commands by now).
+        const ButtonSet Held = getHeldButtons(PreviousCmd);
+        const InputDirection Direction = getInputDirection(PreviousCmd, Body.isFacingRight());
+        debug::setPanel(std::format("{} moveset", Name),
+                        std::format("{}, input {}", Set->Id,
+                                    Held.isEmpty() ? std::string(getInputDirectionName(Direction))
+                                                   : formatMoveInput({.Direction = Direction, .Buttons = Held})));
         const ReactionTable& Table = Rules->Reactions;
         debug::setPanel(std::format("{} poise", Name),
                         std::format("buildup {:.2f}, poise {:.2f}: thresholds x{:.2f}", Buildup, Profile.Poise,
