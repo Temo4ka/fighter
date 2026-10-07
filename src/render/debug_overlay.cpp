@@ -97,6 +97,7 @@ DebugOverlay::KeyResult DebugOverlay::handleKey(sf::Keyboard::Scancode Key) {
         case Scan::F4: PanelVisible = !PanelVisible; return {true, DebugAction::None};
         case Scan::F5: return {true, DebugAction::Reload};
         case Scan::F6: return {true, DebugAction::ToggleShowcase};
+        case Scan::F7: return {true, DebugAction::CycleStyle};
         case Scan::P: return {true, DebugAction::TogglePause};
         case Scan::Period: return {true, DebugAction::Step};
         case Scan::LBracket: return {true, DebugAction::Slower};
@@ -242,7 +243,7 @@ void DebugOverlay::drawPanel(sf::RenderTarget& Target, const Camera& Cam, const 
     const char* ModeName = Mode == ViewMode::DebugOnly ? "debug" : Mode == ViewMode::Both ? "both" : "textures";
     Lines.push_back({std::format("DEBUG  mode: {}  (F1 debug, F2 both, F3 textures, F4 panel)", ModeName),
                      sf::Color(255, 220, 120)});
-    Lines.push_back({"P pause  . step  [ ] speed  Backspace restart  F5 reload  F6 showcase", sf::Color(170, 170, 170)});
+    Lines.push_back({"P pause  . step  [ ] speed  Backspace restart  F5 reload  F6 showcase  F7 style", sf::Color(170, 170, 170)});
     Lines.push_back({""});
 
     for (const auto& [Key, Value] : List.getPanel()) Lines.push_back({std::format("{:<14} {}", Key, Value)});
