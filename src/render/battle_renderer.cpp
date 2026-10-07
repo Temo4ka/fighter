@@ -45,8 +45,7 @@ const std::string& BattleRenderer::cycleStyle() {
     if (Vis.Styles.empty()) return StyleName;
     auto Next = Vis.Styles.upper_bound(StyleName);
     if (Next == Vis.Styles.end()) Next = Vis.Styles.begin();
-    // Copy the key: selectStyle() assigns StyleName from it.
-    selectStyle(std::string(Next->first));
+    selectStyle(Next->first);
     return StyleName;
 }
 
