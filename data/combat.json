@@ -50,6 +50,8 @@
       { "from": "crouch", "to": "crouchWalk", "sec": 0.15 },
       { "from": "crouchWalk", "to": "crouch", "sec": 0.15 },
       { "from": "any", "to": "crouch", "sec": 0.1 },
+      { "from": "crouch", "to": "stance", "sec": 0.25 },
+      { "from": "crouch", "to": "walk", "sec": 0.25 },
       { "from": "crouch", "to": "any", "sec": 0.12 },
       { "from": "any", "to": "block", "sec": 0.08 },
       { "from": "block", "to": "any", "sec": 0.1 },
