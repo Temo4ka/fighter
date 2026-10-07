@@ -111,6 +111,8 @@ int App::run() {
         // always shows tick N regardless of the display rate.
         const double RealFrameSec = Clock.restart().asSeconds();
         const double FrameSec = Opts.Screenshot ? Loop.getStepSec() : RealFrameSec;
+        if (Frame < static_cast<int>(Opts.Keys.size()))
+            onKeyPressed(Opts.Keys[static_cast<size_t>(Frame)]);
         handleEvents();
 
         // Only a running battle advances; the pause and the other screens freeze it.
@@ -119,7 +121,8 @@ int App::run() {
         publishFrameStats(RealFrameSec);
         render(LastAlpha);
 
-        if (Opts.Screenshot && ++Frame >= Opts.Frames) {
+        ++Frame;
+        if (Opts.Screenshot && Frame >= Opts.Frames) {
             saveScreenshot();
             Window.close();
             break;
@@ -127,6 +130,23 @@ int App::run() {
         Window.display();
     }
     return 0;
+}
+
+std::vector<sf::Keyboard::Scancode> parseMenuKeys(std::string_view List) {
+    using Scan = sf::Keyboard::Scan;
+    std::vector<sf::Keyboard::Scancode> Keys;
+    while (!List.empty()) {
+        const size_t Comma = List.find(',');
+        const std::string_view Name = List.substr(0, Comma);
+        List = Comma == std::string_view::npos ? std::string_view{} : List.substr(Comma + 1);
+        if (Name == "up") Keys.push_back(Scan::Up);
+        else if (Name == "down") Keys.push_back(Scan::Down);
+        else if (Name == "left") Keys.push_back(Scan::Left);
+        else if (Name == "right") Keys.push_back(Scan::Right);
+        else if (Name == "enter") Keys.push_back(Scan::Enter);
+        else if (Name == "esc") Keys.push_back(Scan::Escape);
+    }
+    return Keys;
 }
 
 void App::handleEvents() {
@@ -210,8 +230,9 @@ void App::render(float Alpha) {
     }
     if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
     Renderer.drawHud(Window);
-    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
     Overlay.drawPanel(Window, Cam, debug::getDrawList());
+    // The pause and results go over the debug panel, which stays readable underneath.
+    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
 #else
     Renderer.drawWorld(Window);
     Renderer.drawHud(Window);

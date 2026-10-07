@@ -20,6 +20,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include <SFML/Graphics/RenderWindow.hpp>
 
@@ -52,7 +54,13 @@ struct Options {
     std::optional<std::string> RightFighter;
     /// Start in the main menu instead of straight in a battle.
     bool Menu = false;
+    /// Menu keys pressed one per frame from the start (--keys, for screenshots
+    /// of the menu screens): up, down, left, right, enter, esc.
+    std::vector<sf::Keyboard::Scancode> Keys;
 };
+
+/// Parses "up,down,left,right,enter,esc" (unknown names are skipped).
+std::vector<sf::Keyboard::Scancode> parseMenuKeys(std::string_view List);
 
 class App {
 public:

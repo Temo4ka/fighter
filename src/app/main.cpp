@@ -14,6 +14,7 @@
 //   --left <fighter>            fighter sheet of P1 (data/fighters/<fighter>.json), default: built-in
 //   --right <fighter>           the same for P2
 //   --menu                      start in the main menu even with the flags above
+//   --keys <list>               menu keys, one per frame, e.g. enter,down,esc (screenshots)
 //   --log <file>                duplicate the log to a file
 //
 // Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
@@ -34,6 +35,10 @@ int main(int Argc, char** Argv) {
     for (int ArgIndex = 1; ArgIndex < Argc; ++ArgIndex) {
         const std::string_view Arg = Argv[ArgIndex];
         const bool HasValue = ArgIndex + 1 < Argc;
+        if (Arg == "--keys" && HasValue) {
+            Opts.Keys = app::parseMenuKeys(Argv[++ArgIndex]);
+            continue;
+        }
         if (Arg == "--menu") {
             MenuFlag = true;
             continue;
