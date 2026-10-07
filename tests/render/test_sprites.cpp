@@ -106,3 +106,31 @@ TEST_CASE("Sprites: an item without a configured dir is skipped quietly", "[rend
     CHECK(Sprites.Overlays[static_cast<size_t>(BodyPart::Head)].empty());
     CHECK(Sprites.MissingFiles == BodyPartCount);
 }
+
+TEST_CASE("Sprites: a held item takes the other arm's picture", "[render][sprites]") {
+    Visuals Vis = makeVisuals();
+    Vis.Items["sword"] = ItemVisualDef{.Origins = {{BodyPart::ForearmR, {0.5f, 0.2f}}}};
+    FakeFiles Files;
+    Files.Present = {"items/sword/ForearmR.png", "items/mail/UpperArmL.png"};
+    FighterLook Look;
+    Look.Items = {{.Id = "sword", .Covers = {BodyPart::ForearmL}, .Held = true},
+                  {.Id = "mail", .Covers = {BodyPart::UpperArmR}}};
+    const FighterSprites Sprites = resolveFighterSprites(Vis, Look, Files.getLoader());
+    REQUIRE(Sprites.Overlays[static_cast<size_t>(BodyPart::ForearmL)].size() == 1);
+    CHECK(Sprites.Overlays[static_cast<size_t>(BodyPart::ForearmL)][0].Origin.Y == 0.2f);
+    // Worn items keep their own pictures.
+    CHECK(Sprites.Overlays[static_cast<size_t>(BodyPart::UpperArmR)].empty());
+
+    // The look of a fighter: a held item on the holding forearm only.
+    combat::FighterConfig Config;
+    stats::EquipmentItem Sword{.Id = "sword", .Slot = stats::EquipmentSlot::OffHand,
+                               .Covers = {BodyPart::ForearmL}};
+    stats::EquipmentItem Great{.Id = "great", .Slot = stats::EquipmentSlot::MainHand, .TwoHanded = true,
+                               .Covers = {BodyPart::ForearmR, BodyPart::ForearmL}};
+    Config.Loadout.Items = {Sword, Great};
+    const FighterLook Made = makeFighterLook(Config, "", "P1");
+    REQUIRE(Made.Items.size() == 2);
+    CHECK(Made.Items[0].Held);
+    CHECK(Made.Items[0].Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Made.Items[1].Covers == std::vector{BodyPart::ForearmR});
+}
