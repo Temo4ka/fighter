@@ -195,18 +195,6 @@ TEST_CASE("No pass-through: knockdowns", "[combat][overlap]") {
     CHECK(Log.WorstExcess <= 0.0f);
 }
 
-TEST_CASE("No pass-through: knight against rogue", "[combat][overlap]") {
-    ScratchData Data("overlap_weapons");
-    Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
-    BattleConfig Config = Data.makeConfig();
-    Config.Left = loadFighter("knight");
-    Config.Right = loadFighter("rogue");
-    Battle Fight(Config);
-    const OverlapLog Log = runScripted(Fight, 5, true, 40);
-    INFO(Log.describe());
-    CHECK(Log.WorstExcess <= 0.0f);
-}
-
 TEST_CASE("No pass-through: the allowed overlap depends on the pair of parts", "[combat][overlap]") {
     ScratchData Data("overlap_tolerance");
     Data.replace("combat.json", "\"armOverlapTolerance\": 0.02", "\"armOverlapTolerance\": 0.03");

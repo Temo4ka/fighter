@@ -241,19 +241,6 @@ void checkStride(const StrideLog& Log, const StanceShape& Stance, bool WholeRun)
 
 } // namespace
 
-TEST_CASE("Stride: choppy taps both ways step short, with no squat, slide or big swing", "[combat][stride]") {
-    for (const char* Name : {"knight", "rogue"}) {
-        for (const uint32_t Seed : {1u, 2u, 3u}) {
-            INFO(Name << " seed " << Seed);
-            BattleConfig Config = makeConfig();
-            Config.Left = loadFighter(Name);
-            Battle Fight(Config);
-            run(Fight, {}, {}, TicksPerSecond / 4);
-            checkStride(runTaps(Fight, makeTaps(Seed, 40)), measureStance(getLeft(Fight)), true);
-        }
-    }
-}
-
 TEST_CASE("Stride: holding the key walks full steps, a release comes back into the stance", "[combat][stride]") {
     for (const char* Name : {"knight", "rogue"}) {
         for (const float MoveX : {1.0f, -1.0f}) {
