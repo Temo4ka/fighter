@@ -388,7 +388,9 @@ float Rig::getWeaponReach(BodyPart Part) const {
     return Found == Weapons.end() ? 0.0f : Found->Reach;
 }
 
-bool Rig::hasShield(BodyPart Part) const { return std::ranges::contains(Shields, Part, &ShieldShape::Part); }
+bool Rig::hasShield(BodyPart Part) const {
+    return std::ranges::find(Shields, Part, &ShieldShape::Part) != Shields.end();
+}
 
 bool Rig::isOnShield(Vec2 Point, float Margin) const {
     for (const auto& Shield : Shields) {
