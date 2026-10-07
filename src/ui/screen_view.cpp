@@ -243,7 +243,8 @@ void drawTitle(const Canvas& Surface, std::string_view Line, float Y) {
 /// The key hints on a footer band of their own, so they read over anything.
 void drawHint(const Canvas& Surface, std::string_view Line) {
     const float BandTop = Surface.Height - Surface.Grid * 3.6f;
-    fillRect(Surface, {0.0f, BandTop}, {Surface.Width, Surface.Height - BandTop}, Canvas::toColor(Surface.Config.Colors.Panel));
+    fillRect(Surface, {0.0f, BandTop}, {Surface.Width, Surface.Height - BandTop},
+             withAlpha(Canvas::toColor(Surface.Config.Colors.Panel), 255));
     fillRect(Surface, {0.0f, BandTop}, {Surface.Width, 1.0f}, Canvas::toColor(Surface.Config.Colors.Track));
     drawText(Surface, Line, Surface.getSize(Surface.Config.Type.Hint),
              {Surface.Width * 0.5f, Surface.Height - Surface.Grid * 2.2f}, Canvas::toColor(Surface.Config.Colors.Dim),
