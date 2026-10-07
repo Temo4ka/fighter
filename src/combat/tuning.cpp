@@ -36,8 +36,9 @@ constexpr std::array TuningFields = {
     TuningField{"blockBackSpeedScale", &CombatTuning::BlockBackSpeedScale},
     TuningField{"walkStopRate", &CombatTuning::WalkStopRate},
     TuningField{"restMinFootSpread", &CombatTuning::RestMinFootSpread},
-    TuningField{"stopMaxCoast", &CombatTuning::StopMaxCoast},
-    TuningField{"shortStepMinSpread", &CombatTuning::ShortStepMinSpread},
+    TuningField{"stopSettleSpeed", &CombatTuning::StopSettleSpeed},
+    TuningField{"stopSettleSec", &CombatTuning::StopSettleSec},
+    TuningField{"walkLiftScale", &CombatTuning::WalkLiftScale},
     TuningField{"stopResumeDistance", &CombatTuning::StopResumeDistance},
     TuningField{"stepMinSpeed", &CombatTuning::StepMinSpeed},
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
@@ -151,8 +152,11 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     }
     if (Tuning.WalkStopRate <= 0.0f) throw std::runtime_error("walkStopRate must be positive");
     if (Tuning.RestMinFootSpread < 0.0f) throw std::runtime_error("restMinFootSpread must not be negative");
-    if (Tuning.StopMaxCoast < 0.0f) throw std::runtime_error("stopMaxCoast must not be negative");
-    if (Tuning.ShortStepMinSpread < 0.0f) throw std::runtime_error("shortStepMinSpread must not be negative");
+    if (Tuning.StopSettleSpeed <= 0.0f) throw std::runtime_error("stopSettleSpeed must be positive");
+    if (Tuning.StopSettleSec <= 0.0f) throw std::runtime_error("stopSettleSec must be positive");
+    if (Tuning.WalkLiftScale < 0.0f || Tuning.WalkLiftScale > 1.0f) {
+        throw std::runtime_error("walkLiftScale must be in [0, 1]");
+    }
     if (Tuning.StopResumeDistance < 0.0f) throw std::runtime_error("stopResumeDistance must not be negative");
     if (Tuning.StepMinSpeed < 0.0f) throw std::runtime_error("stepMinSpeed must not be negative");
     if (Tuning.CrouchWalkSpeedScale <= 0.0f || Tuning.CrouchWalkSpeedScale > 1.0f) {

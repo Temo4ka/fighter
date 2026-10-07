@@ -411,12 +411,10 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
     // the pelvis instead of meeting the front thigh (the posed legs collide
     // and the foot stops there; the arms collide, so P2's guard stands
     // differently than when they passed each other). P1 kicks from where
-    // its walk stopped (the legs rest there, the kick steps into its pose);
-    // with the stride following the press (where a walk rests depends on
-    // its last step) the series knocks a fighter down at 0.94, 0.96 and
-    // 1.02 m but not at 0.98 or 1.0 m; farther the kicks meet the torso or
-    // the guard.
-    constexpr float PelvisKickRange = 0.96f;
+    // its walk stopped (the legs settle into the stance, the kick steps into
+    // its pose); the series knocks a fighter down at 0.98 to 1.04 m but not
+    // at 0.94 m or closer; farther the kicks meet the torso or the guard.
+    constexpr float PelvisKickRange = 1.0f;
     size_t HitCount = 0;
     bool KnockedDown = false;
     bool Kicked = false;   // in this period

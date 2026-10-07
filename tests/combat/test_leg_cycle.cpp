@@ -247,55 +247,6 @@ TEST_CASE("LegCycle: a stop heads to the target chosen for it", "[combat]") {
     CHECK(Cycle.getTime() <= 0.6f);
 }
 
-TEST_CASE("LegCycle: a released walk coasts to the span ahead with the travel, or rests short", "[combat]") {
-    SECTION("coast") {
-        LegCycle Cycle = makeTwoSpanCycle();
-        walkTo(Cycle, 0.42f);   // a foot in the air; the span ahead begins at 0.5
-        Cycle.beginStop();
-        CHECK(Cycle.isStopping());
-        CHECK_FALSE(Cycle.isInSpan());
-        const float Left = Cycle.getStopLeft();
-        CHECK(Left == Approx(0.5f + 0.025f - 0.42f).margin(0.01f));   // a quarter into the span
-        CHECK(Cycle.getLeftToSpanAhead() == Approx(Left).margin(0.01f));
-        // Travel takes it there (no faster: rate 1), then it rests.
-        Cycle.coast(0.05f, 1.0f, 1.0f);
-        CHECK(Cycle.isStopping());
-        CHECK(Cycle.getTime() == Approx(0.47f).margin(0.01f));
-        CHECK(Cycle.getStepFromTime() == Approx(0.42f).margin(0.01f));
-        // Travel the other way does not move it.
-        Cycle.coast(0.05f, 1.0f, -1.0f);
-        CHECK(Cycle.getTime() == Approx(0.47f).margin(0.01f));
-        Cycle.coast(0.5f, 1.0f, 1.0f);
-        CHECK(Cycle.getMode() == LegCycle::Mode::Still);
-        CHECK(Cycle.isInSpan());
-        CHECK(Cycle.getStopLeft() == 0.0f);
-    }
-    SECTION("in a span: it rests at once") {
-        LegCycle Cycle = makeTwoSpanCycle();
-        walkTo(Cycle, 0.55f);
-        Cycle.beginStop();
-        CHECK(Cycle.getMode() == LegCycle::Mode::Still);
-        CHECK(Cycle.getLeftToSpanAhead() == 0.0f);
-    }
-    SECTION("backwards: the span behind is the one ahead") {
-        LegCycle Cycle = makeTwoSpanCycle();
-        walkTo(Cycle, 0.3f);
-        Cycle.walk(0.01f, 1.0f, -1.0f);
-        CHECK(Cycle.getDirection() < 0.0f);
-        Cycle.beginStop();
-        CHECK(Cycle.getStopTarget() <= 0.2f);
-    }
-    SECTION("rest: a short step rests where it is") {
-        LegCycle Cycle = makeTwoSpanCycle();
-        walkTo(Cycle, 0.3f);
-        Cycle.beginStop();
-        Cycle.rest();
-        CHECK(Cycle.getMode() == LegCycle::Mode::Still);
-        CHECK(Cycle.getTime() == Approx(0.3f).margin(0.006f));
-        CHECK_FALSE(Cycle.isInSpan());
-    }
-}
-
 TEST_CASE("LegCycle: steps from span middle to span middle", "[combat]") {
     LegCycle Cycle = makeTwoSpanCycle();
     CHECK_FALSE(Cycle.findStep(0.3f));   // no steps set

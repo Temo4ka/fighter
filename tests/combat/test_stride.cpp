@@ -21,8 +21,8 @@ using namespace fighter::combat;
 using namespace fighter::combat::test;
 
 // The stride follows the press: short, choppy presses of the walk key give
-// short steps that match the pelvis travel, a release finishes the step in
-// a short coast, a foot left far from the pose steps again, and the knees
+// short steps that match the pelvis travel, a release brings the legs back
+// into the stance, a foot left far from the pose steps again, and the knees
 // and the pelvis never sink to absorb a mismatch of legs and body.
 
 namespace {
@@ -53,11 +53,14 @@ constexpr float MaxPlantedSlipTotal = 0.05f;
 /// work a 4 cm tap swung the feet 0.76 m.)
 constexpr float MaxFootPerTravel = 3.0f;
 constexpr float FootMotionSlack = 0.06f;
-
-const CombatTuning& getTuning() {
-    static const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");
-    return Tuning;
-}
+/// The feet's midpoint stays this close to under the pelvis, m: choppy taps
+/// both ways put it up to 0.17 m off. (When the stride scaled with the DEX
+/// walk speed, the rogue's choppy taps forward left it 0.29 m behind, the
+/// body leaning over the feet.)
+constexpr float MaxFeetOffCenter = 0.2f;
+/// Rested after the release, the feet are this close to the stance's
+/// spread and midpoint (from the pelvis), m.
+constexpr float StanceTolerance = 0.015f;
 
 const rig::RigDef& getRigDef() {
     static const rig::RigDef Def = loadHumanoid();
@@ -89,6 +92,25 @@ float getKnee(const FighterView& View, BodyPart Shin) {
     const BodyPart Thigh = Shin == BodyPart::ShinL ? BodyPart::ThighL : BodyPart::ThighR;
     const float Facing = View.FacingRight ? 1.0f : -1.0f;
     return (getPart(View, Shin).Angle - getPart(View, Thigh).Angle) * Facing;
+}
+
+/// The midpoint of the ankles from the pelvis along the facing, m.
+float getFeetOffCenter(const FighterView& View) {
+    const float FeetX = (getAnkleX(View, BodyPart::FootL) + getAnkleX(View, BodyPart::FootR)) * 0.5f;
+    return (FeetX - getPelvisX(View)) * (View.FacingRight ? 1.0f : -1.0f);
+}
+
+/// How the fighter stands in the stance: its spread and feet's midpoint.
+struct StanceShape {
+    float PelvisHeight = 0.0f;
+    float Spread = 0.0f;
+    float OffCenter = 0.0f;
+};
+
+StanceShape measureStance(const FighterView& View) {
+    return {.PelvisHeight = getPart(View, BodyPart::Pelvis).Position.Y,
+            .Spread = std::abs(getAnkleX(View, BodyPart::FootL) - getAnkleX(View, BodyPart::FootR)),
+            .OffCenter = getFeetOffCenter(View)};
 }
 
 /// A deterministic sequence of taps: pressed for 2-6 ticks, released for
@@ -124,7 +146,11 @@ struct StrideLog {
     float ReleasedSlipPerTick = 0.0f;
     float ReleasedSlip = 0.0f;
     float WorstFootExcess = -1e9f;     ///< Feet motion beyond MaxFootPerTravel * travel + slack, m.
-    float LongestCoast = 0.0f;         ///< Pelvis travel after a release, m.
+    float FeetOffCenter = 0.0f;        ///< The feet's midpoint from under the pelvis, m.
+    /// At the end (rested): the ankles apart, and their midpoint from the
+    /// pelvis along the facing, m.
+    float EndSpread = 0.0f;
+    float EndOffCenter = 0.0f;
     std::string Where;
 };
 
@@ -136,7 +162,6 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
     int Tick = 0;
     float PelvisPath = 0.0f;
     float FootPath = 0.0f;
-    float Coast = 0.0f;
     bool Pressed = false;
     bool Released = false;
     const auto closeWindow = [&] {
@@ -151,7 +176,6 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
     const auto step = [&](float MoveX) {
         const bool Press = MoveX != 0.0f;
         if (Press && !Pressed) closeWindow();
-        if (!Press && Pressed) Coast = 0.0f;
         Released = Released || (!Press && Pressed);
         Pressed = Press;
         Fight.update({.MoveX = MoveX}, {}, Dt);
@@ -159,11 +183,9 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
         const FighterView& Now = getLeft(Fight);
         const float Travel = std::abs(getPelvisX(Now) - getPelvisX(Before));
         PelvisPath += Travel;
-        if (!Press) {
-            Coast += Travel;
-            Log.LongestCoast = std::max(Log.LongestCoast, Coast);
-        }
         Log.LowestPelvis = std::min(Log.LowestPelvis, getPart(Now, BodyPart::Pelvis).Position.Y);
+        const float FeetX = (getAnkleX(Now, BodyPart::FootL) + getAnkleX(Now, BodyPart::FootR)) * 0.5f;
+        Log.FeetOffCenter = std::max(Log.FeetOffCenter, std::abs(FeetX - getPelvisX(Now)));
         for (const BodyPart Shin : {BodyPart::ShinL, BodyPart::ShinR}) {
             Log.DeepestKnee = std::min(Log.DeepestKnee, getKnee(Now, Shin));
             Log.MostBackwardKnee = std::max(Log.MostBackwardKnee, getKnee(Now, Shin));
@@ -188,17 +210,23 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
     }
     for (int Index = 0; Index < TicksPerSecond; ++Index) step(0.0f);
     closeWindow();
+    const FighterView& End = getLeft(Fight);
+    Log.EndSpread = std::abs(getAnkleX(End, BodyPart::FootL) - getAnkleX(End, BodyPart::FootR));
+    Log.EndOffCenter = getFeetOffCenter(End);
     return Log;
 }
 
 /// \p WholeRun: the slip is checked all through (taps), else from the
 /// release on (a long walk).
-void checkStride(const StrideLog& Log, float StanceHeight, bool WholeRun) {
+void checkStride(const StrideLog& Log, const StanceShape& Stance, bool WholeRun) {
+    const float StanceHeight = Stance.PelvisHeight;
     INFO(std::format("pelvis {:.3f} (stance {:.3f}), knee {:.1f}/{:.1f} deg, slip {:.4f}/tick {:.3f} total "
-                     "(released {:.4f}/tick {:.3f}), feet excess {:.3f}, coast {:.3f}",
+                     "(released {:.4f}/tick {:.3f}), feet excess {:.3f}, feet off center {:.3f}, "
+                     "end spread {:.3f} (stance {:.3f}), end off center {:.3f} (stance {:.3f})",
                      Log.LowestPelvis, StanceHeight, Log.DeepestKnee / RadiansPerDegree,
                      Log.MostBackwardKnee / RadiansPerDegree, Log.WorstSlipPerTick, Log.TotalSlip,
-                     Log.ReleasedSlipPerTick, Log.ReleasedSlip, Log.WorstFootExcess, Log.LongestCoast));
+                     Log.ReleasedSlipPerTick, Log.ReleasedSlip, Log.WorstFootExcess, Log.FeetOffCenter, Log.EndSpread, Stance.Spread,
+                     Log.EndOffCenter, Stance.OffCenter));
     INFO(Log.Where);
     CHECK(Log.LowestPelvis >= StanceHeight - MaxPelvisSink);
     CHECK(Log.DeepestKnee >= -MaxKneeBend);
@@ -206,26 +234,14 @@ void checkStride(const StrideLog& Log, float StanceHeight, bool WholeRun) {
     CHECK((WholeRun ? Log.WorstSlipPerTick : Log.ReleasedSlipPerTick) < MaxPlantedSlipPerTick);
     CHECK((WholeRun ? Log.TotalSlip : Log.ReleasedSlip) < MaxPlantedSlipTotal);
     CHECK(Log.WorstFootExcess <= 0.0f);
-    CHECK(Log.LongestCoast <= getTuning().StopMaxCoast + 1e-3f);
+    CHECK(Log.FeetOffCenter <= MaxFeetOffCenter);
+    CHECK(std::abs(Log.EndSpread - Stance.Spread) <= StanceTolerance);
+    CHECK(std::abs(Log.EndOffCenter - Stance.OffCenter) <= StanceTolerance);
 }
 
 } // namespace
 
-TEST_CASE("Stride: choppy taps both ways step short, with no squat, slide or big swing", "[combat][stride]") {
-    for (const char* Name : {"knight", "rogue"}) {
-        for (const uint32_t Seed : {1u, 2u, 3u}) {
-            INFO(Name << " seed " << Seed);
-            BattleConfig Config = makeConfig();
-            Config.Left = loadFighter(Name);
-            Battle Fight(Config);
-            run(Fight, {}, {}, TicksPerSecond / 4);
-            const float StanceHeight = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
-            checkStride(runTaps(Fight, makeTaps(Seed, 40)), StanceHeight, true);
-        }
-    }
-}
-
-TEST_CASE("Stride: holding the key walks full steps, a release coasts at most stopMaxCoast", "[combat][stride]") {
+TEST_CASE("Stride: holding the key walks full steps, a release comes back into the stance", "[combat][stride]") {
     for (const char* Name : {"knight", "rogue"}) {
         for (const float MoveX : {1.0f, -1.0f}) {
             for (int Held = 30; Held < 80; Held += 7) {
@@ -234,10 +250,30 @@ TEST_CASE("Stride: holding the key walks full steps, a release coasts at most st
                 Config.Left = loadFighter(Name);
                 Battle Fight(Config);
                 run(Fight, {}, {}, TicksPerSecond / 4);
-                const float StanceHeight = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
-                checkStride(runTaps(Fight, {{.Pressed = Held, .Released = 0, .MoveX = MoveX}}), StanceHeight, false);
+                checkStride(runTaps(Fight, {{.Pressed = Held, .Released = 0, .MoveX = MoveX}}),
+                            measureStance(getLeft(Fight)), false);
             }
         }
     }
 }
 
+TEST_CASE("Stride: choppy taps forward keep the feet under the body, whatever the walk speed", "[combat][stride]") {
+    for (const char* Name : {"knight", "rogue"}) {
+        for (const uint32_t Seed : {1u, 7u}) {
+            INFO(Name << " seed " << Seed);
+            BattleConfig Config = makeConfig();
+            Config.Left = loadFighter(Name);
+            Battle Fight(Config);
+            run(Fight, {}, {}, TicksPerSecond / 4);
+            const float StanceHeight = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
+            std::vector<Tap> Taps = makeTaps(Seed, 30);
+            for (Tap& Each : Taps) Each.MoveX = 1.0f;
+            const StrideLog Log = runTaps(Fight, Taps);
+            INFO(std::format("feet off center {:.3f}, pelvis {:.3f} (stance {:.3f}), slip {:.3f}", Log.FeetOffCenter,
+                             Log.LowestPelvis, StanceHeight, Log.TotalSlip));
+            CHECK(Log.FeetOffCenter <= MaxFeetOffCenter);
+            CHECK(Log.LowestPelvis >= StanceHeight - MaxPelvisSink);
+            CHECK(Log.TotalSlip < MaxPlantedSlipTotal);
+        }
+    }
+}

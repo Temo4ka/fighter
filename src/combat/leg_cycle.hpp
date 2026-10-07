@@ -97,7 +97,7 @@ public:
     enum class Mode : uint8_t {
         Still,      ///< Holds its phase.
         Walking,    ///< Follows the walking speed.
-        Stopping,   ///< Coasts (coast()) or plays on (stop()) to a support span.
+        Stopping,   ///< Plays on (stop()) to a support span.
         Held,       ///< Keeps a mid-step pose: the opponent is in the way (hold()).
     };
 
@@ -135,16 +135,8 @@ public:
     /// The stop heads to \p Target (one of getStopTargets()) until the
     /// cycle walks again, holds or settles.
     void chooseStop(const StopTarget& Target);
-    /// The move key released: the walk heads to the next support span in
-    /// the direction it walked (the end of the step going on), and coast()
-    /// takes it there with the pelvis travel. In a span already, it rests
-    /// there at once.
-    void beginStop();
-    /// After beginStop(): like walk(), the phase runs with the travel, but
-    /// stops at the span it heads to and rests there (Mode::Still).
-    void coast(float Dt, float Rate, float Direction);
-    /// Rests where it is, also in mid-step (the step ends short: the
-    /// fighter sets the swing foot down).
+    /// Rests where it is, also in mid-step (the walk was released: the
+    /// fighter sets the swing foot down and settles into the stance).
     void rest();
     /// Is the phase inside a support span (both feet down, wide)?
     bool isInSpan() const;
