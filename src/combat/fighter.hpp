@@ -42,13 +42,14 @@
 ///
 /// The stride follows the press (combat/leg_cycle.hpp): the walk cycle
 /// runs with the pelvis travel, so a short press is a short step. Released,
-/// the step going on ends on both feet: the pelvis coasts on to the next
-/// wide double support if that is at most CombatTuning::StopMaxCoast away
-/// (the legs still follow its travel); else the step ends short, the swing
-/// foot set down where it is (a lifted LegStep), never closer to the other
-/// foot than CombatTuning::RestMinFootSpread. The legs rest there, feet
-/// planted, until something needs them; walking again goes on from that
-/// phase. A planted foot left further than legStep.restepDistance from the
+/// the legs come back into the stance around the foot that came down last
+/// (the swing foot of the step going on is set down where it is): that foot
+/// stays, the pelvis glides to its place in the stance over it
+/// (CombatTuning::StopSettleSpeed), and the other foot steps to its place
+/// (a LegStep). The pelvis does not push into the opponent for it: held,
+/// the stance stays off-center. The legs rest there, feet planted, until
+/// something needs them; walking again starts from the stance. A planted
+/// foot left further than legStep.restepDistance from the
 /// rest pose (a push, a knockback) steps there again. An action that does not pose the legs (a punch, the
 /// upper blocks, a reaction) leaves them as they are. A leg action takes
 /// them with real steps during its startup (combat/leg_step.hpp), and with
@@ -286,18 +287,19 @@ private:
     anim::Pose getStanceLegs(BodyPart FrontFoot) const;
     /// \name The end of a step when the move key is released
     /// @{
-    /// Heads the walk to the end of the step going on: a coast to the span
-    /// ahead within StopMaxCoast, else a short step.
-    void beginStop(float CycleSpeed);
-    /// One step of the coast: the cycle follows the pelvis travel, which
-    /// ends at the span or at the coast's length; then the legs rest.
-    void coastLegs(float CycleSpeed, float Dt);
-    /// The walk came to rest at its phase (at a span, or short): the rest
-    /// pose keeps the planted feet where they stand (within
-    /// legStep.restepDistance of the cycle's pose, else they step there) and
-    /// sets the swing foot of a short step down where it is, within the
-    /// leg's reach (RestLanding, by a LegStep).
-    void settleRest();
+    /// The move key released while walking: the stance comes back around
+    /// the foot that came down last, the swing foot of the step going on set
+    /// down where it is (StanceSettle).
+    void beginSettle();
+    /// One step of the settle: the pelvis glides on to its place over the
+    /// foot that stays (planWalking()), the other foot steps to its place in
+    /// the stance (RestStep). Ends there, or where the pelvis cannot go on
+    /// (the opponent, a wall, a push).
+    void settleLegs(float Dt);
+    /// The feet of the settle (RestLanding): the staying foot where it
+    /// stands, the other at the stance's spread from it; and how far the
+    /// pelvis has to go (StanceSettle::Left).
+    void placeSettleFeet();
     /// The feet of a walk step along the floor (StrideAnchor): the standing
     /// foot where it stood, the swing foot with the pelvis travel from where
     /// it was to where the clip lands it, moving only while the clip has it
@@ -318,7 +320,7 @@ private:
     /// Walking again from the rest: the landing and any re-step fade into
     /// the walk cycle.
     void leaveRest();
-    /// Drops the rest pose's landing, a re-step and a coast (another clip
+    /// Drops the rest pose's landing, a re-step and a settle (another clip
     /// took the legs, or the fighter fell).
     void clearRest();
     /// Resting: re-steps a planted foot left off the rest pose \p Target
@@ -327,8 +329,8 @@ private:
     void updateRestStep(TargetPoses& Target, float Dt);
     /// @}
     std::string describeLegs() const;
-    /// "step 0.12 of 0.48 m", "coast 0.03 m (max 0.06), to the span",
-    /// "rest after a short step; re-steps 2, last FootR 0.07 m".
+    /// "step 0.12 of 0.48 m", "settle around FootL, pelvis 0.08 m to go",
+    /// "rest; re-steps 2, last FootR 0.07 m".
     std::string describeStride() const;
     /// The clip on the upper body ("jab 0.12/0.44 s ...", "stance").
     std::string describeUpper() const;
@@ -406,22 +408,31 @@ private:
     bool LegsMirrored = false;             ///< The leg action on top plays with the legs swapped.
     rig::LegStance LegTarget;              ///< Where the leg action has the legs this step (for the debug draw).
 
-    /// Where the feet stand while the legs rest at the walk cycle's phase
-    /// (the pelvis height is the cycle's), and the swing foot of a step that
-    /// ended short, set down.
+    /// Where the feet stand while the legs rest in the stance, when not
+    /// where the stance has them: the settle after a walk going on, or a
+    /// pelvis it could not take to its place (the pelvis height is the
+    /// stance's). SetDown: the swing foot of the step the walk stopped in.
     struct FootLanding {
         std::optional<BodyPart> SetDown;
         rig::LegStance Feet;
     };
     std::optional<FootLanding> RestLanding;
-    LegStep RestStep;                      ///< Setting the short step's foot down, or a re-step.
+    LegStep RestStep;                      ///< The steps of a settle, or a re-step.
     bool RestStepFresh = false;            ///< RestStep was planned in this step: it starts in the next.
     rig::LegStance RestTarget;             ///< Where RestStep takes the legs (for the debug draw).
-    bool Coasting = false;                 ///< Released: the pelvis coasts to the end of the step.
-    bool CoastToSpan = false;              ///< The coast reaches the next span (else the step ends short).
-    float CoastSign = 1.0f;                ///< Of the coast, world X.
-    float CoastLeft = 0.0f;                ///< Coast still allowed, m.
-    float CoastDone = 0.0f;                ///< How far the last (or current) coast went, m.
+    /// The walk released: the foot that came down last stays, the pelvis and
+    /// the other foot come to their places in the stance around it.
+    struct StanceSettle {
+        BodyPart Stays = BodyPart::FootL;
+        float StaysX = 0.0f;    ///< Where its ankle is (lands) along the arena, m.
+        float StaysAt = 0.0f;   ///< Its ankle in the stance, from the pelvis (facing right), m.
+        float Spread = 0.0f;    ///< The other ankle from it in the stance (facing right), m.
+        float Left = 0.0f;      ///< How far the pelvis still has to go (facing right), m.
+        float Sec = 0.0f;       ///< Since it began, s.
+        float StuckSec = 0.0f;  ///< The steps are over and the pelvis does not get on, s.
+    };
+    std::optional<StanceSettle> Settle;
+    float SettleDone = 0.0f;               ///< How far the last (or current) settle took the pelvis, m.
     float StepTravel = 0.0f;               ///< Pelvis travel in the step going on, m.
     float StepLength = 0.0f;               ///< The step going on at full stride, m.
     int Resteps = 0;                       ///< Re-steps so far, for the debug panel.

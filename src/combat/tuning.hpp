@@ -177,18 +177,18 @@ struct CombatTuning {
     /// only if the ankles are at least this far apart (not where the feet
     /// pass each other), m.
     float RestMinFootSpread = 0.25f;
-    /// The move key released mid-step: the pelvis may go on this far to
-    /// finish the step on both feet (the legs follow its travel); a step that
-    /// needs more ends short, the swing foot set down where it is, m.
-    float StopMaxCoast = 0.06f;
+    /// The move key released: the foot that came down last (the swing foot
+    /// of the step going on is set down where it is) stays, and the pelvis
+    /// glides to where the stance has it over that foot at most this fast,
+    /// m/s (braking with the walk deceleration at the end)...
+    float StopSettleSpeed = 0.5f;
+    /// ...while the other foot steps to its place in the stance in this
+    /// long (after the swing foot is down), s.
+    float StopSettleSec = 0.3f;
     /// Walking, the swing foot is lifted this share of the clip's height
     /// (and less on a step shorter than the clip's: in proportion to its
     /// length), 0..1.
     float WalkLiftScale = 0.75f;
-    /// A step that ends short sets its swing foot down where it is, but not
-    /// closer to the other foot than this (feet side by side are fine; a
-    /// step that has just begun is about as wide as the rest pose anyway), m.
-    float ShortStepMinSpread = 0.1f;
     /// Walking again from a rest pose, the legs go from it into the walk
     /// cycle over this much pelvis travel (a short press, a little of the
     /// way), m.

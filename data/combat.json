@@ -15,9 +15,9 @@
   "blockBackSpeedScale": 0.3,
   "walkStopRate": 3.0,
   "restMinFootSpread": 0.25,
-  "stopMaxCoast": 0.06,
+  "stopSettleSpeed": 0.5,
+  "stopSettleSec": 0.3,
   "walkLiftScale": 0.75,
-  "shortStepMinSpread": 0.1,
   "stopResumeDistance": 0.05,
   "legStep": {
     "minDistance": 0.03,

@@ -1,4 +1,6 @@
 #include "debug/draw.hpp"
+#include <cstdio> // TMPDBG
+#include <cstdlib> // TMPDBG
 
 #if FIGHTER_DEBUG
 
@@ -44,7 +46,7 @@ void drawCross(Cat Category, Vec2 At, float Size) { getDrawList().addCross(Categ
 void drawText(Cat Category, Vec2 At, std::string_view Text) { getDrawList().addText(Category, At, Text, getCurrentSide()); }
 
 void setPanel(std::string_view Key, std::string_view Value) { getDrawList().setPanel(Key, Value); }
-void logEvent(std::string_view Message) { getDrawList().logEvent(Message); }
+void logEvent(std::string_view Message) { if (std::getenv("FIGHTER_LOG")) std::fprintf(stderr, "%.*s\n", int(Message.size()), Message.data()); getDrawList().logEvent(Message); } // TMPDBG
 
 ScopedSide::ScopedSide(Side Owner) : Previous(getCurrentSide()) { getCurrentSide() = Owner; }
 ScopedSide::~ScopedSide() { getCurrentSide() = Previous; }

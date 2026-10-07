@@ -44,6 +44,9 @@ constexpr float ClearlyLiftedM = 0.02f;
 constexpr float ResumeStepTravelM = 0.15f;
 /// Feet that moved less than this did not move, m.
 constexpr float StillM = 0.001f;
+/// A foot on the floor moves less than this in a step (the foot IK settles
+/// a few millimetres when it plants), m.
+constexpr float MaxPlantedSlipPerTick = 0.005f;
 /// A walk released after this many ticks and those up to a cycle later
 /// (0.8 s of clip at 1.2 m/s: 48 ticks) stop in every phase.
 constexpr int FirstRelease = 40;
@@ -125,7 +128,7 @@ bool stopWithFront(Battle& Fight, const BattleConfig& Config, BodyPart Front) {
     for (int Ticks = FirstRelease; Ticks < FirstRelease + CycleTicks; ++Ticks) {
         Fight = Battle(Config);
         walkAndRelease(Fight, Ticks);
-        run(Fight, {}, {}, TicksPerSecond / 2);
+        run(Fight, {}, {}, TicksPerSecond);
         if (getFrontFoot(getLeft(Fight)) == Front) return true;
     }
     return false;
@@ -204,50 +207,62 @@ StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
 
 } // namespace
 
-TEST_CASE("Movement: a walk stopped in any phase rests on both feet apart, no foot slides",
+TEST_CASE("Movement: a walk stopped in any phase comes back into the stance around a foot that stays",
           "[combat][movement]") {
     int Tried = 0;
     bool RestedLeft = false;
     bool RestedRight = false;
+    const auto getSpread = [](const FighterView& View) {
+        return std::abs(getAnkleX(View, BodyPart::FootL) - getAnkleX(View, BodyPart::FootR));
+    };
+    const auto getOffCenter = [](const FighterView& View) {
+        return (getAnkleX(View, BodyPart::FootL) + getAnkleX(View, BodyPart::FootR)) * 0.5f - getPelvisX(View);
+    };
+    Battle Start(makeConfig());
+    run(Start, {}, {}, TicksPerSecond / 4);
+    const float StanceSpread = getSpread(getLeft(Start));
+    const float StanceOffCenter = std::abs(getOffCenter(getLeft(Start)));
     for (int Ticks = FirstRelease; Ticks < FirstRelease + CycleTicks; Ticks += 2) {
         Battle Fight(makeConfig());
         walkAndRelease(Fight, Ticks);
         ++Tried;
         INFO("released after " << Ticks << " ticks");
-        // A foot down when the key is released is planted: from then on its
-        // ankle does not move (the foot may still roll flat about it). The
-        // other one lands within 0.25 s and stays too.
-        std::array<std::optional<float>, 2> Planted;
+        // A foot on the floor does not slide; the first foot down after the
+        // release stays where it landed (the swing foot of the step going
+        // on is set down where it is), the other one steps.
+        std::array<std::optional<float>, 2> FirstDown;
+        FighterView Before = getLeft(Fight);
         const auto watch = [&](const FighterView& View) {
             for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
-                std::optional<float>& At = Planted[Foot == BodyPart::FootL ? 0 : 1];
-                if (!At && getSoleHeight(View, Foot) < LandedHeight) At = getAnkleX(View, Foot);
-                if (At) CHECK(std::abs(getAnkleX(View, Foot) - *At) < StillM);
+                const bool Down = getSoleHeight(View, Foot) < LandedHeight;
+                if (Down && getSoleHeight(Before, Foot) < LandedHeight) {
+                    CHECK(std::abs(getAnkleX(View, Foot) - getAnkleX(Before, Foot)) < MaxPlantedSlipPerTick);
+                }
+                std::optional<float>& At = FirstDown[Foot == BodyPart::FootL ? 0 : 1];
+                if (!At && Down) At = getAnkleX(View, Foot);
             }
+            Before = View;
         };
-        watch(getLeft(Fight));
-        int Landed = 0;
-        for (; Landed < TicksPerSecond / 4 && !areFeetDown(getLeft(Fight)); ++Landed) {
+        for (int Tick = 0; Tick < TicksPerSecond * 5 / 4; ++Tick) {
             run(Fight, {}, {}, 1);
             watch(getLeft(Fight));
         }
-        CHECK(areFeetDown(getLeft(Fight)));
-        for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
-            run(Fight, {}, {}, 1);
-            watch(getLeft(Fight));
-        }
-        // No extra step, no blend to the stance: the feet stay apart (a step
-        // that ended short may leave them closer than a span's rest pose,
-        // but not closer than shortStepMinSpread).
+        // In the stance: as wide as it, centered as it, and one foot where
+        // it first stood.
         const FighterView& Rest = getLeft(Fight);
         CHECK(areFeetDown(Rest));
         CHECK(Rest.State == FighterState::Idle);
-        CHECK(std::abs(getAnkleX(Rest, BodyPart::FootL) - getAnkleX(Rest, BodyPart::FootR)) >=
-              getTuning().ShortStepMinSpread - 0.01f);
+        CHECK(std::abs(getSpread(Rest) - StanceSpread) < 0.015f);
+        CHECK(std::abs(std::abs(getOffCenter(Rest)) - StanceOffCenter) < 0.015f);
+        const bool OneStayed = std::ranges::any_of(std::array{BodyPart::FootL, BodyPart::FootR}, [&](BodyPart Foot) {
+            const std::optional<float>& At = FirstDown[Foot == BodyPart::FootL ? 0 : 1];
+            return At && std::abs(getAnkleX(Rest, Foot) - *At) < 0.01f;
+        });
+        CHECK(OneStayed);
         (getFrontFoot(Rest) == BodyPart::FootL ? RestedLeft : RestedRight) = true;
     }
     CHECK(Tried >= CycleTicks / 2);
-    // Both wide double supports of the cycle are rest poses.
+    // Either foot may end up in front.
     CHECK(RestedLeft);
     CHECK(RestedRight);
 }
@@ -477,17 +492,17 @@ TEST_CASE("Movement: the debug panel shows the leg layer and the upper body", "[
     CHECK(getLine("P1 legs").starts_with("walking"));
     run(Fight, {}, {}, 1);
     const std::string Stopping = getLine("P1 legs");
-    CHECK((Stopping.starts_with("stopping") || Stopping.starts_with("resting at phase")));
-    // The stride line tells the coast (or the rest it ended in).
+    CHECK(Stopping.starts_with("settling into the stance"));
+    // The stride line tells the settle.
     const std::string Stride = getLine("P1 stride");
-    CHECK((Stride.starts_with("coast") || Stride.starts_with("rest")));
+    CHECK(Stride.starts_with("settle"));
     run(Fight, {}, {}, TicksPerSecond);
-    CHECK(getLine("P1 legs").starts_with("resting at phase"));
+    CHECK(getLine("P1 legs").starts_with("resting in the stance"));
     CHECK(getLine("P1 upper") == "stance");
     // A jab plays on the upper body only.
     run(Fight, press(MoveButton::Jab), {}, 3);
     CHECK(getLine("P1 upper").starts_with("jab"));
-    CHECK(getLine("P1 legs").starts_with("resting at phase"));
+    CHECK(getLine("P1 legs").starts_with("resting in the stance"));
     run(Fight, {}, {}, TicksPerSecond);
     // A kick takes the legs: the action on the panel (its steps, when the
     // feet are off its pose, and their arc: "a kick after a stop ...").
