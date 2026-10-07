@@ -14,7 +14,14 @@
 //   --demo walk|fight|kick      scripted input instead of the keyboard
 //   --left <fighter>            fighter sheet of P1 (data/fighters/<fighter>.json), default: built-in
 //   --right <fighter>           the same for P2
+//   --menu                      start in the main menu even with the flags above
+//   --keys <list>               menu keys, one per frame, e.g. enter,down,esc (screenshots)
+//   --round <sec>               round time (reach the results screen quickly)
 //   --log <file>                duplicate the log to a file
+//
+// Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
+// --frames, --screenshot) the app starts in the main menu; with one of them it
+// starts straight in a battle, as the sandbox always did.
 //
 // Project root (assets/, data/): the FIGHTER_ROOT environment variable,
 // otherwise the source directory known at build time.
@@ -25,9 +32,24 @@ int main(int Argc, char** Argv) {
     const char* RootEnv = std::getenv("FIGHTER_ROOT");
     Opts.Root = RootEnv ? RootEnv : FIGHTER_SOURCE_DIR;
 
+    bool BattleFlag = false;
+    bool MenuFlag = false;
     for (int ArgIndex = 1; ArgIndex < Argc; ++ArgIndex) {
         const std::string_view Arg = Argv[ArgIndex];
         const bool HasValue = ArgIndex + 1 < Argc;
+        if (Arg == "--keys" && HasValue) {
+            Opts.Keys = app::parseMenuKeys(Argv[++ArgIndex]);
+            continue;
+        }
+        if (Arg == "--round" && HasValue) {
+            Opts.RoundSec = std::atof(Argv[++ArgIndex]);
+            continue;
+        }
+        if (Arg == "--menu") {
+            MenuFlag = true;
+            continue;
+        }
+        if (Arg != "--log") BattleFlag = true;
         if (Arg == "--screenshot" && HasValue) {
             Opts.Screenshot = Argv[++ArgIndex];
         } else if (Arg == "--frames" && HasValue) {
@@ -51,6 +73,8 @@ int main(int Argc, char** Argv) {
             log::warn("unknown argument: {}", Arg);
         }
     }
+
+    Opts.Menu = MenuFlag || !BattleFlag;
 
     try {
         app::App Application(std::move(Opts));
