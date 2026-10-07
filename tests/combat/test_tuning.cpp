@@ -176,3 +176,8 @@ TEST_CASE("BlendTable: the most specific rule gives the blend time", "[combat]")
     CHECK_THROWS_AS(parseCombatTuning(R"({ "blends": { "fallback": 0.1 } })"), std::runtime_error);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "blends": { "strikeStartupShare": 2 } })"), std::runtime_error);
 }
+
+TEST_CASE("parseCombatTuning: the shield's hit margin", "[combat]") {
+    CHECK(parseCombatTuning(R"({ "shieldHitMargin": 0.05 })").ShieldHitMargin == 0.05f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "shieldHitMargin": -0.01 })"), std::runtime_error);
+}
