@@ -241,7 +241,7 @@ void checkStride(const StrideLog& Log, const StanceShape& Stance, bool WholeRun)
 
 } // namespace
 
-TEST_CASE("Stride: holding the key walks full steps, a release comes back into the stance", "[combat][stride]") {
+TEST_CASE("Stride: holding the key walks full steps, a release comes back into the stance", "[combat][stride][slow]") {
     for (const char* Name : {"knight", "rogue"}) {
         for (const float MoveX : {1.0f, -1.0f}) {
             for (int Held = 30; Held < 80; Held += 7) {
@@ -257,7 +257,7 @@ TEST_CASE("Stride: holding the key walks full steps, a release comes back into t
     }
 }
 
-TEST_CASE("Stride: choppy taps forward keep the feet under the body, whatever the walk speed", "[combat][stride]") {
+TEST_CASE("Stride: choppy taps forward keep the feet under the body, whatever the walk speed", "[combat][stride][slow]") {
     for (const char* Name : {"knight", "rogue"}) {
         for (const uint32_t Seed : {1u, 7u}) {
             INFO(Name << " seed " << Seed);

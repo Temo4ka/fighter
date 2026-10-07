@@ -114,7 +114,7 @@ TEST_CASE("Battle: fighters start on opposite sides facing each other", "[combat
     CHECK(Left.Position.Y == Approx(0.0f).margin(0.005f));
 }
 
-TEST_CASE("Battle: an idle fighter stands still for 60 s", "[combat][dod]") {
+TEST_CASE("Battle: an idle fighter stands still for 60 s", "[combat][dod][slow]") {
     Battle Fight(makeConfig());
     run(Fight, {}, {}, TicksPerSecond);
     const float StartX = getPelvisX(getLeft(Fight));
@@ -188,7 +188,7 @@ TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
     }
 }
 
-TEST_CASE("Battle: fighters do not pass through each other", "[combat][dod]") {
+TEST_CASE("Battle: fighters do not pass through each other", "[combat][dod][slow]") {
     // Walking into each other, the fighters meet and stay there: the
     // pelvises never closer than the pushboxes (their legs usually meet
     // first), and once met, neither gets past the other.
@@ -318,7 +318,7 @@ TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[com
     CHECK(isUpright(getRight(Fight)));
 }
 
-TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[combat][dod]") {
+TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[combat][dod][slow]") {
     // Knockdowns off: both must stay standing for the knockback to compare.
     ScratchData Data("knockback");
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
@@ -350,7 +350,7 @@ TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[com
     CHECK(measureKnockback(Tough) < measureKnockback(FighterConfig{}) * 0.9f);
 }
 
-TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[combat][dod]") {
+TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[combat][dod][slow]") {
     const rig::ControlParams Control = loadControl();
     // The reaction table makes a clean kick a knockdown.
     ScratchData Data("knockdown");

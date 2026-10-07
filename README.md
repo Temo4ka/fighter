@@ -45,6 +45,12 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
+Быстрый прогон без долгих сценарных тестов (тег `[slow]`, около 25 тестов по 10–60 с):
+
+```bash
+ctest --preset debug-fast -j8
+```
+
 Запуск песочницы:
 
 ```bash

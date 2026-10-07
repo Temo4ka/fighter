@@ -134,7 +134,7 @@ void checkSmooth(const MotionLog& Log) {
 
 } // namespace
 
-TEST_CASE("Spacing: walking into a fighter at the wall slows down without a jerk", "[combat][spacing]") {
+TEST_CASE("Spacing: walking into a fighter at the wall slows down without a jerk", "[combat][spacing][slow]") {
     // P2 stands with its back close to the wall (the arena is narrow), P1
     // walks into it and keeps pressing.
     Battle Fight(makeDuel("knight", "rogue", 1.6f));
@@ -154,7 +154,7 @@ TEST_CASE("Spacing: both at the walls, the walker is stopped smoothly", "[combat
     checkFeet(Logs[0]);
 }
 
-TEST_CASE("Spacing: walking into each other and into a standing fighter has no twitch", "[combat][spacing]") {
+TEST_CASE("Spacing: walking into each other and into a standing fighter has no twitch", "[combat][spacing][slow]") {
     SECTION("both walk in") {
         Battle Fight(makeDuel("knight", "rogue", 5.0f));
         const auto Logs = watch(Fight, {.MoveX = 1.0f}, {.MoveX = -1.0f}, 5 * TicksPerSecond);
@@ -180,7 +180,7 @@ TEST_CASE("Spacing: walking into each other and into a standing fighter has no t
     }
 }
 
-TEST_CASE("Spacing: holding forward from close range steps without sliding", "[combat][spacing]") {
+TEST_CASE("Spacing: holding forward from close range steps without sliding", "[combat][spacing][slow]") {
     // P1 starts right at P2 (their legs touch) and holds forward: it is held
     // or pushes P2, but its planted feet do not slide and its legs do not
     // march on the spot.
@@ -198,7 +198,7 @@ TEST_CASE("Spacing: holding forward from close range steps without sliding", "[c
     }
 }
 
-TEST_CASE("Spacing: a walk held by the opponent does not march on the spot", "[combat][spacing]") {
+TEST_CASE("Spacing: a walk held by the opponent does not march on the spot", "[combat][spacing][slow]") {
     // The knight presses the rogue into the wall: the pelvis stops, and so do
     // the legs (the walk cycle follows the pelvis, not the key).
     Battle Fight(makeDuel("knight", "rogue", 1.6f));
@@ -212,7 +212,7 @@ TEST_CASE("Spacing: a walk held by the opponent does not march on the spot", "[c
     }
 }
 
-TEST_CASE("Spacing: the panel tells what moves each fighter", "[combat][spacing]") {
+TEST_CASE("Spacing: the panel tells what moves each fighter", "[combat][spacing][slow]") {
 #if FIGHTER_DEBUG
     const auto getLine = [](const std::string& Key) {
         for (const auto& [Name, Value] : debug::getDrawList().getPanel()) {
@@ -269,7 +269,7 @@ TEST_CASE("Blends: a strike shows its own pose before its active phase", "[comba
     CHECK(getActiveTick(true) == Standing);
 }
 
-TEST_CASE("Spacing: a kick jammed on a fighter at the wall does not throw the attacker back", "[combat][spacing]") {
+TEST_CASE("Spacing: a kick jammed on a fighter at the wall does not throw the attacker back", "[combat][spacing][slow]") {
     // P2 backs into the wall, P1 walks up to it and body-kicks from close
     // range: the kick jams on the thigh. Recovering, the leg used to swing
     // on into P2 (the clip's extended pose), and the spacing shoved P1 back

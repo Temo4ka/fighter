@@ -117,7 +117,7 @@ float pressToWall(Battle& Fight, bool Exchange) {
 
 } // namespace
 
-TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", "[rig][scenario]") {
+TEST_CASE("Scenario: after 10 s of jabs at the wall a jab still extends fully", "[rig][scenario][slow]") {
     // The reference: the same jab in the open, nobody in reach.
     Battle Open(makeConfig());
     for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) Open.update({}, {}, Dt);
@@ -230,7 +230,7 @@ TEST_CASE("Scenario: the kicker does not walk through the fighter it knocked dow
     CHECK(Walked > TicksPerSecond / 3);
 }
 
-TEST_CASE("Scenario: knocked down at the wall the fighter stays in the arena and gets up", "[rig][scenario]") {
+TEST_CASE("Scenario: knocked down at the wall the fighter stays in the arena and gets up", "[rig][scenario][slow]") {
     const test::ScratchData Data("rig_wall_knockdown");
     Battle Fight(makeKnockdownConfig(Data));
     const float HalfWidth = Fight.getConfig().Arena.HalfWidthM;

@@ -138,7 +138,7 @@ TEST_CASE("Fight: a light hit is at most a flinch", "[combat][fight][data]") {
     }
 }
 
-TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][fight]") {
+TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][fight][slow]") {
     // A jab alone stays below Flinch; the buildup of a series lowers the
     // thresholds until jabs flinch. The arms collide, so a jab lands on the
     // raised guard (a forearm) with 0.04-0.13 m/s. P1 jabs from where the
@@ -333,7 +333,7 @@ TEST_CASE("Fight: the commands choose the free state", "[combat][fight]") {
     CHECK(getLeft(Fight).State == FighterState::Idle);
 }
 
-TEST_CASE("Fight: stamina runs out, slows the fighter down and comes back", "[combat][fight]") {
+TEST_CASE("Fight: stamina runs out, slows the fighter down and comes back", "[combat][fight][slow]") {
     BattleConfig Config = makeConfig();
     Battle Fight(Config);
     const float MaxStamina = getLeft(Fight).MaxStamina;
