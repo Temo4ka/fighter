@@ -1,6 +1,4 @@
 #include "combat/fighter.hpp"
-#include <cstdio> // TMPDBG
-#include <cstdlib> // TMPDBG
 
 #include <algorithm>
 #include <array>
@@ -78,6 +76,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     syncPosture();
     OpponentDown = Around.OpponentDown;
     OpponentGap = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
+    OpponentX = Around.OpponentX;
     StateSec += Dt;
 
     // Where the opponent is. The body turns only when the fighter is free
@@ -639,7 +638,6 @@ void Fighter::beginSettle() {
                                : BodyPart::FootR;
     const BodyPart Other = getOther(Stays);
     RestFront = getFront(Stays);
-    if (std::getenv("FIGHTER_LOG")) std::fprintf(stderr, "P%d cand L %.3f R %.3f braking %.3f lifted %d Lx %.3f Rx %.3f\n", Body.getFighterIndex()+1, getLeft(BodyPart::FootL), getLeft(BodyPart::FootR), Braking, Lifted ? int(*Lifted == BodyPart::FootL) : -1, Now.Left.Ankle.X, Now.Right.Ankle.X); // TMPDBG
     const anim::Pose StanceLegs = getStanceLegs(RestFront);
     const rig::LegStance Stance = Body.measureLegs(StanceLegs.Angles);
     const float Facing = Body.isFacingRight() ? 1.0f : -1.0f;
@@ -700,8 +698,7 @@ void Fighter::beginSettle() {
 
 void Fighter::placeSettleFeet() {
     // The staying foot where it stands, or lands, on the floor (a planted
-    // one goes along with a push), the other one at the stance's spread from
-    // it: the pelvis then has its place over them.
+    // one goes along with a push).
     rig::LegStance& Feet = RestLanding->Feet;
     rig::FootPlacement& Stays = Feet.getFoot(Settle->Stays);
     const float PelvisX = Body.getController().getPositionX();
@@ -709,9 +706,19 @@ void Fighter::placeSettleFeet() {
     const rig::FootPlacement Now = Body.measureLegsNow().getFoot(Settle->Stays);
     if (Now.Planted) Settle->StaysX = PelvisX + Now.Ankle.X * Facing;
     Stays.Ankle.X = (Settle->StaysX - PelvisX) * Facing;
+    // The pelvis's place in the stance over it, but not into a wall, nor
+    // closer to the opponent than the spacing keeps them: there the stance
+    // stays narrower. The other foot is where the stance has it from there.
+    float Place = Settle->StaysX - Settle->StaysAt * Facing;
+    Place = std::clamp(Place, -Rules->PelvisLimitX, Rules->PelvisLimitX);
+    if (!OpponentDown) {
+        const float Side = OpponentX > PelvisX ? 1.0f : -1.0f;
+        const float Nearest = OpponentX - Side * 2.0f * Rules->Tuning.BodyHalfWidth;
+        if ((Place - Nearest) * Side > 0.0f) Place = Nearest;
+    }
+    Settle->Left = (Place - PelvisX) * Facing;
     const BodyPart Other = Settle->Stays == BodyPart::FootL ? BodyPart::FootR : BodyPart::FootL;
-    Feet.getFoot(Other).Ankle.X = Stays.Ankle.X + Settle->Spread;
-    Settle->Left = Stays.Ankle.X - Settle->StaysAt;
+    Feet.getFoot(Other).Ankle.X = Settle->Left + Settle->StaysAt + Settle->Spread;
 }
 
 void Fighter::settleLegs(float Dt) {
@@ -722,7 +729,6 @@ void Fighter::settleLegs(float Dt) {
     SettleDone += std::abs(Motion.getPlannedTravel());
     Body.keepFeetPlanted();
     Settle->Sec += Dt;
-    if (std::getenv("FIGHTER_LOG")) { const rig::LegStance N = Body.measureLegsNow(); std::fprintf(stderr, "  t%.3f left %.3f L %.3f%s R %.3f%s step %d vel %.3f\n", Settle->Sec, Settle->Left, N.Left.Ankle.X, N.Left.Planted?"p":"", N.Right.Ankle.X, N.Right.Planted?"p":"", RestStep.isActive(), Motion.getVelocity()); } // TMPDBG
     const bool Stepping = RestStep.isActive();
     const bool Gets = std::abs(Motion.getVelocity()) >= SettleStuckSpeed;
     Settle->StuckSec = Stepping || Gets ? 0.0f : Settle->StuckSec + Dt;
@@ -730,13 +736,15 @@ void Fighter::settleLegs(float Dt) {
     const bool There = std::abs(Settle->Left) <= SettleEndM;
     const bool Stuck = Settle->StuckSec >= SettleStuckSec || Settle->Sec >= SettleMaxSec || Pushed;
     if (Stepping || !(There || Stuck)) return;
-    // At its place, the legs stand in the stance as it is; held off it, the
-    // feet stay where they stand around the pelvis.
-    if (There) RestLanding.reset();
+    // At its place over the staying foot, the legs stand in the stance as
+    // it is; held off it (the opponent, a wall), the feet stay where they
+    // stand around the pelvis.
+    const float StaysOff = RestLanding->Feet.getFoot(Settle->Stays).Ankle.X - Settle->StaysAt;
+    if (There && std::abs(StaysOff) <= ReachToleranceM) RestLanding.reset();
     Walk.settle(RestFront);
     if constexpr (FIGHTER_DEBUG) {
         debug::logEvent(std::format("P{} settled after {:.2f} m{}", Body.getFighterIndex() + 1, SettleDone,
-                                    There ? "" : std::format(", {:.2f} m off the stance", Settle->Left)));
+                                    RestLanding ? std::format(", {:.2f} m off the stance", StaysOff) : ""));
     }
     Settle.reset();
 }

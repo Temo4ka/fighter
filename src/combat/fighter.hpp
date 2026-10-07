@@ -297,8 +297,10 @@ private:
     /// (the opponent, a wall, a push).
     void settleLegs(float Dt);
     /// The feet of the settle (RestLanding): the staying foot where it
-    /// stands, the other at the stance's spread from it; and how far the
-    /// pelvis has to go (StanceSettle::Left).
+    /// stands, the other where the stance has it with the pelvis at its
+    /// place over the staying one (short of a wall, and of the opponent as
+    /// close as the spacing lets it); and how far the pelvis has to go
+    /// (StanceSettle::Left).
     void placeSettleFeet();
     /// The feet of a walk step along the floor (StrideAnchor): the standing
     /// foot where it stood, the swing foot with the pelvis travel from where
@@ -391,6 +393,7 @@ private:
     LegPlan Stride;
     bool OpponentDown = false;             ///< Surroundings::OpponentDown of the last control().
     float OpponentGap = 1e9f;              ///< Between the pelvises in the last control(), m.
+    float OpponentX = 0.0f;                ///< Surroundings::OpponentX of the last control(), m.
     bool WalkHeld = false;                 ///< The opponent slowed the walk when it last walked.
     float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.
     /// What sets the legs when no clip poses them.

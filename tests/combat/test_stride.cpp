@@ -62,11 +62,6 @@ constexpr float MaxFeetOffCenter = 0.2f;
 /// spread and midpoint (from the pelvis), m.
 constexpr float StanceTolerance = 0.015f;
 
-const CombatTuning& getTuning() {
-    static const CombatTuning Tuning = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json");
-    return Tuning;
-}
-
 const rig::RigDef& getRigDef() {
     static const rig::RigDef Def = loadHumanoid();
     return Def;
@@ -183,7 +178,6 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
         if (Press && !Pressed) closeWindow();
         Released = Released || (!Press && Pressed);
         Pressed = Press;
-        if (std::getenv("FIGHTER_TICKS")) std::fprintf(stderr, "TICK %d move %.0f pelvis %.3f L %.3f R %.3f\n", Tick, MoveX, getPelvisX(getLeft(Fight)), getAnkleX(getLeft(Fight), BodyPart::FootL), getAnkleX(getLeft(Fight), BodyPart::FootR)); // TMPDBG
         Fight.update({.MoveX = MoveX}, {}, Dt);
         ++Tick;
         const FighterView& Now = getLeft(Fight);
@@ -191,7 +185,6 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
         PelvisPath += Travel;
         Log.LowestPelvis = std::min(Log.LowestPelvis, getPart(Now, BodyPart::Pelvis).Position.Y);
         const float FeetX = (getAnkleX(Now, BodyPart::FootL) + getAnkleX(Now, BodyPart::FootR)) * 0.5f;
-        if (std::abs(FeetX - getPelvisX(Now)) > Log.FeetOffCenter + 0.02f && std::abs(FeetX - getPelvisX(Now)) > 0.18f) std::fprintf(stderr, "TMPDBG off %.3f tick %d\n", std::abs(FeetX - getPelvisX(Now)), Tick);
         Log.FeetOffCenter = std::max(Log.FeetOffCenter, std::abs(FeetX - getPelvisX(Now)));
         for (const BodyPart Shin : {BodyPart::ShinL, BodyPart::ShinR}) {
             Log.DeepestKnee = std::min(Log.DeepestKnee, getKnee(Now, Shin));
@@ -201,7 +194,6 @@ StrideLog runTaps(Battle& Fight, const std::vector<Tap>& Taps) {
             const float Move = std::abs(getAnkleX(Now, Foot) - getAnkleX(Before, Foot));
             FootPath += Move;
             if (getSoleHeight(Now, Foot) < LandedHeight && getSoleHeight(Before, Foot) < LandedHeight) {
-                if (Move > 0.005f) std::fprintf(stderr, "TMPDBG slip %d %.4f tick %d\n", int(Foot == BodyPart::FootL), Move, Tick);
                 Log.WorstSlipPerTick = std::max(Log.WorstSlipPerTick, Move);
                 Log.TotalSlip += Move;
                 if (Released) {

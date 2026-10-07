@@ -96,11 +96,8 @@ void LegCycle::walk(float Dt, float Rate, float NewDirection) {
 
 void LegCycle::follow(float Share) {
     const float Kept = StepSec * std::clamp(Share, 0.0f, 1.0f);
-    const bool Arrived = CurrentMode == Mode::Still && StepSec != 0.0f;
     TimeSec = wrapTime(TimeSec - StepSec + Kept, PeriodSec);
     StepSec = Kept;
-    // A coast that reached its span but was held back short of it goes on.
-    if (Arrived && Kept != StepSec) CurrentMode = Mode::Stopping;
 }
 
 float LegCycle::getStepFromTime() const { return wrapTime(TimeSec - StepSec, PeriodSec); }
@@ -109,37 +106,6 @@ void LegCycle::stop(float Dt, float Rate) {
     StepSec = 0.0f;
     if (CurrentMode == Mode::Still) return;
     playStop(planStop(), Dt, Rate);
-}
-
-void LegCycle::beginStop() {
-    StepSec = 0.0f;
-    Chosen.reset();
-    if (isInSpan()) {
-        CurrentMode = Mode::Still;
-        return;
-    }
-    Chosen = findSpanAhead();
-    CurrentMode = Mode::Stopping;
-}
-
-void LegCycle::coast(float Dt, float Rate, float NewDirection) {
-    if (CurrentMode != Mode::Stopping) return;
-    const float Offset = planStop().Offset;
-    const float Left = Offset;
-    const float Step = Dt * Rate * (NewDirection > 0.0f ? 1.0f : -1.0f);
-    // Only towards the span; there it rests.
-    if (Step * Left <= 0.0f && Left != 0.0f) {
-        StepSec = 0.0f;
-        return;
-    }
-    if (std::abs(Step) >= std::abs(Left)) {
-        StepSec = Left;
-        TimeSec = wrapTime(TimeSec + Offset, PeriodSec);
-        CurrentMode = Mode::Still;
-        return;
-    }
-    StepSec = Step;
-    TimeSec = wrapTime(TimeSec + Step, PeriodSec);
 }
 
 void LegCycle::rest() {
