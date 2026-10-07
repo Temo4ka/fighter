@@ -49,13 +49,13 @@ TEST_CASE("findBodyPart: every body part is found by its own name", "[stats][equ
 
 TEST_CASE("findEquipmentSlot: every slot is found by its own name", "[stats][equipment]") {
     for (EquipmentSlot Slot : EquipmentSlots) CHECK(findEquipmentSlot(getEquipmentSlotName(Slot)) == Slot);
-    CHECK(getEquipmentSlotName(EquipmentSlot::Weapon) == "Weapon");
+    CHECK(getEquipmentSlotName(EquipmentSlot::MainHand) == "MainHand");
     CHECK_FALSE(findEquipmentSlot("Helmet").has_value());
     CHECK_FALSE(findEquipmentSlot("head").has_value());
 }
 
 TEST_CASE("listBodyPartNames and listEquipmentSlotNames: comma-separated names", "[stats][equipment]") {
-    CHECK_THAT(listEquipmentSlotNames(), Equals("Head, Body, Hands, Legs, Feet, Weapon"));
+    CHECK_THAT(listEquipmentSlotNames(), Equals("Head, Body, Hands, Legs, Feet, MainHand, OffHand"));
     CHECK_THAT(listBodyPartNames(), ContainsSubstring("Head, Torso, Pelvis"));
     CHECK_THAT(listBodyPartNames(), ContainsSubstring("FootR"));
 }
@@ -123,7 +123,7 @@ TEST_CASE("ItemCatalog: rejects duplicate ids and invalid items", "[stats][equip
     ItemCatalog Catalog = makeCatalog();
     CHECK_THROWS_WITH(Catalog.addItem(makeItem("helmet", EquipmentSlot::Head, {BodyPart::Head})),
                       Equals("duplicate item id 'helmet'"));
-    CHECK_THROWS_AS(Catalog.addItem(makeItem("anvil", EquipmentSlot::Weapon, {BodyPart::ForearmR}, 99.0f)),
+    CHECK_THROWS_AS(Catalog.addItem(makeItem("anvil", EquipmentSlot::MainHand, {}, 99.0f)),
                     DataError);
     CHECK(Catalog.getSize() == 4);
     CHECK(Catalog.findItem("anvil") == nullptr);
@@ -140,7 +140,7 @@ TEST_CASE("buildLoadout: copies the listed items in order", "[stats][equipment]"
     CHECK(Gear.Items[2].Id == "vest");
     CHECK(Gear.Items[0].Covers == std::vector<BodyPart>{BodyPart::FootL, BodyPart::FootR});
 
-    CHECK(buildLoadout({}, Catalog).Items.empty());
+    CHECK(buildLoadout(std::vector<std::string>{}, Catalog).Items.empty());
 }
 
 TEST_CASE("buildLoadout: rejects unknown ids, repeats and slot conflicts", "[stats][equipment]") {
@@ -157,22 +157,22 @@ TEST_CASE("buildLoadout: rejects a loadout heavier than the limit", "[stats][equ
     std::vector<std::string> Ids;
     for (EquipmentSlot Slot : EquipmentSlots) {
         std::string Id = "heavy_" + std::string(getEquipmentSlotName(Slot));
-        Catalog.addItem(makeItem(Id, Slot, {BodyPart::Torso}, 11.0f));
+        Catalog.addItem(makeItem(Id, Slot, {BodyPart::Torso}, 9.0f));
         Ids.push_back(std::move(Id));
     }
 
-    CHECK_THROWS_WITH(buildLoadout(Ids, Catalog), Equals("total item mass 66 kg exceeds the limit of 60 kg"));
+    CHECK_THROWS_WITH(buildLoadout(Ids, Catalog), Equals("total item mass 63 kg exceeds the limit of 60 kg"));
     Ids.pop_back();
     CHECK_NOTHROW(buildLoadout(Ids, Catalog));
 }
 
 TEST_CASE("validateLoadout: checks a loadout built in code", "[stats][validation]") {
     Loadout Gear;
-    Gear.Items.push_back(makeItem("sword", EquipmentSlot::Weapon, {BodyPart::ForearmR}));
+    Gear.Items.push_back(makeItem("sword", EquipmentSlot::MainHand, {BodyPart::ForearmR}));
     CHECK_NOTHROW(validateLoadout(Gear));
 
-    Gear.Items.push_back(makeItem("axe", EquipmentSlot::Weapon, {BodyPart::ForearmL}));
-    CHECK_THROWS_WITH(validateLoadout(Gear), Equals("items 'sword' and 'axe' both take the Weapon slot"));
+    Gear.Items.push_back(makeItem("axe", EquipmentSlot::MainHand, {BodyPart::ForearmL}));
+    CHECK_THROWS_WITH(validateLoadout(Gear), Equals("items 'sword' and 'axe' both take the MainHand slot"));
 
     Gear.Items.back() = makeItem("bad", EquipmentSlot::Head, {BodyPart::Head}, -1.0f);
     CHECK_THROWS_WITH(validateLoadout(Gear), ContainsSubstring("item 'bad': mass -1 kg"));
@@ -184,4 +184,63 @@ TEST_CASE("withErrorContext: prefixes DataError messages and passes results thro
     CHECK_THROWS_WITH(withErrorContext("file.json", Fail), Equals("file.json: strength 0 is out of range [1, 30]"));
     CHECK_THROWS_WITH(withErrorContext("outer", [&] { withErrorContext("inner", Fail); }),
                       Equals("outer: inner: strength 0 is out of range [1, 30]"));
+}
+
+TEST_CASE("buildLoadout: hands, two-handed items and changing hands", "[stats][equipment]") {
+    ItemCatalog Catalog = makeCatalog();
+    EquipmentItem Sword = makeItem("sword", EquipmentSlot::MainHand, {}, 1.2f, 0.0f);
+    Sword.MoveSet = "sword";
+    Sword.Weapon = WeaponProps{.ReachM = 0.5f};
+    Catalog.addItem(Sword);
+    EquipmentItem Shield = makeItem("shield", EquipmentSlot::OffHand, {}, 3.0f, 0.3f);
+    Shield.MoveSet = "shield";
+    Shield.Shield = ShieldProps{.LengthM = 0.5f, .WidthM = 0.4f};
+    Catalog.addItem(Shield);
+    EquipmentItem Great = makeItem("great", EquipmentSlot::MainHand, {}, 3.0f, 0.0f);
+    Great.TwoHanded = true;
+    Great.Weapon = WeaponProps{.ReachM = 0.9f};
+    Catalog.addItem(Great);
+    const auto Build = [&](std::vector<ItemRef> Items) { return buildLoadout(Items, Catalog); };
+
+    const Loadout Armed = Build({{.Id = "sword"}, {.Id = "shield"}});
+    CHECK(Armed.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmR});
+    CHECK(Armed.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Armed.getMoveSet(EquipmentSlot::MainHand) == "sword");
+    CHECK(Armed.getMoveSet(EquipmentSlot::OffHand) == "shield");
+    CHECK(Armed.findWeapon()->ReachM == 0.5f);
+
+    // A sword in the left hand: it covers the left forearm; the main hand is empty.
+    const Loadout Left = Build({{.Id = "sword", .Slot = EquipmentSlot::OffHand}});
+    CHECK(Left.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Left.findWeapon() == nullptr);
+    CHECK(Left.getMoveSet(EquipmentSlot::OffHand) == "sword");
+
+    const Loadout Both = Build({{.Id = "great"}});
+    CHECK(Both.findInSlot(EquipmentSlot::OffHand)->Id == "great");
+    CHECK(Both.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmR, BodyPart::ForearmL});
+    CHECK(Both.getMoveSet(EquipmentSlot::OffHand).empty());
+
+    CHECK_THROWS_WITH(Build({{.Id = "great"}, {.Id = "shield"}}),
+                      Equals("items 'great' and 'shield' both take the OffHand slot"));
+    CHECK_THROWS_WITH(Build({{.Id = "great", .Slot = EquipmentSlot::OffHand}}),
+                      Equals("item 'great' cannot be put into the OffHand slot"));
+    CHECK_THROWS_WITH(Build({{.Id = "vest", .Slot = EquipmentSlot::OffHand}}),
+                      Equals("item 'vest' cannot be put into the OffHand slot"));
+}
+
+TEST_CASE("validateItem: components belong to items held in a hand", "[stats][validation]") {
+    EquipmentItem Vest = makeItem("vest", EquipmentSlot::Body, {BodyPart::Torso});
+    Vest.MoveSet = "vest";
+    CHECK_THROWS_WITH(validateItem(Vest), ContainsSubstring("is not held in a hand"));
+
+    EquipmentItem Shield = makeItem("shield", EquipmentSlot::OffHand, {});
+    Shield.Shield = ShieldProps{.LengthM = 0.0f, .WidthM = 0.4f};
+    CHECK_THROWS_WITH(validateItem(Shield), Equals("item 'shield': shield length 0 m is out of (0, 1.2] m"));
+    Shield.Shield->LengthM = 0.5f;
+    Shield.TwoHanded = true;
+    CHECK_THROWS_WITH(validateItem(Shield), ContainsSubstring("two-handed but its slot is not MainHand"));
+
+    EquipmentItem Sword = makeItem("sword", EquipmentSlot::MainHand, {});
+    Sword.Weapon = WeaponProps{.ReachM = 0.5f, .AngleDeg = 200.0f};
+    CHECK_THROWS_WITH(validateItem(Sword), ContainsSubstring("weapon angle 200"));
 }

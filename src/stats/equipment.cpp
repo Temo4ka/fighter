@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <format>
 #include <utility>
+#include <vector>
 
 #include "stats/validation.hpp"
 
@@ -30,16 +31,35 @@ const EquipmentItem* ItemCatalog::findItem(std::string_view Id) const {
     return Found != IndexById.end() ? &Items[Found->second] : nullptr;
 }
 
-Loadout buildLoadout(std::span<const std::string> ItemIds, const ItemCatalog& Catalog) {
+Loadout buildLoadout(std::span<const ItemRef> Items, const ItemCatalog& Catalog) {
     Loadout Gear;
-    Gear.Items.reserve(ItemIds.size());
-    for (const std::string& Id : ItemIds) {
-        const EquipmentItem* Item = Catalog.findItem(Id);
-        if (Item == nullptr) throw DataError(std::format("unknown item id '{}'", Id));
-        Gear.Items.push_back(*Item);
+    Gear.Items.reserve(Items.size());
+    for (const ItemRef& Ref : Items) {
+        const EquipmentItem* Found = Catalog.findItem(Ref.Id);
+        if (Found == nullptr) throw DataError(std::format("unknown item id '{}'", Ref.Id));
+        EquipmentItem Item = *Found;
+        if (Ref.Slot && *Ref.Slot != Item.Slot) {
+            // Only a one-handed item changes hands.
+            if (!isHandSlot(*Ref.Slot) || !isHandSlot(Item.Slot) || Item.TwoHanded) {
+                throw DataError(std::format("item '{}' cannot be put into the {} slot", Item.Id,
+                                            getEquipmentSlotName(*Ref.Slot)));
+            }
+            Item.Slot = *Ref.Slot;
+        }
+        if (isHandSlot(Item.Slot)) {
+            Item.Covers = {getHandPart(Item.Slot)};
+            if (Item.TwoHanded) Item.Covers.push_back(getHandPart(EquipmentSlot::OffHand));
+        }
+        Gear.Items.push_back(std::move(Item));
     }
     validateLoadout(Gear);
     return Gear;
+}
+
+Loadout buildLoadout(std::span<const std::string> ItemIds, const ItemCatalog& Catalog) {
+    std::vector<ItemRef> Items;
+    for (const std::string& Id : ItemIds) Items.push_back({.Id = Id, .Slot = std::nullopt});
+    return buildLoadout(Items, Catalog);
 }
 
 std::string_view getEquipmentSlotName(EquipmentSlot Slot) {
@@ -49,7 +69,8 @@ std::string_view getEquipmentSlotName(EquipmentSlot Slot) {
         case EquipmentSlot::Hands: return "Hands";
         case EquipmentSlot::Legs: return "Legs";
         case EquipmentSlot::Feet: return "Feet";
-        case EquipmentSlot::Weapon: return "Weapon";
+        case EquipmentSlot::MainHand: return "MainHand";
+        case EquipmentSlot::OffHand: return "OffHand";
     }
     return "?";
 }

@@ -91,11 +91,22 @@ float getMeanArmor(const PhysicalProfile& Profile, const BalanceTable& Balance) 
     return Total > 0.0f ? Weighted / Total : 0.0f;
 }
 
-const WeaponProps* Loadout::findWeapon() const {
+const EquipmentItem* Loadout::findInSlot(EquipmentSlot Which) const {
     for (const EquipmentItem& Item : Items) {
-        if (Item.Weapon) return &*Item.Weapon;
+        if (Item.takesSlot(Which)) return &Item;
     }
     return nullptr;
+}
+
+const WeaponProps* Loadout::findWeapon() const {
+    const EquipmentItem* Item = findInSlot(EquipmentSlot::MainHand);
+    return Item && Item->Weapon ? &*Item->Weapon : nullptr;
+}
+
+std::string_view Loadout::getMoveSet(EquipmentSlot Hand) const {
+    const EquipmentItem* Item = findInSlot(Hand);
+    if (!Item || (Item->TwoHanded && Hand == EquipmentSlot::OffHand)) return {};
+    return Item->MoveSet;
 }
 
 } // namespace fighter::stats

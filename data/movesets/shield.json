@@ -1,0 +1,6 @@
+{
+    "inherit": "unarmed",
+    "block": {
+        "covers": { "Mid": ["Head", "Torso", "UpperArmL", "ForearmL", "UpperArmR", "ForearmR"] }
+    }
+}

@@ -49,15 +49,29 @@ private:
     std::map<std::string, size_t, std::less<>> IndexById;
 };
 
-/// Looks the items up in the catalog and checks the result with
-/// validateLoadout(). Throws DataError on an unknown id, an item listed twice,
-/// two items in one slot or too much total mass.
+/// An item of a fighter: its id and, for a one-handed item, the hand it is
+/// held in when that is not the item's own slot (a sword in the left hand).
+struct ItemRef {
+    std::string Id;
+    std::optional<EquipmentSlot> Slot;
+
+    bool operator==(const ItemRef&) const = default;
+};
+
+/// Looks the items up in the catalog, puts each into its slot (an item held
+/// in a hand covers the holding forearm, or both for a two-handed one) and
+/// checks the result with validateLoadout(). Throws DataError on an unknown
+/// id, a slot an item cannot take, an item listed twice, two items in one
+/// slot or too much total mass.
+Loadout buildLoadout(std::span<const ItemRef> Items, const ItemCatalog& Catalog);
+
+/// The same for items in their own slots.
 Loadout buildLoadout(std::span<const std::string> ItemIds, const ItemCatalog& Catalog);
 
 /// Every equipment slot, in declaration order.
-inline constexpr std::array<EquipmentSlot, 6> EquipmentSlots = {
-    EquipmentSlot::Head, EquipmentSlot::Body, EquipmentSlot::Hands,
-    EquipmentSlot::Legs, EquipmentSlot::Feet, EquipmentSlot::Weapon,
+inline constexpr std::array<EquipmentSlot, 7> EquipmentSlots = {
+    EquipmentSlot::Head, EquipmentSlot::Body,     EquipmentSlot::Hands,   EquipmentSlot::Legs,
+    EquipmentSlot::Feet, EquipmentSlot::MainHand, EquipmentSlot::OffHand,
 };
 
 /// The slot name used in data files, for example "Head".

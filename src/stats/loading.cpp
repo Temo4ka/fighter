@@ -28,6 +28,10 @@ void addItemsFromFile(ItemCatalog& Catalog, const std::filesystem::path& Path);
 void addItems(ItemCatalog& Catalog, const JsonValue& Root);
 EquipmentItem readItem(const JsonValue& Value);
 WeaponProps readWeapon(const JsonValue& Value);
+ShieldProps readShield(const JsonValue& Value);
+ItemRef readItemRef(const JsonValue& Value, std::string_view What);
+std::optional<float> readOptionalFloat(const JsonValue& Object, std::string_view Key);
+EquipmentSlot readSlot(const JsonValue& Object);
 Stats readStats(const JsonValue& Value);
 FighterSheet readFighterSheet(const JsonValue& Root);
 BalanceTable readBalanceTable(const JsonValue& Root);
@@ -126,36 +130,48 @@ void addItems(ItemCatalog& Catalog, const JsonValue& Root) {
 
 EquipmentItem readItem(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"id", "name", "slot", "covers", "mass_kg", "armor", "weapon"});
+    checkFieldNames(Value, {"id", "name", "slot", "two_handed", "covers", "mass_kg", "armor", "moveset", "weapon",
+                            "shield"});
 
     EquipmentItem Item;
     Item.Id = readStringField(Value, "id");
     Item.Name = Value.contains("name") ? readStringField(Value, "name") : Item.Id;
-
-    const std::string SlotName = readStringField(Value, "slot");
-    const std::optional<EquipmentSlot> Slot = findEquipmentSlot(SlotName);
-    if (!Slot) {
-        throw DataError(std::format("field 'slot': unknown slot '{}' (expected one of: {})", SlotName,
-                                    listEquipmentSlotNames()));
-    }
-    Item.Slot = *Slot;
-
-    const JsonValue& Covers = getArrayField(Value, "covers");
-    for (size_t Index = 0; Index < Covers.size(); ++Index) {
-        const std::string What = std::format("covers[{}]", Index);
-        const std::string PartName = readString(Covers[Index], What);
-        const std::optional<BodyPart> Part = findBodyPart(PartName);
-        if (!Part) {
-            throw DataError(std::format("{}: unknown body part '{}' (expected one of: {})", What, PartName,
-                                        listBodyPartNames()));
+    Item.Slot = readSlot(Value);
+    if (Value.contains("two_handed")) {
+        const JsonValue& TwoHanded = getField(Value, "two_handed");
+        if (!TwoHanded.is_boolean()) {
+            throw DataError(std::format("field 'two_handed': expected a boolean, got {}", TwoHanded.type_name()));
         }
-        Item.Covers.push_back(*Part);
+        Item.TwoHanded = TwoHanded.get<bool>();
+    }
+
+    // An item held in a hand covers the holding forearm (buildLoadout()).
+    if (isHandSlot(Item.Slot)) {
+        if (Value.contains("covers")) {
+            throw DataError("field 'covers': an item held in a hand covers its forearm; leave the field out");
+        }
+    } else {
+        const JsonValue& Covers = getArrayField(Value, "covers");
+        for (size_t Index = 0; Index < Covers.size(); ++Index) {
+            const std::string What = std::format("covers[{}]", Index);
+            const std::string PartName = readString(Covers[Index], What);
+            const std::optional<BodyPart> Part = findBodyPart(PartName);
+            if (!Part) {
+                throw DataError(std::format("{}: unknown body part '{}' (expected one of: {})", What, PartName,
+                                            listBodyPartNames()));
+            }
+            Item.Covers.push_back(*Part);
+        }
     }
 
     Item.MassKg = readFloatField(Value, "mass_kg");
-    Item.Armor = readFloatField(Value, "armor");
+    Item.Armor = readOptionalFloat(Value, "armor").value_or(0.0f);
+    if (Value.contains("moveset")) Item.MoveSet = readStringField(Value, "moveset");
     if (Value.contains("weapon")) {
         Item.Weapon = withErrorContext("weapon", [&] { return readWeapon(getField(Value, "weapon")); });
+    }
+    if (Value.contains("shield")) {
+        Item.Shield = withErrorContext("shield", [&] { return readShield(getField(Value, "shield")); });
     }
     // Range checks are left to ItemCatalog::addItem(), which validates.
     return Item;
@@ -163,13 +179,35 @@ EquipmentItem readItem(const JsonValue& Value) {
 
 WeaponProps readWeapon(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"moveset", "reach_m", "speed_scale", "power_scale"});
+    checkFieldNames(Value, {"reach_m", "speed_scale", "power_scale", "radius_m", "angle_deg"});
     return {
-        .MoveSet = readStringField(Value, "moveset"),
         .ReachM = readFloatField(Value, "reach_m"),
         .SpeedScale = readFloatField(Value, "speed_scale"),
         .PowerScale = readFloatField(Value, "power_scale"),
+        .RadiusM = readOptionalFloat(Value, "radius_m"),
+        .AngleDeg = readOptionalFloat(Value, "angle_deg"),
     };
+}
+
+ShieldProps readShield(const JsonValue& Value) {
+    requireObject(Value);
+    checkFieldNames(Value, {"length_m", "width_m", "angle_deg"});
+    return {
+        .LengthM = readFloatField(Value, "length_m"),
+        .WidthM = readFloatField(Value, "width_m"),
+        .AngleDeg = readOptionalFloat(Value, "angle_deg").value_or(0.0f),
+    };
+}
+
+ItemRef readItemRef(const JsonValue& Value, std::string_view What) {
+    if (Value.is_string()) return {.Id = readString(Value, What), .Slot = std::nullopt};
+    if (!Value.is_object()) {
+        throw DataError(std::format("{}: expected an item id or an object, got {}", What, Value.type_name()));
+    }
+    return withErrorContext(What, [&] {
+        checkFieldNames(Value, {"id", "slot"});
+        return ItemRef{.Id = readStringField(Value, "id"), .Slot = readSlot(Value)};
+    });
 }
 
 Stats readStats(const JsonValue& Value) {
@@ -195,7 +233,7 @@ FighterSheet readFighterSheet(const JsonValue& Root) {
 
     const JsonValue& Items = getArrayField(Root, "items");
     for (size_t Index = 0; Index < Items.size(); ++Index) {
-        Sheet.ItemIds.push_back(readString(Items[Index], std::format("items[{}]", Index)));
+        Sheet.Items.push_back(readItemRef(Items[Index], std::format("items[{}]", Index)));
     }
     return Sheet;
 }
@@ -283,6 +321,21 @@ float readFloatField(const JsonValue& Object, std::string_view Key) {
         throw DataError(std::format("field '{}': expected a number, got {}", Key, Value.type_name()));
     }
     return static_cast<float>(Value.get<double>());
+}
+
+std::optional<float> readOptionalFloat(const JsonValue& Object, std::string_view Key) {
+    if (!Object.contains(Key)) return std::nullopt;
+    return readFloatField(Object, Key);
+}
+
+EquipmentSlot readSlot(const JsonValue& Object) {
+    const std::string SlotName = readStringField(Object, "slot");
+    const std::optional<EquipmentSlot> Slot = findEquipmentSlot(SlotName);
+    if (!Slot) {
+        throw DataError(std::format("field 'slot': unknown slot '{}' (expected one of: {})", SlotName,
+                                    listEquipmentSlotNames()));
+    }
+    return *Slot;
 }
 
 int readIntField(const JsonValue& Object, std::string_view Key) {

@@ -24,11 +24,12 @@
 
 namespace fighter::stats {
 
-/// A fighter as written in a data file: items are referenced by id.
+/// A fighter as written in a data file: items are referenced by id, a
+/// one-handed item may name the hand it is held in.
 struct FighterSheet {
     std::string Name;
     Stats BaseStats;
-    std::vector<std::string> ItemIds;
+    std::vector<ItemRef> Items;
 };
 
 /// A fighter with its items looked up and everything checked.

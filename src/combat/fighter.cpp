@@ -50,13 +50,14 @@ bool hasUpperJoints(const anim::Clip& Source);
 } // namespace
 
 Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const BattleRules& NewRules,
-                 const stats::PhysicalProfile& NewProfile, const stats::WeaponProps* NewWeapon,
+                 const stats::PhysicalProfile& NewProfile, const stats::Loadout& Gear,
                  const rig::RigSetup& Setup, std::optional<float> StartHp)
     : Body(PhysWorld, Description, Setup), Rules(&NewRules), Profile(NewProfile),
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
-    if (NewWeapon) Weapon = *NewWeapon;
-    Set = &NewRules.Moves.selectSet(Weapon ? std::string_view(Weapon->MoveSet) : std::string_view(), {});
+    if (const stats::WeaponProps* Held = Gear.findWeapon()) Weapon = *Held;
+    Set = &NewRules.Moves.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
+                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand));
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();

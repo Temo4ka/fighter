@@ -155,7 +155,7 @@ TEST_CASE("parseItemCatalog: names the item index and the bad field", "[stats][l
                       Equals("a.json: items[0]: field 'id': expected a string, got number"));
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Hat", "covers": ["Head"], "mass_kg": 1, "armor": 0})"),
                       Equals("a.json: items[0]: field 'slot': unknown slot 'Hat' "
-                             "(expected one of: Head, Body, Hands, Legs, Feet, Weapon)"));
+                             "(expected one of: Head, Body, Hands, Legs, Feet, MainHand, OffHand)"));
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": "Head", "mass_kg": 1, "armor": 0})"),
                       Equals("a.json: items[0]: field 'covers': expected an array, got string"));
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head", 3], "mass_kg": 1, "armor": 0})"),
@@ -165,8 +165,10 @@ TEST_CASE("parseItemCatalog: names the item index and the bad field", "[stats][l
                       StartsWith("a.json: items[0]: covers[1]: unknown body part 'Hed' (expected one of: Head, "));
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": "1", "armor": 0})"),
                       Equals("a.json: items[0]: field 'mass_kg': expected a number, got string"));
-    CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1})"),
-                      Equals("a.json: items[0]: missing field 'armor'"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "armor": 0})"),
+                      Equals("a.json: items[0]: missing field 'mass_kg'"));
+    // Armor is optional.
+    CHECK(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1})").findItem("cap")->Armor == 0.0f);
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mas_kg": 1, "armor": 0})"),
                       StartsWith("a.json: items[0]: unknown field 'mas_kg' (expected one of: id, name, slot, "));
 }
@@ -184,21 +186,37 @@ TEST_CASE("parseItemCatalog: applies item validation", "[stats][loading]") {
                                 "armor": 0})"),
                       Equals("a.json: items[0]: item 'cap' covers Head twice"));
 
-    const std::string_view Sword = R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1,
-        "armor": 0, "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1.2}})";
-    CHECK(Parse(Sword).findItem("sword")->Weapon->MoveSet == "sword");
-    CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1, "armor": 0,
-        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
-                      Equals("a.json: items[0]: item 'cap' has weapon properties but is not in the Weapon slot"));
-    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"moveset": "", "reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
-                      Equals("a.json: items[0]: weapon: field 'moveset': must not be empty"));
-    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 0, "power_scale": 1}})"),
+    const std::string_view Sword = R"({"id": "sword", "slot": "MainHand", "mass_kg": 1, "moveset": "sword",
+        "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1.2, "radius_m": 0.03, "angle_deg": 10}})";
+    const EquipmentItem& Read = *Parse(Sword).findItem("sword");
+    CHECK(Read.MoveSet == "sword");
+    CHECK(Read.Armor == 0.0f);
+    CHECK(Read.Covers.empty());
+    CHECK(Read.Weapon->RadiusM == 0.03f);
+    CHECK(Read.Weapon->AngleDeg == 10.0f);
+    const EquipmentItem& Shield = *Parse(R"({"id": "shield", "slot": "OffHand", "mass_kg": 3,
+        "shield": {"length_m": 0.5, "width_m": 0.4}})").findItem("shield");
+    CHECK(Shield.Shield->LengthM == 0.5f);
+    CHECK(Shield.Shield->AngleDeg == 0.0f);
+    CHECK(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3})").findItem("great")->TwoHanded);
+
+    CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1,
+        "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),
+                      Equals("a.json: items[0]: item 'cap' has a moveset, a weapon or a shield but is not held in a hand"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "MainHand", "covers": ["ForearmR"], "mass_kg": 1})"),
+                      ContainsSubstring("field 'covers': an item held in a hand covers its forearm"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "MainHand", "mass_kg": 1, "moveset": ""})"),
+                      Equals("a.json: items[0]: field 'moveset': must not be empty"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "MainHand", "mass_kg": 1,
+        "weapon": {"reach_m": 0.5, "speed_scale": 0, "power_scale": 1}})"),
                       Equals("a.json: items[0]: weapon 'sword': speed scale 0 is out of [0.25, 4]"));
-    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "Weapon", "covers": ["ForearmR"], "mass_kg": 1, "armor": 0,
-        "weapon": {"moveset": "sword", "reach_m": 0.5, "speed_scale": 1}})"),
+    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "MainHand", "mass_kg": 1,
+        "weapon": {"reach_m": 0.5, "speed_scale": 1}})"),
                       Equals("a.json: items[0]: weapon: missing field 'power_scale'"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "sword", "slot": "MainHand", "mass_kg": 1, "two_handed": 1})"),
+                      ContainsSubstring("field 'two_handed': expected a boolean"));
+    CHECK_THROWS_WITH(Parse(R"({"id": "shield", "slot": "OffHand", "mass_kg": 1, "shield": {"length_m": 0.5}})"),
+                      Equals("a.json: items[0]: shield: missing field 'width_m'"));
 
     const std::string Duplicate = R"({"items": [
         {"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1, "armor": 0},
@@ -219,7 +237,13 @@ TEST_CASE("parseFighterSheet: reads the name, stats and item ids", "[stats][load
     CHECK(Sheet.BaseStats.Strength == 12);
     CHECK(Sheet.BaseStats.Dexterity == 11);
     CHECK(Sheet.BaseStats.Constitution == 13);
-    CHECK(Sheet.ItemIds == std::vector<std::string>{"helmet", "greaves"});
+    CHECK(Sheet.Items == std::vector<ItemRef>{{.Id = "helmet"}, {.Id = "greaves"}});
+
+    const FighterSheet Lefty = parseFighterSheet(R"({"name": "L", "stats": {"strength": 1, "dexterity": 1,
+        "constitution": 1}, "items": [{"id": "sword", "slot": "OffHand"}]})");
+    CHECK(Lefty.Items == std::vector<ItemRef>{{.Id = "sword", .Slot = EquipmentSlot::OffHand}});
+    CHECK_THROWS_WITH(parseFighterSheet(R"({"name": "L", "stats": {"strength": 1, "dexterity": 1,
+        "constitution": 1}, "items": [{"id": "sword", "slot": "Hand"}]})"), ContainsSubstring("items[0]: field 'slot'"));
 }
 
 TEST_CASE("parseFighterSheet: reports bad fields", "[stats][loading]") {
@@ -234,7 +258,7 @@ TEST_CASE("parseFighterSheet: reports bad fields", "[stats][loading]") {
     CHECK_THROWS_WITH(Parse(std::format(R"({{"name": "X", {}, "items": ["helmet", ""]}})", GoodStats)),
                       Equals("f.json: items[1]: must not be empty"));
     CHECK_THROWS_WITH(Parse(std::format(R"({{"name": "X", {}, "items": [1]}})", GoodStats)),
-                      Equals("f.json: items[0]: expected a string, got number"));
+                      Equals("f.json: items[0]: expected an item id or an object, got number"));
     CHECK_THROWS_WITH(Parse(std::format(R"({{"name": "X", {}, "items": [], "rig": "humanoid"}})", GoodStats)),
                       Equals("f.json: unknown field 'rig' (expected one of: name, stats, items)"));
     CHECK_THROWS_WITH(
@@ -248,7 +272,7 @@ TEST_CASE("parseFighterSheet: reports bad fields", "[stats][loading]") {
 
 TEST_CASE("resolveFighterSheet: builds stats and loadout from the catalog", "[stats][loading]") {
     const ItemCatalog Catalog = parseItemCatalog(ValidItems);
-    const FighterSheet Sheet{.Name = "Tester", .BaseStats = {.Strength = 12}, .ItemIds = {"greaves", "helmet"}};
+    const FighterSheet Sheet{.Name = "Tester", .BaseStats = {.Strength = 12}, .Items = {{.Id = "greaves"}, {.Id = "helmet"}}};
 
     const ResolvedFighter Fighter = resolveFighterSheet(Sheet, Catalog);
     CHECK(Fighter.Name == "Tester");
@@ -260,13 +284,13 @@ TEST_CASE("resolveFighterSheet: builds stats and loadout from the catalog", "[st
 
 TEST_CASE("resolveFighterSheet: errors start with the fighter name", "[stats][loading]") {
     const ItemCatalog Catalog = parseItemCatalog(ValidItems);
-    const auto Resolve = [&](Stats BaseStats, std::vector<std::string> ItemIds) {
-        return resolveFighterSheet({.Name = "Tester", .BaseStats = BaseStats, .ItemIds = std::move(ItemIds)},
+    const auto Resolve = [&](Stats BaseStats, std::vector<ItemRef> Items) {
+        return resolveFighterSheet({.Name = "Tester", .BaseStats = BaseStats, .Items = std::move(Items)},
                                    Catalog);
     };
 
-    CHECK_THROWS_WITH(Resolve({}, {"helmet", "sword"}), Equals("fighter 'Tester': unknown item id 'sword'"));
-    CHECK_THROWS_WITH(Resolve({}, {"helmet", "helmet"}), Equals("fighter 'Tester': item 'helmet' is listed twice"));
+    CHECK_THROWS_WITH(Resolve({}, {{.Id = "helmet"}, {.Id = "sword"}}), Equals("fighter 'Tester': unknown item id 'sword'"));
+    CHECK_THROWS_WITH(Resolve({}, {{.Id = "helmet"}, {.Id = "helmet"}}), Equals("fighter 'Tester': item 'helmet' is listed twice"));
     CHECK_THROWS_WITH(Resolve({.Dexterity = 31}, {}),
                       Equals("fighter 'Tester': dexterity 31 is out of range [1, 30]"));
 }
@@ -289,8 +313,9 @@ TEST_CASE("loadItemCatalog: loads every sample item file in data/items", "[stats
     const ItemCatalog Weapons = loadItemCatalog(DataDir / "items" / "weapons.json");
     CHECK(Weapons.getSize() > 0);
     for (const EquipmentItem& Item : Weapons.getItems()) {
-        CHECK(Item.Slot == EquipmentSlot::Weapon);
-        CHECK(Item.Weapon.has_value());
+        CHECK(isHandSlot(Item.Slot));
+        CHECK(Item.Weapon.has_value() != Item.Shield.has_value());
+        CHECK_FALSE(Item.MoveSet.empty());
     }
 }
 
@@ -301,8 +326,9 @@ TEST_CASE("loadFighterSheet: the sample fighters resolve against the sample item
 
     CHECK(Knight.Name == "Knight");
     CHECK(Rogue.Name == "Rogue");
-    CHECK(Knight.Gear.Items.size() == EquipmentSlots.size());
-    CHECK(Rogue.Gear.Items.size() == EquipmentSlots.size());
+    // Every slot but the other hand.
+    CHECK(Knight.Gear.Items.size() == EquipmentSlots.size() - 1);
+    CHECK(Rogue.Gear.Items.size() == EquipmentSlots.size() - 1);
 
     // Different builds: the knight is strong and heavy, the rogue is quick and light.
     CHECK(Knight.BaseStats.Strength > Rogue.BaseStats.Strength);
@@ -326,7 +352,7 @@ TEST_CASE("computeProfile: a resolved loadout adds its item masses", "[stats][lo
     CHECK(Armored.Parts[Head].Armor == Approx(Helmet->Armor));
 
     REQUIRE(Knight.Gear.findWeapon() != nullptr);
-    CHECK(Knight.Gear.findWeapon()->MoveSet == "hammer");
+    CHECK(Knight.Gear.getMoveSet(EquipmentSlot::MainHand) == "hammer");
     CHECK(Loadout{}.findWeapon() == nullptr);
 }
 

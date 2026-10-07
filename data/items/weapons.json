@@ -3,12 +3,10 @@
         {
             "id": "short_sword",
             "name": "Short sword",
-            "slot": "Weapon",
-            "covers": ["ForearmR"],
+            "slot": "MainHand",
             "mass_kg": 1.2,
-            "armor": 0.0,
+            "moveset": "sword",
             "weapon": {
-                "moveset": "sword",
                 "reach_m": 0.55,
                 "speed_scale": 1.0,
                 "power_scale": 1.15
@@ -17,15 +15,39 @@
         {
             "id": "war_hammer",
             "name": "War hammer",
-            "slot": "Weapon",
-            "covers": ["ForearmR"],
+            "slot": "MainHand",
             "mass_kg": 3.5,
-            "armor": 0.0,
+            "moveset": "hammer",
             "weapon": {
-                "moveset": "hammer",
                 "reach_m": 0.45,
                 "speed_scale": 0.8,
                 "power_scale": 1.5
+            }
+        },
+        {
+            "id": "greatsword",
+            "name": "Greatsword",
+            "slot": "MainHand",
+            "two_handed": true,
+            "mass_kg": 3.0,
+            "moveset": "sword",
+            "weapon": {
+                "reach_m": 0.95,
+                "speed_scale": 0.85,
+                "power_scale": 1.4
+            }
+        },
+        {
+            "id": "wooden_shield",
+            "name": "Wooden shield",
+            "slot": "OffHand",
+            "mass_kg": 3.0,
+            "armor": 0.3,
+            "moveset": "shield",
+            "shield": {
+                "length_m": 0.5,
+                "width_m": 0.45,
+                "angle_deg": 0
             }
         }
     ]

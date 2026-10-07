@@ -1,0 +1,9 @@
+{
+    "pair": ["sword", "shield"],
+    "inherit": "sword",
+    "block": {
+        "damage_scale": 0.05,
+        "stamina_scale": 0.6,
+        "covers": { "Mid": ["Head", "Torso", "UpperArmL", "ForearmL", "UpperArmR", "ForearmR"] }
+    }
+}

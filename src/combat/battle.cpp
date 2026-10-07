@@ -108,7 +108,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
         const rig::RigDef Body = rig::loadRigDef(Cfg.DataDir / "rigs" / (FighterCfg->RigId + ".json"));
         const stats::PhysicalProfile Profile = stats::computeProfile(FighterCfg->Stats, FighterCfg->Loadout, Balance);
         const float StartX = Side * Tuning.SpawnDistance * 0.5f;
-        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Rules, Profile, FighterCfg->Loadout.findWeapon(),
+        Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Rules, Profile, FighterCfg->Loadout,
                                    makeRigSetup(Profile, FighterCfg->Loadout, StartX, Index), FighterCfg->StartHp);
     }
     publishSnapshot();

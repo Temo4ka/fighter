@@ -55,12 +55,18 @@ const std::vector<std::string> KnightItems = {"iron_helmet",   "chainmail", "iro
 const std::vector<std::string> RogueItems = {"leather_cap",    "leather_vest", "leather_gloves",
                                              "cloth_trousers", "soft_boots",   "short_sword"};
 
+std::vector<std::string> getIds(const stats::FighterSheet& Fighter) {
+    std::vector<std::string> Ids;
+    for (const stats::ItemRef& Item : Fighter.Items) Ids.push_back(Item.Id);
+    return Ids;
+}
+
 std::vector<Sheet> getSheets() {
     const stats::FighterSheet Knight = stats::loadFighterSheet(DataDir / "fighters" / "knight.json");
     const stats::FighterSheet Rogue = stats::loadFighterSheet(DataDir / "fighters" / "rogue.json");
     return {
-        {.Name = "knight", .BaseStats = Knight.BaseStats, .Items = Knight.ItemIds},
-        {.Name = "rogue", .BaseStats = Rogue.BaseStats, .Items = Rogue.ItemIds},
+        {.Name = "knight", .BaseStats = Knight.BaseStats, .Items = getIds(Knight)},
+        {.Name = "rogue", .BaseStats = Rogue.BaseStats, .Items = getIds(Rogue)},
         // The extremes of the legal stats: heavy and weak in full iron, and
         // light and strong in cloth.
         {.Name = "heavy weak", .BaseStats = {.Strength = 1, .Dexterity = 10, .Constitution = 30}, .Items = KnightItems},

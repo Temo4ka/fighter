@@ -125,7 +125,7 @@ public:
     /// The set of a fighter whose main hand holds an item of set \p MainSet
     /// and the other hand one of \p OffSet (empty: nothing, or no set): the
     /// pair set for exactly these two if there is one, otherwise MainSet,
-    /// otherwise "unarmed". Never nullptr once loaded.
+    /// otherwise OffSet (a shield alone), otherwise "unarmed".
     const MoveSet& selectSet(std::string_view MainSet, std::string_view OffSet) const;
 
     /// The move started in \p Set with \p Direction held (see the file
