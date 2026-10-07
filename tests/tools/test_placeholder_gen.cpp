@@ -104,6 +104,15 @@ TEST_CASE("computePartGeometry: sizes of a circle, a capsule and a box", "[place
         const auto Double = computePartGeometry(makeCapsule(), 0.30f);
         CHECK(Double.Padding.Y == Approx(0.138f));
     }
+    SECTION("by default the picture is the shape; the head keeps room for the neck") {
+        const auto Limb = computePartGeometry(makeCapsule());
+        CHECK(Limb.getImageSize().X == Approx(Limb.ShapeSize.X));
+        CHECK(Limb.getImageSize().Y == Approx(Limb.ShapeSize.Y));
+        const auto Foot = computePartGeometry(makeBox({0.12f, 0.04f}, 0.01f));
+        CHECK(Foot.getImageSize().X == Approx(Foot.ShapeSize.X));
+        const auto Head = computePartGeometry(makeCircle(0.11f));
+        CHECK(Head.Padding.Y == Approx(0.033f));
+    }
 }
 
 TEST_CASE("getImageSizePixels: both densities", "[placeholder]") {
@@ -135,7 +144,7 @@ TEST_CASE("computePartGeometry: the picture is centred on the shape centre", "[p
         const Vec2 ShapeCenter = IsCapsule ? (Part.Begin + Part.End) * 0.5f : Part.Center;
         CHECK(Geometry.Center.X == Approx(ShapeCenter.X));
         CHECK(Geometry.Center.Y == Approx(ShapeCenter.Y));
-        // The overlap is equal at both ends, so the picture contains the shape
+        // Any padding is equal at both ends, so the picture contains the shape
         // with the same margin on both sides.
         CHECK(Geometry.getImageSize().X >= Geometry.ShapeSize.X);
         CHECK(Geometry.getImageSize().Y >= Geometry.ShapeSize.Y);

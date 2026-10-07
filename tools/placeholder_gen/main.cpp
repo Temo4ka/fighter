@@ -13,7 +13,7 @@
 //   --rig <name>        rig file data/rigs/<name>.json (default humanoid)
 //   --variant <name>    pixel, smooth or all (default all)
 //   --preview <file>    also write a contact sheet of the assembled fighter (default: none)
-//   --overlap <share>   joint overlap as a share of the part length (default 0.15)
+//   --overlap <share>   joint overlap as a share of the part length (default 0)
 //
 // The default directories are the source tree known at build time, so running
 // the tool without arguments regenerates the committed pictures.

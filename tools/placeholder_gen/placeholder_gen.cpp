@@ -114,6 +114,9 @@ PartGeometry computePartGeometry(const rig::PartDef& Part, float Overlap) {
     } else {
         Result.Padding = {0.0f, Overlap * Result.ShapeSize.Y};
     }
+    if (Part.Shape == physics::ShapeKind::Circle) {
+        Result.Padding.Y = std::max(Result.Padding.Y, NeckShare * Result.ShapeSize.Y);
+    }
     return Result;
 }
 

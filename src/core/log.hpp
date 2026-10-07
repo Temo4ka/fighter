@@ -23,6 +23,7 @@
 
 #include <filesystem>
 #include <format>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -40,6 +41,10 @@ Level getMinLevel();
 bool setFile(const std::filesystem::path& Path);
 
 void write(Level Severity, std::string_view Message);
+
+/// True the first time \p Message is passed, false for every repeat. Lets a
+/// warning that comes back on each restart be written once per run.
+bool isFirstTime(std::string_view Message);
 
 inline bool isEnabled(Level Severity) { return Severity >= getMinLevel(); }
 
@@ -59,6 +64,14 @@ template <class... Args>
 void warn(std::format_string<Args...> Fmt, Args&&... Arguments) {
     if (isEnabled(Level::Warn))
         write(Level::Warn, std::format(Fmt, std::forward<Args>(Arguments)...));
+}
+
+/// Writes the warning only the first time this exact text comes up in the run.
+template <class... Args>
+void warnOnce(std::format_string<Args...> Fmt, Args&&... Arguments) {
+    if (!isEnabled(Level::Warn)) return;
+    std::string Message = std::format(Fmt, std::forward<Args>(Arguments)...);
+    if (isFirstTime(Message)) write(Level::Warn, Message);
 }
 
 template <class... Args>
