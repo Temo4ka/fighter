@@ -27,7 +27,7 @@ app ──► render ──► combat ──► stats ──► core
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose`, слои ног и верха тела и зеркальные ноги (`anim/layers.hpp`) | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`), `LegCycle` (цикл ходьбы и его остановка), `LegStep` (шаги в действие ногами) | — | — |
-| `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `BattleRenderer`, `DebugOverlay` | да | — |
+| `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `PixelLayout` (пиксельный режим), `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
 `combat` и всё под ним не зависят от SFML: модуль боя встраивается во внешний проект
@@ -62,7 +62,10 @@ app ──► render ──► combat ──► stats ──► core
 рисует любой список одним циклом и об игре ничего не знает. Какая картинка у части тела или
 предмета — в `data/visuals.json`, не в коде; часть без картинки рисуется капсулой.
 Сборка списка не требует окна и проверяется тестами. Рисовать можно в любой
-`sf::RenderTarget` — задел под пиксельный режим (T.4).
+`sf::RenderTarget`: в пиксельном стиле (T.4, `pixel_art` в `visuals.json`) `BattleRenderer`
+рисует мир в `sf::RenderTexture` низкого разрешения камерой, привязанной к пиксельной сетке,
+и увеличивает картинку в целое число раз без сглаживания (`render/pixel_view.hpp`); HUD и
+отладочная графика рисуются поверх в разрешении окна, камерой `getOverlayCamera()`.
 
 **Данные и live-тюнинг.** Риги, клипы и параметры боя лежат в `data/` (JSON) и читаются
 при создании `Battle` из `BattleConfig::DataDir`. Новый `Battle` — значит, перечитанные файлы:

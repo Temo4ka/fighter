@@ -43,6 +43,7 @@ struct Options {
     int Frames = 60;                                  ///< Frame on which the screenshot is taken.
     std::optional<std::string> Mode;                  ///< debug | both | textures (debug build only).
     bool Showcase = false;                            ///< Samples of every debug category.
+    std::optional<std::string> Style;                 ///< A style of data/visuals.json instead of its "style".
     std::optional<DemoScript> Demo;                   ///< Scripted input instead of the keyboard.
     /// Fighter sheets, data/fighters/<name>.json, for each side; nullopt: the
     /// built-in sandbox fighter.

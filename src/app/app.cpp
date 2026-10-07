@@ -82,6 +82,7 @@ App::App(Options Settings)
     if (Opts.Mode == "both") Overlay.setMode(render::ViewMode::Both);
     if (Opts.Mode == "textures") Overlay.setMode(render::ViewMode::TexturesOnly);
 #endif
+    if (Opts.Style && !Renderer.selectStyle(*Opts.Style)) log::warn("no style '{}' in visuals.json", *Opts.Style);
 
     restartBattle();
     log::info("sandbox started, root: {}", Opts.Root.string());
@@ -178,11 +179,13 @@ void App::render(float Alpha) {
     if (Overlay.shouldShowTextures()) {
         Renderer.drawWorld(Window);
     } else {
-        Overlay.drawBackdrop(Window, Cam);
+        Overlay.drawBackdrop(Window, Renderer.getOverlayCamera());
     }
-    if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
+    // Debug drawing stays at window resolution, on top of the pixel mode.
+    const render::Camera& OverlayCam = Renderer.getOverlayCamera();
+    if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, OverlayCam, debug::getDrawList());
     Renderer.drawHud(Window);
-    Overlay.drawPanel(Window, Cam, debug::getDrawList());
+    Overlay.drawPanel(Window, OverlayCam, debug::getDrawList());
 #else
     Renderer.drawWorld(Window);
     Renderer.drawHud(Window);
@@ -268,6 +271,9 @@ void App::applyDebugAction(render::DebugAction Action) {
             break;
         case DebugAction::ToggleShowcase:
             ShowcaseVisible = !ShowcaseVisible;
+            break;
+        case DebugAction::CycleStyle:
+            Renderer.cycleStyle();
             break;
     }
 }
