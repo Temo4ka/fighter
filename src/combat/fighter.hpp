@@ -354,6 +354,8 @@ private:
     PoseKind getClipKind(const anim::Clip& Source) const;
     /// The clip on top as played (getPlayed()), or nullptr.
     const anim::Clip* getTopClip() const;
+    /// The time the clip on top is posed at: the attack's or the state's;
+    /// recovering from a contact, back from the contact to the clip's start.
     float getTopClipTime() const;
     void spendStamina(float Amount);
     void react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point);
@@ -471,6 +473,7 @@ private:
     ContactStage Contact = ContactStage::None;
     float ContactHoldLeftSec = 0.0f;       ///< While Holding, real time.
     bool Jammed = false;                   ///< Stopped at the opponent in the startup.
+    float ContactClipSec = 0.0f;           ///< The clip time the strike stopped at the opponent.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
     bool AttackLanded = false;
     bool AttackHitClean = false;

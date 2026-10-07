@@ -135,9 +135,10 @@ TEST_CASE("Contact: a low kick stops at the shin it hits", "[combat][contact]") 
 
 TEST_CASE("Contact: the kick holds the contact pose and then recovers", "[combat][contact]") {
     // The foot stays on the shin while the attack holds the contact pose:
-    // contactHoldSec (0.08 s) and the start of the recovery blend.
+    // contactHoldSec (0.08 s), to within a tick. Then it goes back the way
+    // it came (not on through the extended pose into the shin).
     const KickLog Log = kickOnce("contact_hold", MoveButton::LowKick, 0.95f);
-    CHECK(static_cast<float>(Log.TouchingTicks) / TicksPerSecond >= loadTuning().ContactHoldSec);
+    CHECK(static_cast<float>(Log.TouchingTicks + 1) / TicksPerSecond >= loadTuning().ContactHoldSec);
     // The leg does not jump: the foot moves no more than a kick swings it
     // (about 5 cm per tick), also when it leaves the contact.
     float FastestFoot = 0.0f;
