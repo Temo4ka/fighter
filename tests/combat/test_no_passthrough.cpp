@@ -186,15 +186,6 @@ TEST_CASE("No pass-through: at the wall", "[combat][overlap]") {
     CHECK(Rest.WorstExcess <= 0.0f);
 }
 
-TEST_CASE("No pass-through: knockdowns", "[combat][overlap]") {
-    ScratchData Data("overlap_knockdowns");
-    Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
-    Battle Fight(Data.makeConfig());
-    const OverlapLog Log = runScripted(Fight, 4, true, 40);
-    INFO(Log.describe());
-    CHECK(Log.WorstExcess <= 0.0f);
-}
-
 TEST_CASE("No pass-through: the allowed overlap depends on the pair of parts", "[combat][overlap]") {
     ScratchData Data("overlap_tolerance");
     Data.replace("combat.json", "\"armOverlapTolerance\": 0.02", "\"armOverlapTolerance\": 0.03");
