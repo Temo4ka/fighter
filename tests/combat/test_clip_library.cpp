@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "anim/layers.hpp"
 #include "combat/clip_library.hpp"
 #include "combat/moves.hpp"
 #include "scenario.hpp"
@@ -86,4 +87,27 @@ TEST_CASE("ClipLibrary: loads the block clips of the movesets", "[combat][clips]
     std::filesystem::remove(Data.getDir() / "poses" / "my_guard.json");
     CHECK_THROWS_WITH(ClipLibrary::load(Data.getDir() / "poses", Library),
                       ContainsSubstring("movesets/sword.json") && ContainsSubstring("my_guard"));
+}
+
+TEST_CASE("ClipLibrary: a clip played with the other hand", "[combat][clips][data]") {
+    const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", MoveLibrary::load(DataDir));
+    const anim::Clip& Slash = Clips.get("sword_slash");
+    const anim::Clip& Left = Clips.getOtherHand(Slash);
+    REQUIRE(&Left != &Slash);
+    CHECK(Clips.isOtherHand(Left));
+    CHECK_FALSE(Clips.isOtherHand(Slash));
+    CHECK(&Clips.getAuthored(Left) == &Slash);
+    CHECK(Left.isStriker(BodyPart::ForearmL));
+    // A kick that poses the arms too has a copy with both the legs mirrored
+    // and the arms swapped; one that does not is its own.
+    const anim::Clip& Kick = Clips.get("kick");
+    const anim::Clip& Mirrored = Clips.getMirrored(Kick);
+    const anim::Clip& Both = Clips.getOtherHand(Mirrored);
+    if (anim::usesArms(Kick)) {
+        CHECK(&Both != &Mirrored);
+        CHECK(&Clips.getAuthored(Both) == &Kick);
+        CHECK(Both.isStriker(BodyPart::FootR));
+    } else {
+        CHECK(&Both == &Mirrored);
+    }
 }

@@ -30,6 +30,8 @@ namespace {
 
 /// Debug draw size of a joint (the circle around the hinge), m.
 constexpr float JointDrawSize = 0.05f;
+/// The rest length of a spring joint, m: Box2D needs a positive one.
+constexpr float MinSpringLength = 0.005f;
 /// Contact points looked at per shape when summing the impulse of a hit.
 constexpr int MaxContactsPerShape = 16;
 /// A body part has one or two shapes; more is never needed.
@@ -517,9 +519,9 @@ SpringJoint World::createSpringJoint(const SpringJointDef& Def) {
     JointDef.bodyIdB = loadBody(Def.BodyB.Id);
     JointDef.localAnchorA = toBox2D(Def.LocalAnchorA);
     JointDef.localAnchorB = toBox2D(Def.LocalAnchorB);
-    // A rest length of zero (Box2D clamps it to its stable minimum): the
-    // spring pulls the anchors onto each other.
-    JointDef.length = 0.0f;
+    // The shortest rest length Box2D takes (it must be positive): the spring
+    // pulls the anchors onto each other.
+    JointDef.length = MinSpringLength;
     JointDef.enableSpring = Def.Hertz > 0.0f;
     JointDef.hertz = Def.Hertz;
     JointDef.dampingRatio = Def.DampingRatio;
