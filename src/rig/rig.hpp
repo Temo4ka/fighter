@@ -16,7 +16,12 @@
 ///  - physical parts (torso, head, arms) are dynamic bodies driven by
 ///    PD-style joint motors towards the clip angles relative to their
 ///    parent, so the torso is held relative to the pelvis. Strikes and hit
-///    reactions are physics.
+///    reactions are physics. Standing, the pelvis carries them: every step
+///    they take the change of the pelvis motion (not of a knockback), the
+///    motors add the clip's own joint speed and always have the torque to
+///    reach the pose without overshoot (the inertia of the child chain),
+///    and their weight is taken off, so at rest and walking the upper body
+///    follows the clip; hits, knockback and knockdowns still swing it.
 ///
 /// There are no balance assists: a standing fighter cannot fall, because its
 /// support is not physical. Stiffness scales the motors: it is raised during
@@ -106,6 +111,12 @@ struct ExtentX {
     float Max = 0.0f;
 };
 
+/// How far the physical parts are from the target pose (Rig::getPoseError).
+struct PoseError {
+    float Angle = 0.0f;               ///< Largest turn of a part away from the target pose, rad.
+    BodyPart Part = BodyPart::Torso;  ///< The part that is furthest off.
+};
+
 /// Where a part of a rig is going to be (Rig::predictBody).
 struct PartPlacement {
     physics::Body Handle;
@@ -121,6 +132,31 @@ struct PartPlacement {
     float PosedAngle = 0.0f;
 };
 
+/// Where a foot stands, as for a fighter facing right, relative to the
+/// floor point under the pelvis: X forward, Y up from the floor.
+struct FootPlacement {
+    Vec2 Ankle;               ///< The ankle hinge, m.
+    float Angle = 0.0f;       ///< The foot's angle in the world, rad.
+    float SoleHeight = 0.0f;  ///< The lowest point of the foot above the floor, m.
+    /// The rig holds it planted on the floor (measureLegsNow() only).
+    bool Planted = false;
+};
+
+/// How a body stands on its legs (Rig::measureLegs, Rig::measureLegsNow).
+struct LegStance {
+    float PelvisHeight = 0.0f;  ///< The pelvis body origin above the floor, m.
+    FootPlacement Left;
+    FootPlacement Right;
+
+    /// The placement of \p Foot: FootL or FootR (any other part: Right).
+    const FootPlacement& getFoot(BodyPart Foot) const { return Foot == BodyPart::FootL ? Left : Right; }
+    FootPlacement& getFoot(BodyPart Foot) { return Foot == BodyPart::FootL ? Left : Right; }
+    /// How far apart the ankles are along the floor, m.
+    float getSpread() const;
+    /// The foot whose ankle is further forward: FootL or FootR.
+    BodyPart getFrontFoot() const { return Right.Ankle.X > Left.Ankle.X ? BodyPart::FootR : BodyPart::FootL; }
+};
+
 /// The physics world owns the bodies and joints: a rig must not outlive it.
 class Rig {
 public:
@@ -132,22 +168,34 @@ public:
     /// Target joint angles for a fighter facing right (see anim::Pose); the
     /// rig mirrors them when it faces left. The Pelvis entry is the lean.
     void setTargetAngles(const PerBodyPart<float>& Angles);
+    /// The angles of setTargetAngles() are those of the pose after the
+    /// pelvis travels \p Travel (m, along X) in this step: a walk cycle
+    /// advanced by the planned travel, or by the push of the last step;
+    /// these are the angles without it. The joints then follow the travel
+    /// the pelvis really makes after the spacing (getTravelShare()): in
+    /// between, the angles are interpolated by its share, so a walk that the
+    /// spacing holds back steps only as far as the pelvis goes (predictBody()
+    /// poses it the same way). Call after setTargetAngles(), which drops the
+    /// link.
+    void setTravelPose(const PerBodyPart<float>& StillAngles, float Travel);
     /// Requested walking speed in the world, m/s; 0 stops.
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
     void setBaseStiffness(float Stiffness);
     /// Takes the planted feet where they stand now as the stance: standing
     /// still, a foot steps back under the body only when it is pushed
-    /// FootRestepDistance further from there (not from the clip). Combat
-    /// calls it when a walk has stopped on both feet, so that the feet left
-    /// off the clip by the walk do not take an extra step. Lifting a foot
-    /// forgets it.
+    /// FootRestepDistance further from there (not from the clip), and the
+    /// clip may pull it further than ControlParams::FootLockSlip without
+    /// dragging it (as far as the leg reaches). Combat calls it while a walk
+    /// stops on both feet and while the legs step into an action, so that
+    /// the feet left off the clip do not slide or take an extra step.
+    /// Lifting a foot forgets it.
     void keepFeetPlanted();
-    /// For this step the feet slide towards the clip's pose along the floor
-    /// instead of holding their place: a planted foot lets go and closes on
-    /// the clip at ControlParams::FootSlideSpeed at most, with no jump. Combat calls it while a walk plays on quickly to a stop, so
-    /// that the stop ends in the clip's pose.
-    void slideFeet() { SlidingFeet = true; }
+    /// The lifted feet go exactly where the target pose puts them: their
+    /// offset from the clip (a lifted foot returns to the clip from where it
+    /// stood) is dropped. Combat calls it when it starts posing the feet
+    /// itself (a step into an action or into the rest), from where they are.
+    void dropLiftedFootOffsets();
     /// Places every part in the target pose at rest, standing on the floor.
     /// For the start of a fight; it teleports the bodies.
     void snapToTargets();
@@ -181,10 +229,16 @@ public:
     PelvisController& getController() { return Controller; }
     /// Pushes the whole body by \p Delta (m, along X) in this step: the
     /// planned pelvis position and the planted feet move together, so a
-    /// foot pressed into the opponent's leaves with the body. The spacing
-    /// of the fighters calls it (rig/spacing.hpp) between planMotion() and
-    /// applyControl().
+    /// foot pressed into the opponent's leaves with the body. A push that
+    /// only takes back some of the step's own planned travel (a walk slowed
+    /// down) leaves the planted feet where they are: the fighter just
+    /// travels less. The spacing of the fighters calls it (rig/spacing.hpp)
+    /// between planMotion() and applyControl().
     void pushBody(float Delta);
+    /// The share of the travel of setTravelPose() the pelvis makes after the
+    /// corrections so far (PelvisController::getTravelShare); the posed
+    /// joints follow it. 1 without a link.
+    float getTravelShare() const { return Controller.getTravelShare(Controller.getPlannedX(), PoseTravel); }
     const PelvisController& getController() const { return Controller; }
 
     /// Moves the kinematic parts, drives the motors of the physical ones and
@@ -298,6 +352,21 @@ public:
     /// that carries the body. Combat finds the phases of a walk cycle where
     /// both feet stand with it; it is the same lift as standing.
     float getSoleHeight(const PerBodyPart<float>& Angles, BodyPart Foot) const;
+    /// How the body would stand in the pose \p Angles (as for
+    /// setTargetAngles(), clamped to the joint limits) with its lowest posed
+    /// part on the floor: the pelvis height and where the feet are. Nothing
+    /// moves.
+    LegStance measureLegs(const PerBodyPart<float>& Angles) const;
+    /// How the body stands now: the pelvis height and the feet where their
+    /// bodies are (planted feet held off the clip included).
+    LegStance measureLegsNow() const;
+    /// Bends the leg of \p Foot in \p Angles (as for setTargetAngles()) so
+    /// that, with the pelvis \p PelvisHeight above the floor, its ankle is
+    /// at \p Ankle and the foot at \p FootAngle in the world (both as in
+    /// FootPlacement). Two-bone IK: the knee bends the way a knee bends (into
+    /// its joint range); a point out of reach gets the nearest the leg can do. The
+    /// other joints are left as they are. Nothing moves.
+    void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
     /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
     float getWeaponReach() const { return WeaponReach; }
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
@@ -321,15 +390,27 @@ public:
     /// negative: how deep they overlap (a striker: the larger of its gaps
     /// at its two places, PartPlacement::Striking). Nothing moves.
     float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
+    /// Are posed parts striking now (setStrikingParts())?
+    bool isStriking() const { return StrikingParts.any(); }
     /// Did stopAtContact() find a contact (and stop there) in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
+    /// How far the physical parts (torso, head, arms) are from the target
+    /// pose posed from where the pelvis is now (the ghost of the debug
+    /// draw): the largest difference of a part's angle in the world.
+    PoseError getPoseError() const;
+    /// Did the last applyControl() carry the physical parts along with the
+    /// pelvis (ControlParams::CarrierTransfer)? Only a standing fighter is
+    /// carried: knocked down or getting up, the body is a ragdoll.
+    bool isCarrying() const { return Carrying; }
     /// @}
 
     /// Hurtboxes come from the physics world's debug draw; the rig draws
     /// joint limits, the target pose ghost, motors, velocities (with the
     /// pelvis controller), the center of mass, planted feet, wall contact,
-    /// freed limbs, posed strikers stopped at a contact and the weapon, and
+    /// freed limbs, posed strikers stopped at a contact and the weapon, the
+    /// physical parts away from the ghost (a line to it with the angle), and
     /// fills the panel lines "P1 facing", "P1 wall", "P1 feet", "P1 limbs",
+    /// "P1 pose" (pose error, carrier transfer, holding torque),
     /// "P1 posed overlap". Does nothing in the release build.
     void drawDebug() const;
 
@@ -339,6 +420,7 @@ private:
         physics::Body Handle;
         Vec2 Size;                ///< Bounds of the shape in the body frame.
         float Mass = 0.0f;        ///< kg, also while the body is kinematic.
+        float Inertia = 0.0f;     ///< About the center of mass, kg*m^2, also while kinematic.
         bool Kinematic = false;   ///< Moved by code while the fighter is not knocked down.
         bool Unjam = false;       ///< May yield when stuck in the opponent (RigDef::Unjam).
         BodyPart Limb = BodyPart::Torso; ///< Topmost part of its chain of unjam parts.
@@ -355,8 +437,11 @@ private:
         float LowerAngle = 0.0f;  ///< Mirrored, rad.
         float UpperAngle = 0.0f;
         float Wish = 0.0f;        ///< The clip's angle, mirrored and clamped to the limits, rad.
+        float StillWish = 0.0f;   ///< Wish without the step's travel (setTravelPose()), rad.
         float Target = 0.0f;      ///< What the motor drives to: Wish, or the yield pose, rad.
         float YieldWish = 0.0f;   ///< Wish when the limb started to yield, rad.
+        float PreviousTarget = 0.0f; ///< Target in the last step: the clip's joint speed, rad.
+        float HoldTorque = 0.0f;  ///< Torque limit for the inertia and the weight of the last step, N*m.
         Vec2 AnchorInParent;      ///< Hinge in the parent's body frame (reference pose).
         Vec2 ChildFromAnchor;     ///< Child body origin relative to the hinge (reference pose).
         float RestDirection = 0.0f; ///< Direction of the child from the hinge in the reference pose, rad.
@@ -375,6 +460,9 @@ private:
         float LockX = 0.0f;       ///< World X of the planted ankle, m.
         float OffsetX = 0.0f;     ///< Ankle X minus where the clip puts it, m.
         float KeptOffsetX = 0.0f; ///< The offset keepFeetPlanted() took as the stance, m.
+        /// keepFeetPlanted() took it: it holds its place as far as the leg
+        /// reaches, not only within FootLockSlip, until it is lifted.
+        bool Kept = false;
     };
 
     /// Where a body origin is and how the body is turned.
@@ -407,22 +495,46 @@ private:
                                              const PerBodyPart<float>& Corrections = {}) const;
     /// Root placement at \p RootX, at the height where the lowest
     /// kinematic part touches the floor.
-    Placement getStandingRoot(float RootX) const;
+    Placement getStandingRoot(float RootX, const PerBodyPart<float>& Corrections = {}) const;
     float getPostureStiffness() const;
     void advancePosture();
     void moveKinematicParts(float Dt);
     /// The pose of the kinematic parts with the root at \p RootX: the target
-    /// pose, the planted feet of \p Limbs held (their locks are updated), or
-    /// the blend of getting up at \p PostureTime.
-    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime) const;
-    /// Holds planted feet in place: returns the joint corrections of the
-    /// legs for the uncorrected pose \p Pose and updates the locks of
-    /// \p Limbs.
-    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt) const;
+    /// pose with \p Corrections, the planted feet of \p Limbs held (their
+    /// locks are updated), or the blend of getting up at \p PostureTime.
+    PerBodyPart<Placement> computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt, float PostureTime,
+                                            const PerBodyPart<float>& Corrections) const;
+    /// Holds planted feet in place: returns the joint corrections for the
+    /// pose \p Pose (posed with the corrections \p Base, which it keeps for
+    /// the joints it does not bend) and updates the locks of \p Limbs.
+    /// \p RootDrop: how far the root went down below the pose (getReachDrop()).
+    PerBodyPart<float> plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
+                                 const PerBodyPart<float>& Base, float RootDrop) const;
+    /// How far the root of \p Pose must go down so that the legs reach their
+    /// kept planted feet (keepFeetPlanted()), m; 0 if they do.
+    float getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Leg>& Limbs) const;
+    /// How far the planted feet go along when the pelvis ends the step at
+    /// \p RootX, relative to its own plan: only the part beyond the step's
+    /// planned travel (pushBody()), m.
+    float getFootDrag(float RootX) const;
+    /// Joint corrections (to the targets) of the pose at \p Share of the
+    /// planned travel (setTravelPose()).
+    PerBodyPart<float> getTravelCorrections(float Share) const;
+    /// Sets the joints to the share of the planned travel the pelvis makes
+    /// (setTravelPose()); applyControl() calls it before the commit.
+    void followTravel();
     /// Joint corrections that bend \p Limb so that its ankle reaches
     /// \p Ankle with the foot turned as in \p Pose.
+    /// The knee takes the solution within its limits, else the one closer
+    /// to \p KneeHint (rad, mirrored), and bends no deeper than \p MaxBend
+    /// (rad, along the way it bends), if given.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                    PerBodyPart<float>& Corrections) const;
+                    PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend = {}) const;
+    /// The joint targets of the pose \p Angles (as for setTargetAngles(),
+    /// clamped to the limits) as corrections to the current targets.
+    PerBodyPart<float> getAngleCorrections(const PerBodyPart<float>& Angles) const;
+    /// Where the ankle hinge of \p Limb is in \p Pose.
+    Vec2 getAnkleInPose(const Leg& Limb, const PerBodyPart<Placement>& Pose) const;
     void releaseFeet();
     /// The topmost part of the limb of \p Part below the root (a thigh for
     /// a foot); the part itself if its parent is the root.
@@ -433,7 +545,15 @@ private:
     void rewindLimb(BodyPart Top, float Fraction);
     /// How far a planted foot is from where it should stand still.
     static float getRestepDistance(const Leg& Limb);
-    void driveMotors();
+    /// Gives the physical parts the change of the pelvis motion of this
+    /// step (\p OldVelocity, \p OldSpin: the pelvis motion before it).
+    void carryPhysicalParts(Vec2 OldVelocity, float OldSpin);
+    /// Gravity scale of the physical parts in the current posture.
+    float getCarriedGravityScale() const;
+    void driveMotors(float Dt);
+    /// The torque \p Joint needs to move its child chain without overshoot
+    /// at motor gain \p Gain and to hold its weight, N*m.
+    float getHoldTorque(const JointState& Joint, float Gain) const;
     void updateJams(float Dt);
     void setLimbYielding(BodyPart Limb, bool Yielding);
     /// Would the limb whose topmost part is \p Limb, posed at the clip's
@@ -468,13 +588,13 @@ private:
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.
     std::vector<Leg> Legs;
-    bool SlidingFeet = false;         ///< slideFeet() for the next applyControl().
     PerBodyPart<float> TargetAngles{};///< As given (unmirrored).
     PerBodyPart<float> YieldAngles{}; ///< RigDef::YieldAngles (unmirrored).
     std::bitset<BodyPartCount> YieldPosed;
     std::bitset<BodyPartCount> UnjamParts;   ///< RigDef::Unjam.
 
     PelvisController Controller;
+    float PoseTravel = 0.0f;          ///< setTravelPose(): the travel the target angles assume, m.
     Posture CurrentPosture = Posture::Standing;
     float PostureSec = 0.0f;
     bool StayDown = false;
@@ -498,6 +618,11 @@ private:
     Vec2 KnockdownPoint;
     Vec2 KnockdownVelocity;
     float KnockdownSpinRate = 0.0f;
+    /// Carrier transfer: on in the last applyControl(), and the knockback of
+    /// the pelvis plan (planMotion()) and of the step before.
+    bool Carrying = false;
+    float PlannedKnockback = 0.0f;
+    float CarriedKnockback = 0.0f;
 };
 
 } // namespace fighter::rig

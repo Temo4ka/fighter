@@ -397,8 +397,19 @@ TEST_CASE("Rig: a limb stuck in the opponent yields and pulls back, still collid
     CHECK(Stuck.Left.getJointAngle(BodyPart::ForearmL) > Def.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] * 0.5f);
     CHECK(Deepest < 0.01f);
 
-    // A new wish (the clip asks for the guard) ends the yield at once.
+    // A new pose that is not a strike (the clip asks for the guard) does not
+    // end the yield at once: the limb comes back only when the guard's pose
+    // is clear of the opponent (hysteresis, yieldReturnClearance).
+    REQUIRE(Stuck.Left.isYielding(BodyPart::ForearmL));
     Stuck.Left.setTargetAngles(loadStance());
+    Stuck.run(1);
+    CHECK(Stuck.Left.isYielding(BodyPart::ForearmL));
+    // A new strike with the limb (its pose away from the one it yielded
+    // from) ends the yield at once: it tries again.
+    std::bitset<BodyPartCount> Jab;
+    Jab.set(static_cast<size_t>(BodyPart::ForearmL));
+    Stuck.Left.setStrikingParts(Jab, Jab);
+    Stuck.run(1);
     CHECK_FALSE(Stuck.Left.isYielding(BodyPart::ForearmL));
 }
 
@@ -778,33 +789,139 @@ TEST_CASE("Rig: pushBody moves the planted feet with the pelvis", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: slideFeet slides the planted feet to the clip at footSlideSpeed", "[rig]") {
+TEST_CASE("Rig: measureLegs tells where the feet of a pose stand", "[rig]") {
+    for (const bool FacingRight : {true, false}) {
+        INFO("facing right " << FacingRight);
+        Solo Stage(makeSetup(0.3f, FacingRight));
+        const Rig& Body = Stage.Body;
+        Stage.run(5);
+        // The pose measured and the body standing in it agree.
+        const LegStance Posed = Body.measureLegs(loadStance());
+        const LegStance Now = Body.measureLegsNow();
+        CHECK(Posed.PelvisHeight == Approx(Now.PelvisHeight).margin(1e-3f));
+        for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
+            INFO(getBodyPartName(Foot));
+            CHECK(Posed.getFoot(Foot).Ankle.X == Approx(Now.getFoot(Foot).Ankle.X).margin(1e-3f));
+            CHECK(Posed.getFoot(Foot).Ankle.Y == Approx(Now.getFoot(Foot).Ankle.Y).margin(1e-3f));
+            CHECK(Posed.getFoot(Foot).Angle == Approx(Now.getFoot(Foot).Angle).margin(1e-3f));
+            CHECK(Now.getFoot(Foot).SoleHeight == Approx(Posed.getFoot(Foot).SoleHeight).margin(0.006f));
+        }
+        // The stance: the left foot in front, both on the floor.
+        CHECK(Posed.getFrontFoot() == BodyPart::FootL);
+        CHECK(Posed.getSpread() > 0.1f);
+        CHECK(std::min(Posed.Left.SoleHeight, Posed.Right.SoleHeight) == Approx(0.0f).margin(1e-4f));
+    }
+}
+
+TEST_CASE("Rig: kept feet hold their place, the knee and the pelvis give only so much", "[rig]") {
+    // The pelvis travels with the legs in the stance. A kept foot (combat's
+    // keepFeetPlanted) holds its place while the leg reaches it within the
+    // caps: the knee no more than kneeExtraBend deeper than the clip, the
+    // pelvis no more than maxPelvisDrop down; beyond that it is dragged
+    // (combat steps it again).
+    struct Result {
+        float FootMove = 0.0f;
+        float PelvisDrop = 0.0f;
+        float DeepestExtraBend = 0.0f;
+    };
+    const auto travel = [](bool Keep, int Ticks) {
+        Solo Stage(makeSetup(0.0f, true));
+        Rig& Body = Stage.Body;
+        Stage.run(10);
+        Result Out;
+        // The ankle in the world (the foot may turn about it).
+        const auto getAnkleX = [&] {
+            return Body.getPartPosition(BodyPart::Pelvis).X + Body.measureLegsNow().Right.Ankle.X;
+        };
+        const float AnkleX = getAnkleX();
+        const float PelvisY = Body.getPartPosition(BodyPart::Pelvis).Y;
+        const PerBodyPart<float> Stance = loadStance();
+        for (int Step = 0; Step < Ticks + 16; ++Step) {
+            if (Keep) Body.keepFeetPlanted();
+            Body.setMoveVelocity(Step < Ticks ? 1.0f : 0.0f);
+            Body.planMotion(Dt);
+            Body.applyControl(Dt);
+            Stage.PhysWorld.step(Dt);
+            for (const BodyPart Shin : {BodyPart::ShinL, BodyPart::ShinR}) {
+                const float Extra = Stance[static_cast<size_t>(Shin)] - Body.getJointAngle(Shin);
+                Out.DeepestExtraBend = std::max(Out.DeepestExtraBend, Extra);
+            }
+            Out.PelvisDrop = std::max(Out.PelvisDrop, PelvisY - Body.getPartPosition(BodyPart::Pelvis).Y);
+        }
+        Out.FootMove = std::abs(getAnkleX() - AnkleX);
+        return Out;
+    };
+    const ControlParams& Control = loadHumanoid().Control;
+    // A short travel: the kept foot stays, a plain one is held as well
+    // (within footLockSlip).
+    const Result Short = travel(true, 6);
+    CHECK(Short.FootMove < 1e-3f);
+    // A long one: plain feet are dragged after footLockSlip; kept feet hold
+    // as long as the caps allow and are then dragged too, the knee and the
+    // pelvis never beyond the caps.
+    const Result Dragged = travel(false, 14);
+    const Result Kept = travel(true, 14);
+    CHECK(Dragged.FootMove > 0.03f);
+    CHECK(Kept.PelvisDrop <= Control.MaxPelvisDrop + 1e-3f);
+    CHECK(Kept.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
+    CHECK(Dragged.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
+}
+
+TEST_CASE("Rig: dropLiftedFootOffsets puts a lifted foot where the pose has it", "[rig]") {
     Solo Stage(makeSetup(0.0f, true));
     Rig& Body = Stage.Body;
-    const ControlParams& Control = Body.getControl();
     Stage.run(10);
-    const float StanceOffset = Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body);
-    // A push leaves the planted feet behind the pelvis (within the slip).
-    Body.addPush(0.08f);
-    Stage.run(20);
-    REQUIRE(Body.isFootLocked(BodyPart::FootL));
-    REQUIRE(Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body) < StanceOffset - 0.03f);
-
-    // Sliding, a foot moves no faster than footSlideSpeed relative to the
-    // pelvis and ends in the clip's pose.
-    const auto getOffset = [&] { return Body.getPartPosition(BodyPart::FootL).X - getPelvisX(Body); };
-    float Fastest = 0.0f;
-    for (int Step = 0; Step < 30; ++Step) {
-        const float Before = getOffset();
+    // A push leaves the planted feet behind the pelvis; a lifted foot then
+    // returns to the pose from where it stood, over time.
+    Body.addPush(0.1f);
+    Stage.run(15);
+    PerBodyPart<float> Lifted = loadStance();
+    Lifted[static_cast<size_t>(BodyPart::ThighL)] = 1.2f;
+    Lifted[static_cast<size_t>(BodyPart::ShinL)] = -1.6f;
+    const auto lift = [&](bool Drop) {
+        Body.setTargetAngles(Lifted);
         Body.planMotion(Dt);
-        Body.slideFeet();
+        if (Drop) Body.dropLiftedFootOffsets();
         Body.applyControl(Dt);
         Stage.PhysWorld.step(Dt);
-        Fastest = std::max(Fastest, std::abs(getOffset() - Before));
+    };
+    lift(false);   // lifted: unlocked, with its offset
+    REQUIRE_FALSE(Body.isFootLocked(BodyPart::FootL));
+    const float Posed = Body.measureLegs(Lifted).Left.Ankle.X;
+    lift(false);
+    const float Kept = Body.measureLegsNow().Left.Ankle.X;
+    lift(true);
+    const float Dropped = Body.measureLegsNow().Left.Ankle.X;
+    CHECK(std::abs(Dropped - Posed) < 0.005f);
+    CHECK(std::abs(Kept - Posed) > std::abs(Dropped - Posed));
+}
+
+TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
+    for (const bool FacingRight : {true, false}) {
+        INFO("facing right " << FacingRight);
+        Solo Stage(makeSetup(0.0f, FacingRight));
+        const Rig& Body = Stage.Body;
+        const PerBodyPart<float> Stance = loadStance();
+        const LegStance Before = Body.measureLegs(Stance);
+        // The left ankle 10 cm further forward and 6 cm up, the foot level.
+        PerBodyPart<float> Angles = Stance;
+        const Vec2 Target = Before.Left.Ankle + Vec2{0.1f, 0.06f};
+        Body.reachFoot(Angles, BodyPart::FootL, Before.PelvisHeight, Target, 0.0f);
+        const LegStance After = Body.measureLegs(Angles);
+        // The right leg did not change and still carries the body.
+        CHECK(After.PelvisHeight == Approx(Before.PelvisHeight).margin(1e-4f));
+        CHECK(After.Right.Ankle.X == Approx(Before.Right.Ankle.X).margin(1e-4f));
+        CHECK(After.Left.Ankle.X == Approx(Target.X).margin(1e-3f));
+        CHECK(After.Left.Ankle.Y == Approx(Target.Y).margin(1e-3f));
+        CHECK(After.Left.Angle == Approx(0.0f).margin(1e-3f));
+        CHECK(After.Left.SoleHeight > 0.03f);
+        // The knee bends the way a knee bends (negative facing right).
+        CHECK(Angles[static_cast<size_t>(BodyPart::ShinL)] < 0.0f);
+        // Out of reach: the leg stretches towards the point.
+        PerBodyPart<float> Far = Stance;
+        Body.reachFoot(Far, BodyPart::FootR, Before.PelvisHeight, {-1.5f, 0.0f}, 0.0f);
+        CHECK(Body.measureLegs(Far).Right.Ankle.X < Before.Right.Ankle.X - 0.2f);
     }
-    CHECK(Fastest <= Control.FootSlideSpeed * Dt + 1e-3f);
-    CHECK(Fastest > 0.0f);
-    CHECK(getOffset() == Approx(StanceOffset).margin(0.005f));
 }
 
 TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
@@ -864,4 +981,101 @@ TEST_CASE("Rig: the spacing sees a striker where it is and where the clip takes 
     // The lifted kicking foot keeps no floor below it clear (one shadow
     // placement fewer).
     CHECK(Kick.Left.predictBody(Kick.Left.getController().getPlannedX(), Dt).size() == Parts - 1);
+}
+
+TEST_CASE("Rig: a push that only takes back the planned travel leaves the feet planted", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    Rig& Body = Stage.Body;
+    Stage.run(10);
+    REQUIRE(Body.isFootLocked(BodyPart::FootL));
+    const float FootLX = Body.getPartPosition(BodyPart::FootL).X;
+    // The pelvis plans to walk 1 cm a step, the spacing takes all of it back:
+    // the fighter just stands, its feet where they were.
+    Body.setMoveVelocity(0.6f);
+    for (int Step = 0; Step < 10; ++Step) {
+        Body.planMotion(Dt);
+        Body.pushBody(-Body.getController().getPlannedTravel());
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+    }
+    CHECK(Body.getPartPosition(BodyPart::FootL).X == Approx(FootLX).margin(1e-3f));
+    // Pushed beyond the start of the step, the planted feet go along with
+    // the part beyond it.
+    Body.planMotion(Dt);
+    const float Planned = Body.getController().getPlannedX();
+    const float Start = Body.getController().getPositionX();
+    const std::vector<PartPlacement> AtStart = Body.predictBody(Start, Dt);
+    const std::vector<PartPlacement> Behind = Body.predictBody(Start - 0.05f, Dt);
+    REQUIRE(Planned > Start);
+    REQUIRE(AtStart.size() == Behind.size());
+    for (auto&& [Near, Far] : std::views::zip(AtStart, Behind)) {
+        CHECK(Near.Position.X - Far.Position.X == Approx(0.05f).margin(1e-3f));
+    }
+}
+
+TEST_CASE("Rig: the posed joints follow the share of the travel made", "[rig]") {
+    // The front leg is lifted (a step), so no planted foot holds it. The pose
+    // of the step assumes the planned travel; without it the thigh is 0.2 rad
+    // further back. The spacing lets the pelvis make a share of the travel:
+    // the thigh is posed that share of the way.
+    PerBodyPart<float> Moving = loadStance();
+    Moving[static_cast<size_t>(BodyPart::ThighL)] = 0.8f;
+    Moving[static_cast<size_t>(BodyPart::ShinL)] = -1.0f;
+    PerBodyPart<float> Still = Moving;
+    Still[static_cast<size_t>(BodyPart::ThighL)] -= 0.2f;
+    const auto getThigh = [&](float Share) {
+        Solo Stage(makeSetup(0.0f, true), Moving);
+        Rig& Body = Stage.Body;
+        Stage.run(10);
+        REQUIRE_FALSE(Body.isFootLocked(BodyPart::FootL));
+        Body.setMoveVelocity(1.2f);
+        Body.planMotion(Dt);
+        const float Travel = Body.getController().getPlannedTravel();
+        Body.setTargetAngles(Moving);
+        Body.setTravelPose(Still, Travel);
+        CHECK(Body.getTravelShare() == 1.0f);
+        Body.pushBody(-Travel * (1.0f - Share));
+        CHECK(Body.getTravelShare() == Approx(Share).margin(1e-4f));
+        Body.applyControl(Dt);
+        Stage.PhysWorld.step(Dt);
+        return Body.getPartAngle(BodyPart::ThighL);
+    };
+    const float None = getThigh(0.0f);
+    const float Half = getThigh(0.5f);
+    const float All = getThigh(1.0f);
+    REQUIRE(std::abs(All - None) > 0.1f);
+    CHECK(Half == Approx((None + All) * 0.5f).margin(0.02f));
+}
+
+TEST_CASE("Rig: isStriking tells posed strikers", "[rig]") {
+    Solo Stage(makeSetup(0.0f, true));
+    CHECK_FALSE(Stage.Body.isStriking());
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    Stage.Body.setStrikingParts(Strikers, Strikers);
+    CHECK(Stage.Body.isStriking());
+}
+
+TEST_CASE("keepApart: a push apart grows by pushAcceleration and stops at the contact", "[rig]") {
+    // Two standing fighters overlap by 10 cm (the pushboxes): the push
+    // apart eases in, not faster than PushMaxSpeed, and stops where they
+    // touch.
+    Duel Close(-0.2f, 0.2f);
+    Close.pose(loadNarrowStance());
+    Close.Spacing.PushAcceleration = 20.0f;
+    Close.Spacing.PushMaxSpeed = 1.5f;
+    const float MinGap = 2.0f * Close.Spacing.BodyHalfWidth;
+    float LastSpeed = 0.0f;
+    float Fastest = 0.0f;
+    for (int Step = 0; Step < 60; ++Step) {
+        const float Before = getPelvisX(Close.Right) - getPelvisX(Close.Left);
+        Close.run(1);
+        const float Speed = (getPelvisX(Close.Right) - getPelvisX(Close.Left) - Before) / Dt;
+        CHECK(Speed <= LastSpeed + Close.Spacing.PushAcceleration * Dt + 1e-3f);
+        Fastest = std::max(Fastest, Speed);
+        LastSpeed = Speed;
+    }
+    CHECK(Fastest <= Close.Spacing.PushMaxSpeed + 1e-3f);
+    CHECK(getPelvisX(Close.Right) - getPelvisX(Close.Left) == Approx(MinGap).margin(1e-3f));
+    CHECK(Close.Right.getController().getSpacingMotion().Pushed == Approx(0.0f).margin(1e-3f));
 }

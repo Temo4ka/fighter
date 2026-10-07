@@ -181,18 +181,33 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
     // both stay on their feet for the whole series.
     ScratchData Data("heavy");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.03f, 0.12f, 0.35f, 0.6f, 1000.0f}}));
-    // Only the kicks that land with the foot on the pelvis are compared: the
-    // fighters are pushed back by different amounts, so the later kicks of
-    // the series meet them at different distances, and a shin brushing a
-    // thigh is far weaker than a foot on the pelvis whoever is kicked.
+    // Only the kicks that land with the foot on the pelvis are compared: a
+    // shin brushing a thigh is far weaker than a foot on the pelvis whoever
+    // is kicked. Each kick is thrown from the stance at its own distance
+    // between the pelvises (the start distance) where the foot reaches the
+    // pelvis: in a series the fighters are pushed back by different amounts
+    // and where the walk rests in between moves them (the layered walk), so
+    // later kicks would meet them at different distances.
     const auto kickAt = [&](const FighterConfig& Victim) {
-        BattleConfig Config = Data.makeConfig();
-        Config.Right = Victim;
-        Battle Fight(Config);
-        std::vector<StrikeLanded> Hits = strike(Fight, {}, 6 * TicksPerSecond);
+        std::string Spawn = "\"spawnDistance\": 2.4";
+        std::vector<StrikeLanded> Hits;
+        for (const float Distance : {0.96f, 0.97f, 0.98f}) {
+            const std::string Next = std::format("\"spawnDistance\": {}", Distance);
+            Data.replace("combat.json", Spawn, Next);
+            Spawn = Next;
+            BattleConfig Config = Data.makeConfig();
+            Config.Right = Victim;
+            Battle Fight(Config);
+            std::ranges::copy(strike(Fight, {.MaxLanded = 1}, 2 * TicksPerSecond), std::back_inserter(Hits));
+        }
+        Data.replace("combat.json", Spawn, "\"spawnDistance\": 2.4");
         REQUIRE(Hits.size() >= 3);
+        // The kicking foot is the left one, or the right one for a kick played
+        // mirrored (the walk stopped with the right foot in front).
         std::erase_if(Hits, [](const StrikeLanded& Hit) {
-            return Hit.Contact.Attacker.Part != BodyPart::FootL || Hit.Contact.Victim.Part != BodyPart::Pelvis;
+            const BodyPart Foot = Hit.Contact.Attacker.Part;
+            const bool KickingFoot = Foot == BodyPart::FootL || Foot == BodyPart::FootR;
+            return !KickingFoot || Hit.Contact.Victim.Part != BodyPart::Pelvis;
         });
         REQUIRE(Hits.size() >= 2);
         return Hits;
@@ -261,15 +276,20 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
 }
 
 TEST_CASE("Fight: a block in the right zone softens the hit", "[combat][fight][data]") {
+    constexpr float TorsoKickSpawn = 1.04f;   // m between the pelvises
     // A kick at the torso: from a little further than kicking range, where
     // the foot lands on it (from kicking range it meets the pelvis, which a
-    // low block covers). One kick: the knockback of the first one changes
-    // where the next ones land.
-    const auto kickAt = [](const PlayerCommands& Guard) {
-        Battle Fight(makeConfig());
+    // low block covers). One kick, from the stance at a start distance (a
+    // walk rests where its last step ended, so walking up would not stop
+    // at a known distance): the knockback of the first one changes where
+    // the next ones land.
+    ScratchData Data("block_zone");
+    Data.replace("combat.json", "\"spawnDistance\": 2.4", std::format("\"spawnDistance\": {}", TorsoKickSpawn));
+    const auto kickAt = [&](const PlayerCommands& Guard) {
+        Battle Fight(Data.makeConfig());
         run(Fight, {}, Guard, 1);
         const std::vector<StrikeLanded> Hits =
-            strike(Fight, {.Range = TorsoKickRange, .VictimCmd = Guard, .MaxLanded = 1}, 4 * TicksPerSecond);
+            strike(Fight, {.Range = 10.0f, .VictimCmd = Guard, .MaxLanded = 1}, 4 * TicksPerSecond);
         REQUIRE_FALSE(Hits.empty());
         return std::pair(Hits, getRight(Fight));
     };

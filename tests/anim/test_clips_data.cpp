@@ -277,9 +277,14 @@ TEST_CASE("Clips: reactions are one-shot, harmless and end where they began", "[
     }
     CHECK(setsAll(getClip("flinch"), {BodyPart::Torso, BodyPart::Head}));
     CHECK_FALSE(setsAny(getClip("flinch"), {BodyPart::ThighL, BodyPart::ThighR}));
-    // The stagger steps back with the legs; the knockback does it harder.
-    CHECK(setsAll(getClip("stagger"), {BodyPart::ThighL, BodyPart::ShinL, BodyPart::ThighR, BodyPart::ShinR}));
-    CHECK(setsAll(getClip("knockback"), {BodyPart::ThighL, BodyPart::ShinL, BodyPart::ThighR, BodyPart::ShinR}));
+    // The reactions play on the upper body only (the layered walk): the legs
+    // stay as they stood, the push of the hit moves the pelvis and the rig
+    // steps the feet back under it.
+    for (const auto& Name : ReactionNames) {
+        INFO(Name);
+        CHECK_FALSE(setsAny(getClip(Name), {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR,
+                                            BodyPart::ShinR, BodyPart::FootR}));
+    }
     const auto Recoil = [](const Clip& Source) {
         float Largest = 0.0f;
         for (const Keyframe& Key : Source.Keys) Largest = std::max(Largest, Key.Target.getAngle(BodyPart::Torso));

@@ -50,6 +50,13 @@
     "maxJointSpeed": 15.0,
     "angularDamping": 0.5,
 
+    "carrierTransfer": 1.0,
+    "knockbackTransfer": 0.0,
+    "feedForward": 1.0,
+    "gravityCompensation": 1.0,
+    "holdGravityMargin": 1.5,
+    "dampedErrorAngle": 0.3,
+
     "walkSpeed": 1.2,
     "backwardSpeedScale": 0.7,
     "walkAcceleration": 8.0,
@@ -67,6 +74,7 @@
     "knockdownStiffness": 0.15,
     "knockdownSpin": 1.0,
     "knockoutStiffness": 0.05,
+    "knockdownLegStiffness": 0.0,
 
     "closeRange": 0.7,
     "lyingClearance": 0.2,
@@ -75,13 +83,15 @@
     "footPlantHeight": 0.01,
     "footLockSlip": 0.2,
     "footLockRelease": 12.0,
-    "footSlideSpeed": 2.0,
     "footRestepDistance": 0.05,
     "footStepLift": 0.5,
+    "kneeExtraBend": 0.6,
+    "maxPelvisDrop": 0.03,
 
     "jamAngle": 0.35,
     "jamSec": 0.3,
     "yieldStiffness": 0.3,
-    "yieldSec": 0.25
+    "yieldSec": 0.25,
+    "yieldReturnClearance": 0.05
   }
 }

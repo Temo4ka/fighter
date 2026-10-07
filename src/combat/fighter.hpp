@@ -34,11 +34,27 @@
 ///       up can, and a knockdown hit fells it again.
 ///   KnockedOut -- HP reached 0: it falls and stays down.
 ///
-/// Walking stops on both feet (combat/leg_cycle.hpp): released, the walk
-/// cycle plays on to the nearest double-support phase and holds it, so the
-/// fighter stands in the normal stance or the switched one (right foot
-/// forward). From the switched stance a strike led by the left side (jab,
-/// kicks) steps the legs back into the normal stance during its startup.
+/// The pose is two layers (anim/layers.hpp): the legs and the upper body.
+/// The upper body plays the stance and over it the clip on top (guard,
+/// punches, blocks, reactions); the legs play the walk, rest where it
+/// stopped, or play the clip on top if that clip poses the legs (a leg
+/// action: kicks, the crouch, the low block).
+///
+/// The stride follows the press (combat/leg_cycle.hpp): the walk cycle
+/// runs with the pelvis travel, so a short press is a short step. Released,
+/// the step going on ends on both feet: the pelvis coasts on to the next
+/// wide double support if that is at most CombatTuning::StopMaxCoast away
+/// (the legs still follow its travel); else the step ends short, the swing
+/// foot set down where it is (a lifted LegStep), never closer to the other
+/// foot than CombatTuning::RestMinFootSpread. The legs rest there, feet
+/// planted, until something needs them; walking again goes on from that
+/// phase. A planted foot left further than legStep.restepDistance from the
+/// rest pose (a push, a knockback) steps there again. An action that does not pose the legs (a punch, the
+/// upper blocks, a reaction) leaves them as they are. A leg action takes
+/// them with real steps during its startup (combat/leg_step.hpp), and with
+/// the right foot in front it plays mirrored, left leg for right
+/// (CombatTuning::LegStep, "stanceAfterStop"). After it the legs rest in
+/// the stance with the foot in front the action left.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -57,6 +73,7 @@
 #include "combat/clip_library.hpp"
 #include "combat/commands.hpp"
 #include "combat/leg_cycle.hpp"
+#include "combat/leg_step.hpp"
 #include "combat/moves.hpp"
 #include "combat/reactions.hpp"
 #include "combat/snapshot.hpp"
@@ -82,6 +99,8 @@ struct BattleRules {
 /// What a fighter knows about the battle around it in one step.
 struct Surroundings {
     float OpponentX = 0.0f;   ///< The opponent's pelvis, m.
+    /// The opponent lies on the floor (a ragdoll, also knocked out).
+    bool OpponentDown = false;
 };
 
 /// What the last hit taken did; for the debug panel.
@@ -132,6 +151,10 @@ public:
     /// The other posed limbs (the legs) are held back at the opponent too,
     /// attacking or not (rig::Rig::holdLimbsBack).
     void stopAtContact();
+    /// After stopAtContact() of both fighters: the posed limbs that are
+    /// still too deep in the opponent (its limbs stopped too, maybe back
+    /// into these) go back once more (rig::Rig::holdLimbsBack).
+    void holdLimbsBack();
     /// Did the current attack run into the opponent in its startup
     /// (stopAtContact)?
     bool isJammed() const { return getMove() && Jammed; }
@@ -174,16 +197,19 @@ public:
     /// Where the opponent is; the fighter turns that way when it is free to.
     bool getDesiredFacingRight() const { return DesiredFacingRight; }
     const std::optional<HitRecord>& getLastHit() const { return LastHit; }
-    /// The stance the legs stand in when the fighter stands still.
-    StanceVariant getStanceVariant() const { return Walk.getVariant(); }
+    /// The foot in front while the legs rest (or the walk heads to rest):
+    /// FootL or FootR.
+    BodyPart getRestFrontFoot() const { return Walk.isEngaged() ? Walk.getFrontFoot() : RestFront; }
     /// Released the move key: the walk cycle plays on to both feet down.
     bool isStopping() const { return Walk.isStopping() || CrouchWalk.isStopping(); }
     bool isCrouchWalking() const { return State == FighterState::Crouching && CrouchWalk.isPlaying(); }
     /// A strike pressed while crouched waits until the fighter stands up.
     bool isStandingUp() const { return PendingAttack.has_value(); }
-    /// The attack steps the legs into the normal stance during its startup
-    /// (from the switched one, or from a walk).
-    bool isSwitchStepping() const { return SwitchStep; }
+    /// The legs step into the pose of the action on top (LegStep).
+    const LegStep& getLegStep() const { return Step; }
+    /// The leg action on top plays with the legs swapped (the right foot was
+    /// in front when it started).
+    bool isLegActionMirrored() const { return LegsMirrored; }
 
     void fillView(FighterView& View) const;
     /// The panel lines of this fighter ("<Name> stamina" ...) and the Block
@@ -191,6 +217,9 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
+    /// How deep a posed limb may press into the opponent before it stops
+    /// (stopAtContact()), m.
+    float getStopDepth() const;
     /// The strikers' part of stopAtContact().
     void stopStrikeAtContact();
     /// What a posed strike stopped at the opponent does (stopAtContact).
@@ -208,15 +237,118 @@ private:
     const MoveDef* advanceAttack(const PlayerCommands& Cmd, const Surroundings& Around, float Dt);
     /// Chooses the free state for \p Cmd; returns the move it started, or nullptr.
     const MoveDef* chooseFreeState(const PlayerCommands& Cmd, const Surroundings& Around, float Dt);
-    /// \p Cmd: the commands of this step (does the fighter walk on?).
-    void startMove(const MoveDef& Next, const Surroundings& Around, const PlayerCommands& Cmd, int ChainPosition);
-    float planWalking(const PlayerCommands& Cmd, float Dt);
-    /// The pose for the motors this step: stance, legs, the clip on top.
-    anim::Pose buildTargetPose(const anim::Clip* Top, float Dt);
+    void startMove(const MoveDef& Next, const Surroundings& Around, int ChainPosition);
+    /// The walking speed \p Cmd asks for, m/s (world); remembers what the
+    /// legs should do for advanceLegs().
+    float planWalking(const PlayerCommands& Cmd);
+    /// Moves the walk cycle (or the crouch walk) after the pelvis planned its
+    /// motion: walking, it advances by the planned travel and later keeps
+    /// the share the pelvis really makes (applyControl()); held in place by
+    /// the opponent, it stops on both feet instead of marching on the spot;
+    /// pushed along without walking, the legs step with the pelvis; else it
+    /// stops (on both feet).
+    void advanceLegs(float Dt);
+    /// The stop of the leg cycle when the fighter does not walk (released,
+    /// or held in place): plays on to both feet down and rests there; the
+    /// planted feet stay where they stand.
+    void stopLegs(LegCycle& Cycle, bool Crouched, float Dt);
+    /// Chooses where a stop of \p Cycle heads: the support span where the
+    /// cycle has the planted feet closest to where they stand.
+    void chooseStop(LegCycle& Cycle, bool Crouched);
+    /// The pose of the walk (or the crouch walk) at \p TimeSec over the stance
+    /// (or the crouch).
+    anim::Pose getCyclePose(bool Crouched, float TimeSec) const;
+    /// The pose for the motors this step: the upper layer (stance, the clip
+    /// on top) and the leg layer (the walk or its rest pose, or the leg
+    /// action with its steps); and the same without the step's travel
+    /// (rig::Rig::setTravelPose). \p TopChanged: the clip on top started in
+    /// this step (a leg action plans its steps then).
+    struct TargetPoses {
+        anim::Pose Moving;
+        anim::Pose Still;
+    };
+    TargetPoses buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt);
+    /// The leg pose the legs rest in when no clip poses them, and the same
+    /// without the step's travel: the walk cycle once it has played (it
+    /// rests at the phase where it stopped), else the stance with RestFront
+    /// in front. Changes cross over (LegFade).
+    void updateRestLegs(bool LegAction, float Dt);
+    /// Plans the real steps into the leg action \p Top whose pose this step
+    /// is \p Target (LegStep).
+    void startLegStep(const anim::Clip& Top, const anim::Pose& Target);
+    /// \p Authored as this fighter plays it now: mirrored (left leg for
+    /// right) when it poses the legs and LegsMirrored is set.
+    const anim::Clip& getPlayed(const anim::Clip& Authored) const;
+    /// Should a leg action that starts now play mirrored: the right foot is
+    /// in front and the tuning says "mirror"?
+    bool shouldMirrorLegs() const;
+    /// The stance legs with \p FrontFoot in front (mirrored for FootR).
+    anim::Pose getStanceLegs(BodyPart FrontFoot) const;
+    /// \name The end of a step when the move key is released
+    /// @{
+    /// Heads the walk to the end of the step going on: a coast to the span
+    /// ahead within StopMaxCoast, else a short step.
+    void beginStop(float CycleSpeed);
+    /// One step of the coast: the cycle follows the pelvis travel, which
+    /// ends at the span or at the coast's length; then the legs rest.
+    void coastLegs(float CycleSpeed, float Dt);
+    /// The walk came to rest at its phase (at a span, or short): the rest
+    /// pose keeps the planted feet where they stand (within
+    /// legStep.restepDistance of the cycle's pose, else they step there) and
+    /// sets the swing foot of a short step down where it is, within the
+    /// leg's reach (RestLanding, by a LegStep).
+    void settleRest();
+    /// The feet of a walk step along the floor (StrideAnchor): the standing
+    /// foot where it stood, the swing foot with the pelvis travel from where
+    /// it was to where the clip lands it, moving only while the clip has it
+    /// in the air. \p Legs: the clip's legs at \p TimeSec; \p PelvisX: where
+    /// the pelvis is for this pose (WalkOdometer, m). Returns \p Legs
+    /// bent to put the ankles there (rig::Rig::reachFoot).
+    anim::Pose placeStepFeet(const anim::Pose& Legs, float TimeSec, float PelvisX) const;
+    /// Takes the feet as they stand as the anchor of the step the walk is in
+    /// now (a new step, a turn of the walk, walking again).
+    void anchorStep();
+    /// Can the leg of \p Foot in \p Legs (with the pelvis \p PelvisHeight up)
+    /// stand at \p Place: reached, and with \p KneeCap the knee bent at most
+    /// rig::ControlParams::KneeExtraBend deeper than in \p Legs?
+    bool canStandAt(const anim::Pose& Legs, float PelvisHeight, BodyPart Foot, const rig::FootPlacement& Place,
+                    bool KneeCap) const;
+    /// \p Legs (the cycle's pose) with the feet of the rest (RestLanding).
+    anim::Pose applyLanding(const anim::Pose& Legs) const;
+    /// Walking again from the rest: the landing and any re-step fade into
+    /// the walk cycle.
+    void leaveRest();
+    /// Drops the rest pose's landing, a re-step and a coast (another clip
+    /// took the legs, or the fighter fell).
+    void clearRest();
+    /// Resting: re-steps a planted foot left off the rest pose \p Target
+    /// (the motor pose of this step), and advances and applies the landing
+    /// or re-step going on.
+    void updateRestStep(TargetPoses& Target, float Dt);
+    /// @}
     std::string describeLegs() const;
-    /// The legs of the switched stance: the stance_switched clip, or the
-    /// stance's legs mirrored.
-    anim::Pose getSwitchedStanceLegs() const;
+    /// "step 0.12 of 0.48 m", "coast 0.03 m (max 0.06), to the span",
+    /// "rest after a short step; re-steps 2, last FootR 0.07 m".
+    std::string describeStride() const;
+    /// The clip on the upper body ("jab 0.12/0.44 s ...", "stance").
+    std::string describeUpper() const;
+    /// "pose walk -> strike 0.04 s, 0.40; legs -": the blends in progress.
+    std::string describeBlends() const;
+    /// A blend in progress, for the debug panel.
+    struct BlendInfo {
+        PoseKind From = PoseKind::Stance;
+        PoseKind To = PoseKind::Stance;
+        float Sec = 0.0f;
+    };
+    /// Starts the fade of the pose for the clip on top changing to \p Top
+    /// (the clip's own blend time or the blend table's).
+    void beginTopFade(const anim::Clip* Top);
+    /// Starts \p Transition from \p From for the change \p FromKind ->
+    /// \p ToKind (the blend table's time) and records it in \p Info.
+    void beginBlend(anim::PoseTransition& Transition, const anim::Pose& From, BlendInfo& Info, PoseKind FromKind,
+                    PoseKind ToKind);
+    PoseKind getClipKind(const anim::Clip& Source) const;
+    /// The clip on top as played (getPlayed()), or nullptr.
     const anim::Clip* getTopClip() const;
     float getTopClipTime() const;
     void spendStamina(float Amount);
@@ -237,18 +369,81 @@ private:
     PlayerCommands PreviousCmd;            ///< For the presses that request a chain.
     bool DesiredFacingRight = true;
 
-    LegCycle Walk;                         ///< Walking, stopping and the stance it held.
+    LegCycle Walk;                         ///< Walking, stopping and the phase the legs rest at.
     LegCycle CrouchWalk;                   ///< Walking crouched; held while Crouching.
-    /// The legs below the clip on top cross over (legs only) when they change
-    /// between the stance and the walk cycle, and for the switch-step.
+    /// The resting legs cross over (legs only) when they change between the
+    /// stance and the walk cycle.
     anim::PoseTransition LegFade;
     anim::Pose ShownLegs;                  ///< What LegFade gave last step.
-    /// What sets the legs below the clip on top.
-    enum class LegSource : uint8_t { Stance, SwitchedStance, Walk };
+    anim::Pose ShownLegsStill;             ///< ShownLegs without the step's travel.
+    /// What the legs do in this step (planWalking(), advanceLegs()).
+    struct LegPlan {
+        bool Crouched = false;
+        bool WantsToMove = false;
+        float Sign = 0.0f;           ///< Of the requested walk, world X.
+        bool FollowsTravel = false;  ///< The cycle walked with the travel below.
+        float Travel = 0.0f;         ///< The pelvis travel the cycle's step assumes, m (world).
+        bool Held = false;           ///< Walking, but the opponent holds the pelvis.
+        bool Pushed = false;         ///< Walking, but pushed back: the legs step backwards.
+    };
+    LegPlan Stride;
+    bool OpponentDown = false;             ///< Surroundings::OpponentDown of the last control().
+    float OpponentGap = 1e9f;              ///< Between the pelvises in the last control(), m.
+    bool WalkHeld = false;                 ///< The opponent slowed the walk when it last walked.
+    float LastPlannedTravel = 0.0f;        ///< The controller's planned travel of the last step, m.
+    /// What sets the legs when no clip poses them.
+    enum class LegSource : uint8_t { Stance, Walk };
     LegSource ShownSource = LegSource::Stance; ///< Last step's; a change crosses over (LegFade).
+    /// The foot in front of the stance legs when the walk cycle does not set
+    /// them (the leg action before left them so).
+    BodyPart RestFront = BodyPart::FootL;
     bool ShowsCrouchWalk = false;          ///< The crouch walk set the legs last step.
     bool FeetSettling = false;             ///< A walk stopped: the feet are kept where they land.
-    bool SwitchStep = false;               ///< The attack steps the legs into the normal stance.
+    LegStep Step;                          ///< The real steps into the leg action on top.
+    /// The leg action on top took the legs by steps: its legs are shown as
+    /// they are (the fade of the pose leaves them alone).
+    bool LegsStepped = false;
+    bool LegsMirrored = false;             ///< The leg action on top plays with the legs swapped.
+    rig::LegStance LegTarget;              ///< Where the leg action has the legs this step (for the debug draw).
+
+    /// Where the feet stand while the legs rest at the walk cycle's phase
+    /// (the pelvis height is the cycle's), and the swing foot of a step that
+    /// ended short, set down.
+    struct FootLanding {
+        std::optional<BodyPart> SetDown;
+        rig::LegStance Feet;
+    };
+    std::optional<FootLanding> RestLanding;
+    LegStep RestStep;                      ///< Setting the short step's foot down, or a re-step.
+    bool RestStepFresh = false;            ///< RestStep was planned in this step: it starts in the next.
+    rig::LegStance RestTarget;             ///< Where RestStep takes the legs (for the debug draw).
+    bool Coasting = false;                 ///< Released: the pelvis coasts to the end of the step.
+    bool CoastToSpan = false;              ///< The coast reaches the next span (else the step ends short).
+    float CoastSign = 1.0f;                ///< Of the coast, world X.
+    float CoastLeft = 0.0f;                ///< Coast still allowed, m.
+    float CoastDone = 0.0f;                ///< How far the last (or current) coast went, m.
+    float StepTravel = 0.0f;               ///< Pelvis travel in the step going on, m.
+    float StepLength = 0.0f;               ///< The step going on at full stride, m.
+    int Resteps = 0;                       ///< Re-steps so far, for the debug panel.
+    /// LegFade runs over pelvis travel (m), not time: leaving a rest.
+    bool LegFadeByTravel = false;
+    /// How far the walk has taken the pelvis along the facing, m: what the
+    /// walk cycle followed (not pushes, which the planted feet go along with).
+    /// The feet of a step are placed against it.
+    float WalkOdometer = 0.0f;
+    /// Where the feet of the walk step going on are along the floor (against
+    /// WalkOdometer, m): placeStepFeet().
+    struct StrideAnchor {
+        size_t Step = 0;           ///< LegCycle::getSteps() index.
+        float Heading = 1.0f;      ///< +1 the walk goes on to the step's end, -1 back to its begin.
+        float Share = 0.0f;        ///< The share of the step when anchored (LegCycle::getStepShare).
+        float PelvisX = 0.0f;      ///< The pelvis then.
+        float SwingX = 0.0f;       ///< The swing foot's ankle then.
+        float StandX = 0.0f;       ///< The standing foot's ankle (it stays).
+        bool FacingRight = true;   ///< A turn starts the step anew.
+    };
+    std::optional<StrideAnchor> Anchor;
+    std::string LastRestep;                ///< The last one, for the debug panel.
     bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
     std::optional<MoveButton> PendingAttack; ///< Pressed while crouched: starts once the fighter stood up.
     float StandUpLeftSec = 0.0f;
@@ -275,7 +470,10 @@ private:
 
     /// The pose fades over when the clip on top changes (anim::PoseTransition).
     anim::PoseTransition Fade;
+    BlendInfo TopBlend;                    ///< The last fade of Fade.
+    BlendInfo LegBlend;                    ///< The last fade of LegFade (not the switch-step).
     anim::Pose Shown;                      ///< The pose the motors got last step.
+    anim::Pose ShownStill;                 ///< Shown without the step's travel (rig::Rig::setTravelPose).
     const anim::Clip* ShownTop = nullptr;  ///< The clip on top in the last step.
     bool TopRestarted = false;             ///< The clip on top started again (a chain, a stronger reaction).
 };

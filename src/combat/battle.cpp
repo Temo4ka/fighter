@@ -147,6 +147,9 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     // opponent's posed legs or pelvis goes back to the contact. The hits of
     // the step are already collected, with the speed the limb came in at.
     for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
+    // Each stop above saw the other fighter's limbs before their own stop:
+    // two legs that both moved into each other may still be too deep.
+    for (Fighter& Player : Sim->Fighters) Player.holdLimbsBack();
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
 
@@ -275,6 +278,9 @@ void Battle::settle(float Dt) {
     for (Fighter& Player : Sim->Fighters) Player.applyControl(Dt);
     Sim->PhysWorld.step(Dt);
     for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
+    // Each stop above saw the other fighter's limbs before their own stop:
+    // two legs that both moved into each other may still be too deep.
+    for (Fighter& Player : Sim->Fighters) Player.holdLimbsBack();
     ++Tick;
     publishSnapshot();
     // The overlap first: its panel line stays near the top.
@@ -305,7 +311,8 @@ float Battle::getOverlapTolerance(const physics::PartOverlap& Overlap) const {
 
 Surroundings Battle::getSurroundings(size_t Index) const {
     const Fighter& Opponent = Sim->Fighters[1 - Index];
-    return {.OpponentX = Opponent.getRig().getPartPosition(BodyPart::Pelvis).X};
+    return {.OpponentX = Opponent.getRig().getPartPosition(BodyPart::Pelvis).X,
+            .OpponentDown = Opponent.getRig().getPosture() == rig::Posture::KnockedDown};
 }
 
 void Battle::publishSnapshot() {
@@ -461,7 +468,10 @@ rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuni
     return {.ArenaHalfWidth = Arena.HalfWidthM,
             .BodyHalfWidth = Tuning.BodyHalfWidth,
             .SeparationSpeed = Tuning.SeparationSpeed,
-            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed};
+            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed,
+            .PushMaxSpeed = Tuning.PushMaxSpeed,
+            .PushAcceleration = Tuning.PushAcceleration,
+            .MaxSoftOverlap = Tuning.PushSoftOverlap};
 }
 
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,

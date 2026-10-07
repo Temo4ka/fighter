@@ -11,8 +11,10 @@ add_executable(fighter_tests
     rig/test_rig.cpp
     rig/test_rig_body.cpp
     rig/test_rig_scenarios.cpp
+    rig/test_rig_smooth.cpp
     anim/test_clip.cpp
     anim/test_playback.cpp
+    anim/test_layers.cpp
     anim/test_clips_data.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp
@@ -25,11 +27,14 @@ add_executable(fighter_tests
     combat/test_fight.cpp
     combat/test_commands.cpp
     combat/test_leg_cycle.cpp
+    combat/test_leg_step.cpp
     combat/test_moves.cpp
     combat/test_movement.cpp
     combat/test_reactions.cpp
     combat/test_snapshot.cpp
     combat/test_tuning.cpp
+    combat/test_spacing_smooth.cpp
+    combat/test_stride.cpp
     render/test_camera.cpp
     render/test_visuals.cpp
     render/test_render_list.cpp

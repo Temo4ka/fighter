@@ -157,13 +157,6 @@ TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]"
     CHECK(Humanoid.YieldAngles[static_cast<size_t>(BodyPart::ForearmL)] > 2.0f);
 }
 
-TEST_CASE("parseRigDef: how fast the feet slide to the clip", "[rig]") {
-    const RigDef Sliding = parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 1.5 })"));
-    CHECK(Sliding.Control.FootSlideSpeed == 1.5f);
-    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "footSlideSpeed": 0 })")), std::runtime_error);
-    CHECK(loadRigDef(HumanoidPath).Control.FootSlideSpeed > 0.0f);
-}
-
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
     CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);
@@ -191,4 +184,33 @@ TEST_CASE("parseRigDef: distances of the body of task 2.1 must not be negative",
         CHECK_THROWS_AS(parseRigDef(makeRigJson(Control)), std::runtime_error);
     }
     CHECK(parseRigDef(makeRigJson(R"(, "control": { "closeRange": 0.9 })")).Control.CloseRange == 0.9f);
+}
+
+TEST_CASE("parseRigDef: the smooth body parameters are read and checked", "[rig]") {
+    const RigDef Rig = parseRigDef(makeRigJson(
+        R"(, "control": { "carrierTransfer": 0.8, "knockbackTransfer": 0.2, "feedForward": 0.5,)"
+        R"( "gravityCompensation": 0.7, "holdGravityMargin": 2, "dampedErrorAngle": 0.4,)"
+        R"( "yieldReturnClearance": 0.06, "knockdownLegStiffness": 0.3 })"));
+    CHECK(Rig.Control.CarrierTransfer == 0.8f);
+    CHECK(Rig.Control.KnockbackTransfer == 0.2f);
+    CHECK(Rig.Control.FeedForward == 0.5f);
+    CHECK(Rig.Control.GravityCompensation == 0.7f);
+    CHECK(Rig.Control.HoldGravityMargin == 2.0f);
+    CHECK(Rig.Control.DampedErrorAngle == 0.4f);
+    CHECK(Rig.Control.YieldReturnClearance == 0.06f);
+    CHECK(Rig.Control.KnockdownLegStiffness == 0.3f);
+
+    // Shares lie in [0, 1]; margins and distances are not negative.
+    for (const auto* Key : {"carrierTransfer", "knockbackTransfer", "feedForward", "gravityCompensation"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": 1.5 })")),
+                        std::runtime_error);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
+                        std::runtime_error);
+    }
+    for (const auto* Key : {"holdGravityMargin", "dampedErrorAngle", "yieldReturnClearance", "knockdownLegStiffness"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
+                        std::runtime_error);
+    }
 }

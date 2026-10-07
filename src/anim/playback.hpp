@@ -18,10 +18,10 @@
 ///
 ///   // 2. When a clip starts or ends (attack begins, block released,
 ///   //    reaction over), start a fade from what was shown last tick. The
-///   //    fade time is the clip's own: BlendInSec for the clip that starts,
-///   //    BlendOutSec for the one that ended.
-///   if (AttackJustStarted) Fade.begin(Shown, Attack->BlendInSec);
-///   if (AttackJustEnded) Fade.begin(Shown, Finished->BlendOutSec);
+///   //    fade time is the clip's own (BlendInSec for the clip that starts,
+///   //    BlendOutSec for the one that ended) or the blend table's.
+///   if (AttackJustStarted) Fade.begin(Shown, Attack->BlendInSec.value_or(TableSec));
+///   if (AttackJustEnded) Fade.begin(Shown, Finished->BlendOutSec.value_or(TableSec));
 ///
 ///   // 3. Always: advance the fade and give the result to the rig.
 ///   Shown = Fade.step(Target, Dt);
@@ -57,6 +57,11 @@ public:
     /// blended with the pose the fade started from. Without a fade it
     /// returns \p Target. A joint missing from the start pose is not blended.
     Pose step(const Pose& Target, float Dt);
+
+    /// The pose step() would show for \p Target at the fade's current
+    /// weight, without advancing it: the same fade applied to another target
+    /// (the pose of a step without travel, rig::Rig::setTravelPose).
+    Pose peek(const Pose& Target) const;
 
     /// Drops the fade: the next step() returns the target as it is.
     void cancel();

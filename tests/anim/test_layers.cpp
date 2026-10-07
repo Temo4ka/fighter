@@ -1,0 +1,120 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <bitset>
+#include <cstddef>
+#include <filesystem>
+#include <initializer_list>
+#include <string>
+
+#include "anim/clip.hpp"
+#include "anim/layers.hpp"
+#include "anim/pose.hpp"
+
+using namespace fighter;
+using namespace fighter::anim;
+
+namespace {
+
+const std::filesystem::path PosesDir = std::filesystem::path(FIGHTER_DATA_DIR) / "poses";
+
+constexpr const char* KickJson = R"({
+    "duration": 1.0,
+    "active": [0.2, 0.4],
+    "strikers": ["ShinL", "FootL"],
+    "keys": [
+        { "t": 0.0, "pose": { "Torso": -8, "ThighL": 25, "ShinL": -30, "FootL": 5 } },
+        { "t": 0.5, "pose": { "Torso": 10, "ThighL": 110, "ShinL": -5, "FootL": -15 } }
+    ]
+})";
+
+std::bitset<BodyPartCount> makeParts(std::initializer_list<BodyPart> Parts) {
+    std::bitset<BodyPartCount> Result;
+    for (const BodyPart Part : Parts) Result.set(static_cast<size_t>(Part));
+    return Result;
+}
+
+} // namespace
+
+TEST_CASE("Layers: the legs are the thighs, shins and feet", "[anim][layers]") {
+    CHECK(getLegJoints() == makeParts({BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR,
+                                       BodyPart::ShinR, BodyPart::FootR}));
+    CHECK(getLayer(BodyPart::FootR) == Layer::Legs);
+    CHECK(getLayer(BodyPart::Pelvis) == Layer::Upper);
+    CHECK(getLayer(BodyPart::ForearmL) == Layer::Upper);
+}
+
+TEST_CASE("Layers: which clips of data/poses use the legs", "[anim][layers]") {
+    // The classification the layered walk plays by (docs/TUNING.md): the
+    // punches, the upper blocks and the reactions leave the legs alone.
+    for (const char* Name : {"walk", "kick", "low_kick", "crouch", "crouch_walk", "block_low", "stance"}) {
+        INFO(Name);
+        CHECK(usesLegs(loadClip(PosesDir / (std::string(Name) + ".json"))));
+    }
+    for (const char* Name : {"jab", "jab_close", "heavy_punch", "heavy_punch_close", "sword_slash", "hammer_smash",
+                             "block_high", "block_mid", "flinch", "stagger", "knockback"}) {
+        INFO(Name);
+        CHECK_FALSE(usesLegs(loadClip(PosesDir / (std::string(Name) + ".json"))));
+    }
+}
+
+TEST_CASE("Layers: selectJoints and joinLayers keep each layer's joints", "[anim][layers]") {
+    Pose Upper;
+    Upper.setAngle(BodyPart::Torso, 0.1f);
+    Upper.setAngle(BodyPart::ThighL, 0.2f);
+    Pose Legs;
+    Legs.setAngle(BodyPart::ThighL, 0.5f);
+    Legs.setAngle(BodyPart::Head, 0.7f);
+
+    const Pose Selected = selectJoints(Upper, makeParts({BodyPart::Torso}));
+    CHECK(Selected.hasJoint(BodyPart::Torso));
+    CHECK_FALSE(Selected.hasJoint(BodyPart::ThighL));
+
+    const Pose Joined = joinLayers(Upper, Legs);
+    CHECK(Joined.getAngle(BodyPart::Torso) == 0.1f);
+    CHECK(Joined.getAngle(BodyPart::ThighL) == 0.5f);
+    // The head of the leg layer and the thigh of the upper one are dropped.
+    CHECK_FALSE(Joined.hasJoint(BodyPart::Head));
+}
+
+TEST_CASE("Layers: mirrorLegs swaps the legs and leaves the upper body", "[anim][layers]") {
+    Pose Source;
+    Source.setAngle(BodyPart::ThighL, 0.4f);
+    Source.setAngle(BodyPart::FootR, -0.2f);
+    Source.setAngle(BodyPart::UpperArmL, 0.9f);
+    const Pose Mirrored = mirrorLegs(Source);
+    CHECK(Mirrored.getAngle(BodyPart::ThighR) == 0.4f);
+    CHECK_FALSE(Mirrored.hasJoint(BodyPart::ThighL));
+    CHECK(Mirrored.getAngle(BodyPart::FootL) == -0.2f);
+    CHECK_FALSE(Mirrored.hasJoint(BodyPart::FootR));
+    CHECK(Mirrored.getAngle(BodyPart::UpperArmL) == 0.9f);
+    CHECK_FALSE(Mirrored.hasJoint(BodyPart::UpperArmR));
+    // Twice is the original.
+    const Pose Back = mirrorLegs(Mirrored);
+    CHECK(Back.Mask == Source.Mask);
+    CHECK(Back.Angles == Source.Angles);
+
+    CHECK(getMirroredLegPart(BodyPart::ShinL) == BodyPart::ShinR);
+    CHECK(getMirroredLegPart(BodyPart::FootR) == BodyPart::FootL);
+    CHECK(getMirroredLegPart(BodyPart::ForearmL) == BodyPart::ForearmL);
+    CHECK(mirrorLegParts(makeParts({BodyPart::ShinL, BodyPart::ForearmL})) ==
+          makeParts({BodyPart::ShinR, BodyPart::ForearmL}));
+}
+
+TEST_CASE("Layers: mirrorClipLegs kicks with the other leg at the same time", "[anim][layers]") {
+    const Clip Kick = parseClip(KickJson, "kick");
+    const Clip Mirrored = mirrorClipLegs(Kick);
+    CHECK(Mirrored.Name == "kick" + std::string(MirroredSuffix));
+    CHECK(Mirrored.isStriker(BodyPart::ShinR));
+    CHECK(Mirrored.isStriker(BodyPart::FootR));
+    CHECK_FALSE(Mirrored.isStriker(BodyPart::FootL));
+    CHECK(Mirrored.ActiveBeginSec == Kick.ActiveBeginSec);
+    CHECK(Mirrored.ActiveEndSec == Kick.ActiveEndSec);
+    CHECK(Mirrored.DurationSec == Kick.DurationSec);
+    for (const float Time : {0.0f, 0.25f, 0.5f, 0.9f}) {
+        const Pose Authored = sampleClip(Kick, Time);
+        const Pose Played = sampleClip(Mirrored, Time);
+        CHECK(Played.getAngle(BodyPart::ThighR) == Authored.getAngle(BodyPart::ThighL));
+        CHECK(Played.getAngle(BodyPart::Torso) == Authored.getAngle(BodyPart::Torso));
+        CHECK_FALSE(Played.hasJoint(BodyPart::ThighL));
+    }
+}

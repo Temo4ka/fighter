@@ -35,6 +35,12 @@ constexpr std::array ControlFields = {
     ControlField{"gainScale", &ControlParams::GainScale},
     ControlField{"maxJointSpeed", &ControlParams::MaxJointSpeed},
     ControlField{"angularDamping", &ControlParams::AngularDamping},
+    ControlField{"carrierTransfer", &ControlParams::CarrierTransfer},
+    ControlField{"knockbackTransfer", &ControlParams::KnockbackTransfer},
+    ControlField{"feedForward", &ControlParams::FeedForward},
+    ControlField{"gravityCompensation", &ControlParams::GravityCompensation},
+    ControlField{"holdGravityMargin", &ControlParams::HoldGravityMargin},
+    ControlField{"dampedErrorAngle", &ControlParams::DampedErrorAngle},
     ControlField{"walkSpeed", &ControlParams::WalkSpeed},
     ControlField{"backwardSpeedScale", &ControlParams::BackwardSpeedScale},
     ControlField{"walkAcceleration", &ControlParams::WalkAcceleration},
@@ -50,31 +56,39 @@ constexpr std::array ControlFields = {
     ControlField{"knockdownStiffness", &ControlParams::KnockdownStiffness},
     ControlField{"knockdownSpin", &ControlParams::KnockdownSpin},
     ControlField{"knockoutStiffness", &ControlParams::KnockoutStiffness},
+    ControlField{"knockdownLegStiffness", &ControlParams::KnockdownLegStiffness},
     ControlField{"closeRange", &ControlParams::CloseRange},
     ControlField{"lyingClearance", &ControlParams::LyingClearance},
     ControlField{"wallTouchDistance", &ControlParams::WallTouchDistance},
     ControlField{"footPlantHeight", &ControlParams::FootPlantHeight},
     ControlField{"footLockSlip", &ControlParams::FootLockSlip},
     ControlField{"footLockRelease", &ControlParams::FootLockRelease},
-    ControlField{"footSlideSpeed", &ControlParams::FootSlideSpeed},
     ControlField{"footRestepDistance", &ControlParams::FootRestepDistance},
     ControlField{"footStepLift", &ControlParams::FootStepLift},
+    ControlField{"kneeExtraBend", &ControlParams::KneeExtraBend},
+    ControlField{"maxPelvisDrop", &ControlParams::MaxPelvisDrop},
     ControlField{"jamAngle", &ControlParams::JamAngle},
     ControlField{"jamSec", &ControlParams::JamSec},
     ControlField{"yieldStiffness", &ControlParams::YieldStiffness},
     ControlField{"yieldSec", &ControlParams::YieldSec},
+    ControlField{"yieldReturnClearance", &ControlParams::YieldReturnClearance},
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 17> NonNegativeFields = {
-    "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight", "footLockSlip",
-    "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",        "jamSec",
-    "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",  "minStiffness",
-    "yieldStiffness",  "yieldSec"};
+constexpr std::array<std::string_view, 23> NonNegativeFields = {
+    "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight",     "footLockSlip",
+    "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",            "jamSec",
+    "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",      "minStiffness",
+    "yieldStiffness",  "yieldSec",           "holdGravityMargin", "dampedErrorAngle",    "yieldReturnClearance",
+    "knockdownLegStiffness", "kneeExtraBend", "maxPelvisDrop"};
+
+/// Parameters that are shares: from 0 to 1.
+constexpr std::array<std::string_view, 4> ShareFields = {"carrierTransfer", "knockbackTransfer", "feedForward",
+                                                         "gravityCompensation"};
 
 /// Parameters that must be positive: they divide or set a duration.
-constexpr std::array<std::string_view, 6> PositiveFields = {"walkSpeed",      "walkAcceleration", "walkDeceleration",
-                                                            "knockdownSpeed", "getUpSec",         "footSlideSpeed"};
+constexpr std::array<std::string_view, 5> PositiveFields = {"walkSpeed", "walkAcceleration", "walkDeceleration",
+                                                            "knockdownSpeed", "getUpSec"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);
@@ -212,6 +226,10 @@ ControlParams parseControl(const Json& Node) {
         }
         if (std::ranges::find(NonNegativeFields, Key) != NonNegativeFields.end() && Params.*(Found->Member) < 0.0f) {
             throw std::runtime_error(std::format("control: '{}' must not be negative", Key));
+        }
+        const float Share = Params.*(Found->Member);
+        if (std::ranges::find(ShareFields, Key) != ShareFields.end() && (Share < 0.0f || Share > 1.0f)) {
+            throw std::runtime_error(std::format("control: '{}' must be from 0 to 1, got {}", Key, Share));
         }
     }
     return Params;

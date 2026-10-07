@@ -1,6 +1,7 @@
 fighter_add_module(anim
     SOURCES
         clip.cpp
+        layers.cpp
         playback.cpp
     PUBLIC_DEPS
         fighter::core

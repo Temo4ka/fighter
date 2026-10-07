@@ -29,6 +29,11 @@ Pose PoseTransition::step(const Pose& Target, float Dt) {
     return blendPoses(From, Target, smoothStep(ElapsedSec / DurationSec));
 }
 
+Pose PoseTransition::peek(const Pose& Target) const {
+    if (!Active) return Target;
+    return blendPoses(From, Target, smoothStep(ElapsedSec / DurationSec));
+}
+
 void PoseTransition::cancel() { Active = false; }
 
 float PoseTransition::getWeight() const {

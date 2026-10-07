@@ -86,6 +86,9 @@ public:
     Vec2 getLinearVelocity() const;      ///< Of the center of mass, m/s.
     float getAngularVelocity() const;    ///< rad/s.
     float getMass() const;               ///< kg; 0 for static and kinematic bodies.
+    /// About the center of mass, kg*m^2; 0 for static and kinematic bodies.
+    float getRotationalInertia() const;
+    float getGravityScale() const;
     Vec2 getWorldPoint(Vec2 LocalPoint) const;
     Vec2 getLocalPoint(Vec2 WorldPoint) const;
     /// @}
@@ -95,6 +98,8 @@ public:
     void setMass(float Kg);
     void setLinearVelocity(Vec2 Velocity);
     void setAngularVelocity(float Velocity);
+    /// Multiplies the world's gravity for this body: 0 floats, 1 falls.
+    void setGravityScale(float Scale);
     /// Teleports the body. Meant for setting up a scene, not for motion:
     /// nothing is pushed out of the way.
     void setTransform(Vec2 Position, float Angle);

@@ -1,0 +1,79 @@
+//===- anim/layers.hpp - Leg and upper-body layers --------------*- C++ -*-===//
+//
+// Part of the Fighter project.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This file declares the two layers a fighter's pose is made of: the legs
+/// (both thighs, shins and feet) and the upper body (everything else: the
+/// pelvis lean, torso, head and arms), like the separate legs and torso of
+/// a Metal Slug sprite.
+///
+/// A clip addresses the parts it poses (its mask, see anim::Clip), so which
+/// layer a clip plays on follows from its keys: a clip that poses any leg
+/// joint uses the legs (walk, kicks, crouch, low block); one that poses
+/// none plays on the upper body only and leaves the legs to whatever they
+/// do (punches, the high and middle blocks, the flinch and the stagger).
+///
+/// Mirroring the legs swaps the roles of the two legs (ThighL <-> ThighR,
+/// ShinL <-> ShinR, FootL <-> FootR): a kick authored with the left leg in
+/// front plays with the right one. The upper body is not mirrored.
+///
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <bitset>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+#include "anim/clip.hpp"
+#include "anim/pose.hpp"
+#include "core/body.hpp"
+
+namespace fighter::anim {
+
+/// Which layer a joint belongs to.
+enum class Layer : uint8_t {
+    Legs,
+    Upper,
+};
+
+/// The joints of the leg layer: both thighs, shins and feet.
+std::bitset<BodyPartCount> getLegJoints();
+
+/// The layer of the joint whose child is \p Part.
+Layer getLayer(BodyPart Part);
+
+/// Does the clip pose any joint of the leg layer?
+bool usesLegs(const Clip& Source);
+
+/// The joints of \p Source that \p Joints holds; the others are unset.
+Pose selectJoints(const Pose& Source, const std::bitset<BodyPartCount>& Joints);
+
+/// Joins two layers: the leg joints of \p Legs over \p Upper (whose own
+/// leg joints are dropped).
+Pose joinLayers(const Pose& Upper, const Pose& Legs);
+
+/// The same part on the other leg (ThighL -> ThighR, FootR -> FootL); any
+/// other part is returned as it is.
+BodyPart getMirroredLegPart(BodyPart Part);
+
+/// \p Source with the two legs swapped: the angles and the mask of each leg
+/// joint move to the same joint of the other leg.
+Pose mirrorLegs(const Pose& Source);
+
+/// \p Parts with the parts of the two legs swapped (a clip's strikers).
+std::bitset<BodyPartCount> mirrorLegParts(const std::bitset<BodyPartCount>& Parts);
+
+/// \p Source played with the other leg: every key and the strikers mirrored
+/// (mirrorLegs, mirrorLegParts); timing, stiffness and blends unchanged.
+/// The name gets the suffix MirroredSuffix.
+Clip mirrorClipLegs(const Clip& Source);
+
+/// Appended to the name of a clip played with the other leg.
+inline constexpr std::string_view MirroredSuffix = " (mirrored)";
+
+} // namespace fighter::anim

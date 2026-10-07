@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <system_error>
 
+#include "anim/layers.hpp"
+
 namespace fighter::combat {
 
 ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves) {
@@ -13,10 +15,12 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<c
                                         clips::Knockback}) {
         Library.add(PosesDir, Name);
     }
-    Library.addOptional(PosesDir, clips::StanceSwitched);
     for (const MoveDef& Move : Moves) {
         Library.add(PosesDir, Move.Clip);
         if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip);
+    }
+    for (const auto& [Name, Clip] : Library.Clips) {
+        if (anim::usesLegs(Clip)) Library.Mirrored.emplace(Name, anim::mirrorClipLegs(Clip));
     }
     return Library;
 }
@@ -50,6 +54,22 @@ const anim::Clip* ClipLibrary::findReaction(ReactionLevel Level) const {
     }
 }
 
+const anim::Clip& ClipLibrary::getMirrored(const anim::Clip& Source) const {
+    const auto Authored = Clips.find(Source.Name);
+    if (Authored == Clips.end() || &Authored->second != &Source) return Source;
+    const auto Found = Mirrored.find(Source.Name);
+    return Found == Mirrored.end() ? Source : Found->second;
+}
+
+const anim::Clip& ClipLibrary::getAuthored(const anim::Clip& Source) const {
+    for (const auto& [Name, Copy] : Mirrored) {
+        if (&Copy == &Source) return Clips.find(Name)->second;
+    }
+    return Source;
+}
+
+bool ClipLibrary::isMirrored(const anim::Clip& Source) const { return &getAuthored(Source) != &Source; }
+
 void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Name) {
     if (Clips.contains(Name)) return;
     const std::filesystem::path File = PosesDir / (std::string(Name) + ".json");
@@ -58,11 +78,6 @@ void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Na
         throw std::runtime_error(std::format("{}: missing clip file", File.string()));
     }
     Clips.emplace(std::string(Name), anim::loadClip(File));
-}
-
-void ClipLibrary::addOptional(const std::filesystem::path& PosesDir, std::string_view Name) {
-    std::error_code Error;
-    if (std::filesystem::exists(PosesDir / (std::string(Name) + ".json"), Error)) add(PosesDir, Name);
 }
 
 } // namespace fighter::combat

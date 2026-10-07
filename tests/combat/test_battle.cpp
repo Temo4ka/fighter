@@ -190,24 +190,39 @@ TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
 }
 
 TEST_CASE("Battle: fighters do not pass through each other", "[combat][dod]") {
+    // Walking into each other, the fighters meet and stay there: the
+    // pelvises never closer than the pushboxes (their legs usually meet
+    // first), and once met, neither gets past the other.
     const float BodyHalfWidth = loadCombatTuning(std::filesystem::path(FIGHTER_DATA_DIR) / "combat.json").BodyHalfWidth;
+    const auto getGap = [](const Battle& Fight) { return getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight)); };
     Battle Fight(makeConfig());
     float SmallestGap = 10.0f;
-    for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) {
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
         Fight.update({.MoveX = 1.0f}, {.MoveX = -1.0f}, Dt);
-        SmallestGap = std::min(SmallestGap, getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight)));
+        SmallestGap = std::min(SmallestGap, getGap(Fight));
     }
-    CHECK(SmallestGap == Approx(2.0f * BodyHalfWidth).margin(1e-4f));
+    const float MetGap = getGap(Fight);
+    for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
+        Fight.update({.MoveX = 1.0f}, {.MoveX = -1.0f}, Dt);
+        SmallestGap = std::min(SmallestGap, getGap(Fight));
+    }
+    CHECK(SmallestGap >= 2.0f * BodyHalfWidth - 1e-4f);
+    CHECK(getGap(Fight) == Approx(MetGap).margin(0.005f));
+    CHECK(getPelvisX(getLeft(Fight)) < getPelvisX(getRight(Fight)));
 
-    // Walking into a standing fighter pushes it; the lighter one gives way more.
+    // Walking into a standing fighter pushes it, never closer than the
+    // pushboxes.
     BattleConfig Config = makeConfig();
     Config.Right.Stats.Constitution = 20;
     Battle Push(Config);
     const float HeavyStartX = getPelvisX(getRight(Push));
-    run(Push, {.MoveX = 1.0f}, {}, 4 * TicksPerSecond);
-    const float Pushed = getPelvisX(getRight(Push)) - HeavyStartX;
-    CHECK(Pushed > 0.1f);
-    CHECK(getPelvisX(getRight(Push)) - getPelvisX(getLeft(Push)) == Approx(2.0f * BodyHalfWidth).margin(1e-4f));
+    float Narrowest = 10.0f;
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
+        Push.update({.MoveX = 1.0f}, {}, Dt);
+        Narrowest = std::min(Narrowest, getGap(Push));
+    }
+    CHECK(getPelvisX(getRight(Push)) - HeavyStartX > 0.1f);
+    CHECK(Narrowest >= 2.0f * BodyHalfWidth - 1e-4f);
 }
 
 TEST_CASE("Battle: a jab moves the fist forward", "[combat][dod]") {
@@ -250,10 +265,16 @@ TEST_CASE("Battle: a kick raises the front foot forward", "[combat][dod]") {
 }
 
 TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") {
-    Battle Fight(makeConfig());
-    // Closer than JabRange: the fist lands while the arm still extends, so
-    // the hit is strong enough to see the sway (at full reach it is a tap).
+    // Close, from the stance: the fist lands while the arm still extends,
+    // so the hit is strong enough to see the sway (at full reach it is a
+    // tap). The fighters start there instead of walking up: a walk rests
+    // with the feet wide (the layered walk), its front foot meets the
+    // dummy's and the spacing parts them to full reach.
     constexpr float CloseJabRange = 0.72f;
+    constexpr float CloseJabSpawn = 0.65f;   // m between the pelvises
+    ScratchData Data("jab_dummy");
+    Data.replace("combat.json", "\"spawnDistance\": 2.4", std::format("\"spawnDistance\": {}", CloseJabSpawn));
+    Battle Fight(Data.makeConfig());
     const AttackLog Log =
         attackDummy(Fight, MoveButton::Jab, TicksPerSecond * 2 / 3, 4 * TicksPerSecond, CloseJabRange);
 
@@ -285,7 +306,10 @@ TEST_CASE("Battle: a kick at the dummy is a hit that sways and pushes it", "[com
     float Strongest = 0.0f;
     for (const auto& Hit : Log.Hits) {
         CHECK(Hit.Attacker.Fighter == 0);
-        CHECK((Hit.Attacker.Part == BodyPart::FootL || Hit.Attacker.Part == BodyPart::ShinL));
+        // The kicking leg: the left one, or the right one when the walk
+        // stopped with the right foot in front (the kick plays mirrored).
+        CHECK((Hit.Attacker.Part == BodyPart::FootL || Hit.Attacker.Part == BodyPart::ShinL ||
+               Hit.Attacker.Part == BodyPart::FootR || Hit.Attacker.Part == BodyPart::ShinR));
         Strongest = std::max(Strongest, Hit.Impulse);
     }
     // A kick lands harder than a jab; the dummy sways and is pushed back.
@@ -342,7 +366,10 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
 
     REQUIRE(Log.FirstHitTick.has_value());
     REQUIRE(Log.DownTick.has_value());
-    CHECK(*Log.DownTick - *Log.FirstHitTick < TicksPerSecond);   // falls right away
+    // It falls and lies on the floor before it starts to get up. (With the
+    // smooth body's limp legs it sinks to its knees first, then lies: about
+    // 1.1-1.4 s, no longer within 1 s.)
+    CHECK(*Log.DownTick - *Log.FirstHitTick < Control.KnockdownSec * TicksPerSecond);
     CHECK(isUpright(getRight(Fight)));
     CHECK(isUpright(getLeft(Fight)));
 
@@ -383,22 +410,33 @@ TEST_CASE("Battle: same input gives the same result", "[combat][dod]") {
     // A little farther than KickRange: the body kick lands with the foot on
     // the pelvis instead of meeting the front thigh (the posed legs collide
     // and the foot stops there; the arms collide, so P2's guard stands
-    // differently than when they passed each other). P1 kicks from the
-    // switched stance here (its walk stopped with the right foot in front);
-    // from 0.95 to 1.02 m the first kick lands on the pelvis, farther it
-    // meets the torso or the guard.
-    constexpr float PelvisKickRange = 0.98f;
+    // differently than when they passed each other). P1 kicks from where
+    // its walk stopped (the legs rest there, the kick steps into its pose);
+    // with the stride following the press (where a walk rests depends on
+    // its last step) the series knocks a fighter down at 0.94, 0.96 and
+    // 1.02 m but not at 0.98 or 1.0 m; farther the kicks meet the torso or
+    // the guard.
+    constexpr float PelvisKickRange = 0.96f;
     size_t HitCount = 0;
     bool KnockedDown = false;
+    bool Kicked = false;   // in this period
     for (int Tick = 0; Tick < 10 * TicksPerSecond; ++Tick) {
         // Both battles get the same input, computed from the first one.
         const float Distance = getRight(First).Position.X - getLeft(First).Position.X;
-        // P1 walks into kicking range and kicks every 2.5 s, jabbing in between.
+        // P1 walks into kicking range and kicks once every 2.5 s (as soon as
+        // it is in range in the first 0.5 s of the period), jabbing in
+        // between. The kick is an input of the scenario, computed from the
+        // first battle like the rest: a kick pressed only in the first 3
+        // ticks of the period missed whenever P1 arrived a tick late.
         const int Phase = Tick % 150;
+        if (Phase == 0) Kicked = false;
+        const bool Kick = !Kicked && Distance <= PelvisKickRange && Phase < 30 &&
+                          getLeft(First).State != FighterState::Attacking;
+        Kicked = Kicked || Kick;
         const PlayerCommands LeftCmd{
             .MoveX = Distance > PelvisKickRange ? 1.0f : 0.0f,
             .Jab = Phase > 40 && Phase < 120 && Tick % 37 == 0,
-            .BodyKick = Distance <= PelvisKickRange && Phase < 3,
+            .BodyKick = Kick,
         };
         // P2 backs away now and then, but stands still while P1 kicks: a
         // kick that meets the legs at close range is weak (legs collide).
