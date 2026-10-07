@@ -16,6 +16,7 @@
 //   --right <fighter>           the same for P2
 //   --menu                      start in the main menu even with the flags above
 //   --keys <list>               menu keys, one per frame, e.g. enter,down,esc (screenshots)
+//   --round <sec>               round time (reach the results screen quickly)
 //   --log <file>                duplicate the log to a file
 //
 // Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
@@ -38,6 +39,10 @@ int main(int Argc, char** Argv) {
         const bool HasValue = ArgIndex + 1 < Argc;
         if (Arg == "--keys" && HasValue) {
             Opts.Keys = app::parseMenuKeys(Argv[++ArgIndex]);
+            continue;
+        }
+        if (Arg == "--round" && HasValue) {
+            Opts.RoundSec = std::atof(Argv[++ArgIndex]);
             continue;
         }
         if (Arg == "--menu") {

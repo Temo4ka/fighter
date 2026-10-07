@@ -64,6 +64,8 @@ UiConfig parseUiConfig(std::string_view Text, std::string_view SourceName) {
             Config.HighlightSec = readNumber(SourceName, Key, Value, 0.0, 5.0);
         } else if (Key == "dim_alpha") {
             Config.DimAlpha = static_cast<int>(readNumber(SourceName, Key, Value, 0.0, 255.0));
+        } else if (Key == "menu_dim_alpha") {
+            Config.MenuDimAlpha = static_cast<int>(readNumber(SourceName, Key, Value, 0.0, 255.0));
         } else if (Key == "colors") {
             readColors(SourceName, requireObject(SourceName, Key, Value), Config.Colors);
         } else if (Key == "type_scale") {

@@ -53,6 +53,7 @@ combat::BattleConfig makeSandboxBattle(const Options& Opts) {
     if (Opts.LeftFighter) Config.Left = makeFighterConfig(Opts.Root, *Opts.LeftFighter);
     if (Opts.RightFighter) Config.Right = makeFighterConfig(Opts.Root, *Opts.RightFighter);
     Config.DataDir = Opts.Root / "data";
+    if (Opts.RoundSec) Config.RoundTimeSec = *Opts.RoundSec;
     return Config;
 }
 
@@ -100,6 +101,8 @@ App::App(Options Settings)
     if (!Opts.Menu) {
         restartBattle();
         Flow.beginBattle();
+    } else {
+        refreshMenuStage(ui::Screen::Battle);
     }
     log::info("sandbox started, root: {}", Opts.Root.string());
 }
@@ -171,7 +174,9 @@ void App::handleEvents() {
 
 void App::onKeyPressed(sf::Keyboard::Scancode Key) {
     if (Flow.getScreen() != ui::Screen::Battle) {
+        const ui::Screen Before = Flow.getScreen();
         if (const auto MenuKey = getMenuKey(Key)) Flow.onKey(*MenuKey);
+        refreshMenuStage(Before);
         return;
     }
     if (Key == sf::Keyboard::Scan::Escape) {
@@ -216,7 +221,7 @@ void App::stepSimulation(double Dt) {
 
 void App::render(float Alpha) {
     Window.clear(sf::Color::Black);
-    if (!hasBattleOnScreen()) {
+    if (!CurrentBattle) {
         Screens.draw(Window, Flow, {});
         return;
     }
@@ -224,6 +229,15 @@ void App::render(float Alpha) {
         combat::interpolate(Previous, CurrentBattle->getSnapshot(), Alpha);
 
     Renderer.buildFrame(Cam, Snapshot, Alpha);
+    if (!hasBattleOnScreen()) {
+        // The menus stand on the arena: the world without the HUD and the
+        // debug layer, shaded by the screen.
+        Renderer.drawWorld(Window);
+        ui::ScreenContext Context = makeScreenContext(*CurrentBattle);
+        Context.WorldBehind = true;
+        Screens.draw(Window, Flow, Context);
+        return;
+    }
 
 #if FIGHTER_DEBUG
     if (Overlay.shouldShowTextures()) {
@@ -273,6 +287,17 @@ bool App::startMenuBattle() {
 bool App::hasBattleOnScreen() const {
     return CurrentBattle && (Flow.getScreen() == ui::Screen::Battle || Flow.getScreen() == ui::Screen::Pause ||
                              Flow.getScreen() == ui::Screen::Results);
+}
+
+void App::refreshMenuStage(ui::Screen Before) {
+    const ui::Screen Now = Flow.getScreen();
+    const bool OnMenu = Now == ui::Screen::MainMenu || Now == ui::Screen::FighterSelect;
+    if (!OnMenu || Flow.getFighters().empty()) return;
+    const bool CameFromBattle = Before != ui::Screen::MainMenu && Before != ui::Screen::FighterSelect;
+    const bool PicksChanged = Opts.LeftFighter != Flow.getPickedFighter(0) || Opts.RightFighter != Flow.getPickedFighter(1);
+    if (!CameFromBattle && !PicksChanged) return;
+    // A broken sheet only leaves the previous stage; the select screen shows the error.
+    if (!startMenuBattle()) debug::logEvent("menu stage: cannot load the picked fighters");
 }
 
 void App::loadUiConfig() {

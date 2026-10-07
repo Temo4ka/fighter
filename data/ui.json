@@ -2,6 +2,7 @@
     "results_delay_sec": 2.0,
     "highlight_sec": 0.06,
     "dim_alpha": 170,
+    "menu_dim_alpha": 150,
     "colors": {
         "background_top": "#0b0e1a",
         "background_bottom": "#1c1a2e",

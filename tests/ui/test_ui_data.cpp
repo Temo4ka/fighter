@@ -106,12 +106,13 @@ TEST_CASE("describeResult: a draw on time", "[ui][results]") {
 
 TEST_CASE("parseUiConfig: palette, type scale and timings", "[ui][data]") {
     const UiConfig Config = parseUiConfig(R"({
-        "highlight_sec": 0.2, "dim_alpha": 99,
+        "highlight_sec": 0.2, "dim_alpha": 99, "menu_dim_alpha": 77,
         "colors": {"accent": "#102030", "panel": "#aabbccdd"},
         "type_scale": {"title": 0.2}
     })", "t");
     CHECK(Config.HighlightSec == 0.2);
     CHECK(Config.DimAlpha == 99);
+    CHECK(Config.MenuDimAlpha == 77);
     CHECK(Config.Colors.Accent == UiColor{0x10, 0x20, 0x30, 255});
     CHECK(Config.Colors.Panel == UiColor{0xaa, 0xbb, 0xcc, 0xdd});
     CHECK(Config.Type.Title == 0.2f);

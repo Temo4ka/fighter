@@ -60,6 +60,9 @@ struct UiConfig {
     double HighlightSec = 0.06;
     /// Opacity (0..255) of the layer that dims the frozen battle behind the pause and results.
     int DimAlpha = 170;
+    /// Opacity (0..255) of the shade over the arena behind the main menu and
+    /// the fighter select (stronger at the top, where the titles are).
+    int MenuDimAlpha = 150;
     UiPalette Colors;
     UiTypeScale Type;
 };

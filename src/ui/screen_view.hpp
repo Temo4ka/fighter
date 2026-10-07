@@ -32,6 +32,7 @@ struct ScreenContext {
     const combat::BattleResult* Result = nullptr;   ///< For the results screen.
     std::array<std::string, 2> Names;               ///< The fighters of the battle.
     std::array<float, 2> MaxHp{0.0f, 0.0f};         ///< For the HP bars of the results.
+    bool WorldBehind = false;                       ///< The arena is drawn under the menus.
 };
 
 class ScreenView {

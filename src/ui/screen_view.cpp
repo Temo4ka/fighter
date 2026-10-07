@@ -52,6 +52,7 @@ void drawBar(const Canvas& Surface, sf::Vector2f Position, sf::Vector2f Size, fl
 void drawTriangle(const Canvas& Surface, sf::Vector2f Center, float Radius, float RotationDeg, sf::Color Color);
 void drawGradient(const Canvas& Surface, sf::Color Top, sf::Color Bottom);
 void drawBackdrop(const Canvas& Surface);
+void drawStage(const Canvas& Surface, bool WorldBehind);
 void drawDim(const Canvas& Surface);
 void drawTitle(const Canvas& Surface, std::string_view Line, float Y);
 void drawHint(const Canvas& Surface, std::string_view Line);
@@ -59,10 +60,9 @@ void drawMenuList(const Canvas& Surface, std::span<const std::string_view> Items
                   float CenterX, float Top, float Width);
 void drawButtons(const Canvas& Surface, std::span<const std::string_view> Items, size_t Cursor, float HighlightPos,
                  sf::Vector2f Position, sf::Vector2f Size);
-void drawSilhouette(const Canvas& Surface, sf::Vector2f Feet, float Height, sf::Color Color, bool Armed, float Facing);
 void drawFighterCard(const Canvas& Surface, const ScreenFlow& Flow, const FighterCard& Card, int Side,
                      sf::Vector2f Position, sf::Vector2f Size);
-void drawMainMenu(const Canvas& Surface, const ScreenFlow& Flow, float HighlightPos);
+void drawMainMenu(const Canvas& Surface, const ScreenFlow& Flow, bool WorldBehind, float HighlightPos);
 void drawPause(const Canvas& Surface, const ScreenFlow& Flow, float HighlightPos);
 void drawResults(const Canvas& Surface, const ScreenFlow& Flow, const ScreenContext& Context, float HighlightPos);
 
@@ -91,25 +91,29 @@ void ScreenView::draw(sf::RenderTarget& Target, const ScreenFlow& Flow, const Sc
                          Size.y / 40.0f};
 
     switch (Flow.getScreen()) {
-        case Screen::MainMenu: drawMainMenu(Surface, Flow, HighlightPos); break;
+        case Screen::MainMenu: drawMainMenu(Surface, Flow, Context.WorldBehind, HighlightPos); break;
         case Screen::FighterSelect: {
-            drawBackdrop(Surface);
+            drawStage(Surface, Context.WorldBehind);
             drawTitle(Surface, "CHOOSE YOUR FIGHTERS", Surface.Grid * 2.5f);
             if (Flow.getFighters().empty()) {
                 drawText(Surface, "No fighters in data/fighters", Surface.getSize(Surface.Config.Type.Item),
                          {Surface.Width * 0.5f, Surface.Height * 0.45f}, Canvas::toColor(Surface.Config.Colors.Dim),
                          Align::Center);
             } else {
-                const sf::Vector2f CardSize(std::min(Surface.Width * 0.36f, Surface.Grid * 21.0f), Surface.Grid * 27.0f);
+                // The cards keep to the sides: the picked fighters stand in
+                // the arena between them, drawn by the renderer.
+                const sf::Vector2f CardSize(std::min(Surface.Width * 0.28f, Surface.Grid * 20.0f), Surface.Grid * 18.0f);
+                const float Margin = Surface.Grid * 2.0f;
                 const float Top = Surface.Grid * 8.0f;
                 for (int Side = 0; Side < 2; ++Side) {
-                    const float CenterX = Surface.Width * (Side == 0 ? 0.27f : 0.73f);
-                    drawFighterCard(Surface, Flow, getCard(Flow.getPickedFighter(Side)), Side,
-                                    {CenterX - CardSize.x * 0.5f, Top}, CardSize);
+                    const float Left = Side == 0 ? Margin : Surface.Width - Margin - CardSize.x;
+                    drawFighterCard(Surface, Flow, getCard(Flow.getPickedFighter(Side)), Side, {Left, Top}, CardSize);
                 }
-                drawText(Surface, "VS", Surface.getSize(Surface.Config.Type.Heading),
-                         {Surface.Width * 0.5f, Top + CardSize.y * 0.42f}, Canvas::toColor(Surface.Config.Colors.Dim),
-                         Align::Center);
+                const unsigned VsSize = Surface.getSize(Surface.Config.Type.Heading);
+                const sf::Vector2f VsPosition(Surface.Width * 0.5f, Top + Surface.Grid * 2.0f);
+                drawText(Surface, "VS", VsSize, {VsPosition.x + Surface.Grid * 0.15f, VsPosition.y + Surface.Grid * 0.15f},
+                         {0, 0, 0, 160}, Align::Center);
+                drawText(Surface, "VS", VsSize, VsPosition, Canvas::toColor(Surface.Config.Colors.Text), Align::Center);
             }
             drawHint(Surface, "\xE2\x86\x91\xE2\x86\x93 choose  \xC2\xB7  \xE2\x86\x90\xE2\x86\x92 side  \xC2\xB7  Enter confirm  \xC2\xB7  Esc back");
             break;
@@ -208,6 +212,19 @@ void drawBackdrop(const Canvas& Surface) {
              withAlpha(Canvas::toColor(Colors.Accent), 90));
 }
 
+/// Behind the menus: the arena shaded by the palette's wall colours (darker
+/// at the top, under the titles), or the drawn backdrop when there is no arena.
+void drawStage(const Canvas& Surface, bool WorldBehind) {
+    if (!WorldBehind) {
+        drawBackdrop(Surface);
+        return;
+    }
+    const UiPalette& Colors = Surface.Config.Colors;
+    const int Alpha = Surface.Config.MenuDimAlpha;
+    drawGradient(Surface, withAlpha(Canvas::toColor(Colors.BackgroundTop), Alpha + (255 - Alpha) / 2),
+                 withAlpha(Canvas::toColor(Colors.BackgroundBottom), Alpha));
+}
+
 void drawDim(const Canvas& Surface) {
     fillRect(Surface, {0.0f, 0.0f}, {Surface.Width, Surface.Height}, {0, 0, 0, static_cast<uint8_t>(Surface.Config.DimAlpha)});
 }
@@ -215,13 +232,19 @@ void drawDim(const Canvas& Surface) {
 void drawTitle(const Canvas& Surface, std::string_view Line, float Y) {
     const unsigned Size = Surface.getSize(Surface.Config.Type.Heading);
     const sf::Color Accent = Canvas::toColor(Surface.Config.Colors.Accent);
+    drawText(Surface, Line, Size, {Surface.Width * 0.5f + Surface.Grid * 0.15f, Y + Surface.Grid * 0.15f}, {0, 0, 0, 160},
+             Align::Center);   // a hard shadow, as the game title has
     const float Width = drawText(Surface, Line, Size, {Surface.Width * 0.5f, Y}, Accent, Align::Center);
     const float LineY = Y + getLineHeight(Surface, Size) + Surface.Grid * 0.4f;
     fillRect(Surface, {(Surface.Width - Width) * 0.5f, LineY}, {Width, std::max(2.0f, Surface.Grid * 0.15f)},
              withAlpha(Accent, 140));
 }
 
+/// The key hints on a footer band of their own, so they read over anything.
 void drawHint(const Canvas& Surface, std::string_view Line) {
+    const float BandTop = Surface.Height - Surface.Grid * 3.6f;
+    fillRect(Surface, {0.0f, BandTop}, {Surface.Width, Surface.Height - BandTop}, Canvas::toColor(Surface.Config.Colors.Panel));
+    fillRect(Surface, {0.0f, BandTop}, {Surface.Width, 1.0f}, Canvas::toColor(Surface.Config.Colors.Track));
     drawText(Surface, Line, Surface.getSize(Surface.Config.Type.Hint),
              {Surface.Width * 0.5f, Surface.Height - Surface.Grid * 2.2f}, Canvas::toColor(Surface.Config.Colors.Dim),
              Align::Center);
@@ -270,29 +293,6 @@ void drawButtons(const Canvas& Surface, std::span<const std::string_view> Items,
     }
 }
 
-/// A plain standing figure; \p Armed adds a blade in the front hand.
-void drawSilhouette(const Canvas& Surface, sf::Vector2f Feet, float Height, sf::Color Color, bool Armed, float Facing) {
-    const float Unit = Height / 10.0f;
-    const auto Block = [&](float Dx, float Top, float Width, float BlockHeight) {
-        fillRect(Surface, {Feet.x + Dx * Unit - Width * Unit * 0.5f, Feet.y - Top * Unit}, {Width * Unit, BlockHeight * Unit},
-                 Color);
-    };
-    Block(-0.6f, 4.6f, 0.9f, 4.6f);   // legs
-    Block(0.6f, 4.6f, 0.9f, 4.6f);
-    Block(0.0f, 7.8f, 2.6f, 3.4f);    // torso
-    Block(-1.8f, 7.6f, 0.8f, 3.0f);   // arms
-    Block(1.8f, 7.6f, 0.8f, 3.0f);
-    sf::CircleShape Head(Unit * 0.95f);
-    Head.setOrigin({Unit * 0.95f, Unit * 0.95f});
-    Head.setPosition({Feet.x, Feet.y - 9.0f * Unit});
-    Head.setFillColor(Color);
-    Surface.Target.draw(Head);
-    if (Armed) {
-        const float BladeX = Feet.x + Facing * 2.4f * Unit;
-        fillRect(Surface, {BladeX - Unit * 0.18f, Feet.y - 9.6f * Unit}, {Unit * 0.36f, Unit * 5.2f}, scaled(Color, 1.35f));
-    }
-}
-
 void drawStatRow(const Canvas& Surface, std::string_view Label, int Value, sf::Vector2f Position, float Width,
                  sf::Color Fill) {
     const UiPalette& Colors = Surface.Config.Colors;
@@ -329,14 +329,10 @@ void drawFighterCard(const Canvas& Surface, const ScreenFlow& Flow, const Fighte
     drawText(Surface, Active ? "CHOOSING" : (Ready ? "READY" : ""), BodySize, {Position.x + Size.x - Pad, HeaderTextY},
              Canvas::toColor(Colors.OnAccent), Align::Right);
 
-    // Preview.
-    const float CenterX = Position.x + Size.x * 0.5f;
-    drawSilhouette(Surface, {CenterX, Position.y + HeaderHeight + Surface.Grid * 9.5f}, Surface.Grid * 7.5f,
-                   withAlpha(scaled(Player, Active ? 0.8f : 0.4f), 255), Card.Weapon != "Unarmed", Side == 0 ? 1.0f : -1.0f);
-
     // Name with the up/down markers.
+    const float CenterX = Position.x + Size.x * 0.5f;
     const unsigned NameSize = Surface.getSize(Surface.Config.Type.Item);
-    const float NameY = Position.y + HeaderHeight + Surface.Grid * 11.2f;
+    const float NameY = Position.y + HeaderHeight + Surface.Grid * 1.8f;
     drawText(Surface, Card.Name, NameSize, {CenterX, NameY}, Canvas::toColor(Colors.Text), Align::Center);
     if (Active && Flow.getFighters().size() > 1) {
         const sf::Color Marker = Canvas::toColor(Colors.Accent);
@@ -377,9 +373,9 @@ void drawFighterCard(const Canvas& Surface, const ScreenFlow& Flow, const Fighte
     if (!Active) fillRect(Surface, Position, Size, {0, 0, 0, 60});
 }
 
-void drawMainMenu(const Canvas& Surface, const ScreenFlow& Flow, float HighlightPos) {
+void drawMainMenu(const Canvas& Surface, const ScreenFlow& Flow, bool WorldBehind, float HighlightPos) {
     const UiPalette& Colors = Surface.Config.Colors;
-    drawBackdrop(Surface);
+    drawStage(Surface, WorldBehind);
 
     const unsigned TitleSize = Surface.getSize(Surface.Config.Type.Title);
     const float TitleY = Surface.Height * 0.14f;
@@ -422,8 +418,9 @@ void drawResults(const Canvas& Surface, const ScreenFlow& Flow, const ScreenCont
     if (!Context.Result) return;
     const ResultsText Text = describeResult(*Context.Result, Context.Names);
 
-    const sf::Vector2f Size(std::min(Surface.Width * 0.9f, Surface.Grid * 56.0f), Surface.Height * 0.9f);
-    const sf::Vector2f Position((Surface.Width - Size.x) * 0.5f, (Surface.Height - Size.y) * 0.5f - Surface.Grid * 0.5f);
+    // Between a top margin and the footer band of the hints.
+    const sf::Vector2f Size(std::min(Surface.Width * 0.9f, Surface.Grid * 56.0f), Surface.Height - Surface.Grid * 6.0f);
+    const sf::Vector2f Position((Surface.Width - Size.x) * 0.5f, Surface.Grid * 1.4f);
     const float Pad = Surface.Grid * 1.6f;
     fillRect(Surface, Position, Size, Canvas::toColor(Colors.Panel));
 

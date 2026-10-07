@@ -59,6 +59,9 @@ struct Options {
     /// Menu keys pressed one per frame from the start (--keys, for screenshots
     /// of the menu screens): up, down, left, right, enter, esc.
     std::vector<sf::Keyboard::Scancode> Keys;
+    /// Round time instead of the default (--round, e.g. to reach the results
+    /// screen quickly for a screenshot).
+    std::optional<double> RoundSec;
 };
 
 /// Parses "up,down,left,right,enter,esc" (unknown names are skipped).
@@ -83,6 +86,9 @@ private:
     /// Starts a battle of the fighters picked in the menu; false on a data error.
     bool startMenuBattle();
     bool hasBattleOnScreen() const;
+    /// Keeps the arena behind the menus fresh: a battle of the picked fighters
+    /// that has not started, so the select screen shows them standing.
+    void refreshMenuStage(ui::Screen Before);
     void loadUiConfig();
 
 #if FIGHTER_DEBUG
