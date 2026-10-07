@@ -1,0 +1,18 @@
+{
+    "clip": "sword_rising",
+    "uses_weapon": true,
+    "damage": 1.3,
+    "min_reaction": "Flinch",
+    "stamina": 14,
+    "tags": [
+        "high",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.4,
+            0.9
+        ],
+        "role": "close"
+    }
+}

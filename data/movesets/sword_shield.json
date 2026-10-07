@@ -1,9 +1,29 @@
 {
-    "pair": ["sword", "shield"],
+    "pair": [
+        "sword",
+        "shield"
+    ],
     "inherit": "sword",
+    "moves": {
+        "Special": "shield_bash"
+    },
     "block": {
         "damage_scale": 0.05,
         "stamina_scale": 0.6,
-        "covers": { "Mid": ["Head", "Torso", "UpperArmL", "ForearmL", "UpperArmR", "ForearmR"] }
+        "clips": {
+            "High": "block_high_shield",
+            "Mid": "block_mid_shield",
+            "Low": "block_low_shield"
+        },
+        "covers": {
+            "Mid": [
+                "Head",
+                "Torso",
+                "UpperArmL",
+                "ForearmL",
+                "UpperArmR",
+                "ForearmR"
+            ]
+        }
     }
 }

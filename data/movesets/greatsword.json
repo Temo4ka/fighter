@@ -1,0 +1,19 @@
+{
+    "inherit": "unarmed",
+    "moves": {
+        "Up+Light": "sword_cut",
+        "Heavy": "greatsword_slash",
+        "Forward+Heavy": "greatsword_thrust",
+        "Down+Heavy": "greatsword_sweep",
+        "Special": "greatsword_overhead"
+    },
+    "block": {
+        "damage_scale": 0.15,
+        "stamina_scale": 1.1,
+        "clips": {
+            "High": "block_high_greatsword",
+            "Mid": "block_mid_greatsword",
+            "Low": "block_low_greatsword"
+        }
+    }
+}

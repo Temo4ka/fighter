@@ -1,0 +1,18 @@
+{
+    "clip": "hammer_sweep",
+    "uses_weapon": true,
+    "damage": 1.4,
+    "min_reaction": "Flinch",
+    "stamina": 18,
+    "tags": [
+        "low",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.6,
+            0.9
+        ],
+        "role": "low"
+    }
+}
