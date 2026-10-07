@@ -34,7 +34,7 @@ enum class ViewMode {
 };
 
 /// Actions carried out by the application; the overlay does not own them.
-enum class DebugAction { None, TogglePause, Step, Slower, Faster, Restart, Reload, ToggleShowcase };
+enum class DebugAction { None, TogglePause, Step, Slower, Faster, Restart, Reload, ToggleShowcase, CycleStyle };
 
 class DebugOverlay {
 public:

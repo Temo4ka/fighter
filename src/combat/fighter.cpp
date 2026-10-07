@@ -230,6 +230,7 @@ void Fighter::stopStrikeAtContact() {
     const float Stopped = AttackTimeBefore + (AttackTime - AttackTimeBefore) * *Kept;
     AttackTime = Startup ? Stopped : std::clamp(Stopped, AttackClip->ActiveBeginSec, AttackClip->ActiveEndSec);
     Contact = ContactStage::Holding;
+    ContactClipSec = AttackTime;
     ContactHoldLeftSec = Tuning.ContactHoldSec;
     Jammed = Startup;
     if constexpr (FIGHTER_DEBUG) {
@@ -397,8 +398,10 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
     AttackTimeBefore = AttackTime;
     if (Contact == ContactStage::Holding) {
         // A posed strike stopped at the opponent holds the contact pose, then
-        // recovers: the clip jumps to its recovery, and the pose blends there
-        // from the contact pose instead of snapping to the recovery keys.
+        // recovers: the clip jumps to its recovery (its timing stays the
+        // clip's), but the pose goes back the way it came, from the contact
+        // pose to the clip's start (getTopClipTime()): the clip's own
+        // recovery starts from the extended pose, deeper in the opponent.
         ContactHoldLeftSec -= Dt;
         if (ContactHoldLeftSec <= 0.0f) {
             Contact = ContactStage::Recovering;
@@ -1298,7 +1301,16 @@ const anim::Clip* Fighter::getTopClip() const {
     }
 }
 
-float Fighter::getTopClipTime() const { return State == FighterState::Attacking ? AttackTime : StateSec; }
+float Fighter::getTopClipTime() const {
+    if (State != FighterState::Attacking) return StateSec;
+    if (Contact != ContactStage::Recovering) return AttackTime;
+    // Recovering from a contact: back from it to the start over the clip's
+    // recovery.
+    const float Recovery = AttackClip->DurationSec - AttackClip->ActiveEndSec;
+    const float Share =
+        Recovery > 0.0f ? std::clamp((AttackTime - AttackClip->ActiveEndSec) / Recovery, 0.0f, 1.0f) : 1.0f;
+    return ContactClipSec * (1.0f - Share);
+}
 
 void Fighter::spendStamina(float Amount) {
     Stamina = std::max(0.0f, Stamina - Amount);

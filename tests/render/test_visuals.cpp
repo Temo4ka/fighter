@@ -91,3 +91,56 @@ TEST_CASE("Visuals: errors name the field and the value", "[render][visuals]") {
 TEST_CASE("Visuals: a missing file names the file", "[render][visuals]") {
     CHECK_THROWS_WITH(loadVisuals("no/such/visuals.json"), ContainsSubstring("no/such/visuals.json"));
 }
+
+TEST_CASE("Visuals: styles name a skin and the pixel render mode", "[render][visuals]") {
+    const Visuals Vis = parseVisuals(R"({
+        "default_skin": "a",
+        "skins": { "a": { "dir": "art/a" }, "b": { "dir": "art/b", "pixels_per_meter": 32 } },
+        "style": "pixel",
+        "styles": {
+            "smooth": {},
+            "pixel": { "skin": "b", "pixel_art": { "pixels_per_meter": 24, "scale": 3, "letterbox": false } }
+        }
+    })");
+    CHECK(Vis.Style == "pixel");
+    const StyleDef& Pixel = getStyle(Vis, "pixel");
+    REQUIRE(Pixel.PixelArt);
+    CHECK(Pixel.PixelArt->PixelsPerMeter == 24.0f);
+    CHECK(Pixel.PixelArt->Scale == 3);
+    CHECK_FALSE(Pixel.PixelArt->Letterbox);
+    CHECK_FALSE(getStyle(Vis, "smooth").PixelArt);
+    CHECK(getStyleSkin(Vis, "pixel") == "b");
+    CHECK(getStyleSkin(Vis, "smooth") == "a");
+    // An unknown name falls back to the plain style.
+    CHECK_FALSE(getStyle(Vis, "nope").PixelArt);
+    CHECK(getStyleSkin(Vis, "nope") == "a");
+
+    const Visuals Bare = parseVisuals(R"({ "style": "p", "styles": { "p": { "pixel_art": {} } } })");
+    const PixelArtParams& Defaults = Bare.Styles.at("p").PixelArt.value();
+    CHECK_FALSE(Defaults.PixelsPerMeter);
+    CHECK(Defaults.Scale == 0);
+    CHECK(Defaults.Letterbox);
+}
+
+TEST_CASE("Visuals: the sample file has a smooth and a pixel style", "[render][visuals]") {
+    const Visuals Vis = loadVisuals(std::filesystem::path(FIGHTER_DATA_DIR) / "visuals.json");
+    REQUIRE(Vis.Styles.contains("smooth"));
+    REQUIRE(Vis.Styles.contains("pixel"));
+    CHECK_FALSE(getStyle(Vis, "smooth").PixelArt);
+    CHECK(getStyle(Vis, "pixel").PixelArt);
+    CHECK(getStyleSkin(Vis, "pixel") == "placeholder_pixel");
+}
+
+TEST_CASE("Visuals: style errors name the field and the value", "[render][visuals]") {
+    CHECK_THROWS_WITH(parseVisuals(R"({ "styles": { "p": {} } })"), ContainsSubstring("missing field 'style'"));
+    CHECK_THROWS_WITH(parseVisuals(R"({ "style": "q", "styles": { "p": {} } })"),
+                      ContainsSubstring("field 'style': 'q'"));
+    CHECK_THROWS_WITH(parseVisuals(R"({ "style": "p", "styles": { "p": { "skin": "x" } } })"),
+                      ContainsSubstring("field 'styles.p.skin': 'x'"));
+    CHECK_THROWS_WITH(parseVisuals(R"({ "style": "p", "styles": { "p": { "pixel_art": { "scale": 2.5 } } } })"),
+                      ContainsSubstring("field 'styles.p.pixel_art.scale': 2.5"));
+    CHECK_THROWS_WITH(parseVisuals(R"({ "style": "p", "styles": { "p": { "pixel_art": { "letterbox": 1 } } } })"),
+                      ContainsSubstring("field 'styles.p.pixel_art.letterbox': 1"));
+    CHECK_THROWS_WITH(parseVisuals(R"({ "style": "p", "styles": { "p": { "pixel_art": { "zoom": 1 } } } })"),
+                      ContainsSubstring("unknown field 'styles.p.pixel_art.zoom'"));
+}

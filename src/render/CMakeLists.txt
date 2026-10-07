@@ -1,5 +1,6 @@
 set(render_sources
     camera.cpp
+    pixel_view.cpp
     resources.cpp
     visuals.cpp
     sprites.cpp

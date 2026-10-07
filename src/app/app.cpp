@@ -88,6 +88,7 @@ App::App(Options Settings)
     if (Opts.Mode == "both") Overlay.setMode(render::ViewMode::Both);
     if (Opts.Mode == "textures") Overlay.setMode(render::ViewMode::TexturesOnly);
 #endif
+    if (Opts.Style && !Renderer.selectStyle(*Opts.Style)) log::warn("no style '{}' in visuals.json", *Opts.Style);
 
     loadUiConfig();
     FlowCommands = Flow.connectCommands([this](ui::FlowCommand Command) { onFlowCommand(Command); });
@@ -226,11 +227,13 @@ void App::render(float Alpha) {
     if (Overlay.shouldShowTextures()) {
         Renderer.drawWorld(Window);
     } else {
-        Overlay.drawBackdrop(Window, Cam);
+        Overlay.drawBackdrop(Window, Renderer.getOverlayCamera());
     }
-    if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
+    // Debug drawing stays at window resolution, on top of the pixel mode.
+    const render::Camera& OverlayCam = Renderer.getOverlayCamera();
+    if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, OverlayCam, debug::getDrawList());
     Renderer.drawHud(Window);
-    Overlay.drawPanel(Window, Cam, debug::getDrawList());
+    Overlay.drawPanel(Window, OverlayCam, debug::getDrawList());
     // The pause and results go over the debug panel, which stays readable underneath.
     ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
 #else
@@ -364,6 +367,9 @@ void App::applyDebugAction(render::DebugAction Action) {
             break;
         case DebugAction::ToggleShowcase:
             ShowcaseVisible = !ShowcaseVisible;
+            break;
+        case DebugAction::CycleStyle:
+            Renderer.cycleStyle();
             break;
     }
 }

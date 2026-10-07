@@ -268,3 +268,26 @@ TEST_CASE("Blends: a strike shows its own pose before its active phase", "[comba
     REQUIRE(Standing > 0);
     CHECK(getActiveTick(true) == Standing);
 }
+
+TEST_CASE("Spacing: a kick jammed on a fighter at the wall does not throw the attacker back", "[combat][spacing]") {
+    // P2 backs into the wall, P1 walks up to it and body-kicks from close
+    // range: the kick jams on the thigh. Recovering, the leg used to swing
+    // on into P2 (the clip's extended pose), and the spacing shoved P1 back
+    // 0.37 m in two steps (12 m/s).
+    Battle Fight(makeConfig());
+    for (int Tick = 0; Tick < 5 * TicksPerSecond; ++Tick) Fight.update({}, {.MoveX = 1.0f}, Dt);
+    bool Kicked = false;
+    float Fastest = 0.0f;
+    float Before = getPelvisX(getLeft(Fight));
+    for (int Tick = 0; Tick < 7 * TicksPerSecond; ++Tick) {
+        const float Gap = getPelvisX(getRight(Fight)) - getPelvisX(getLeft(Fight));
+        const bool Close = Gap <= 0.66f;
+        Fight.update({.MoveX = Close || Kicked ? 0.0f : 1.0f, .BodyKick = Close && !Kicked}, {}, Dt);
+        Kicked = Kicked || Close;
+        const float Now = getPelvisX(getLeft(Fight));
+        Fastest = std::max(Fastest, static_cast<float>(std::abs(Now - Before) / Dt));
+        Before = Now;
+    }
+    REQUIRE(Kicked);
+    CHECK(Fastest <= MaxPelvisSpeed);
+}

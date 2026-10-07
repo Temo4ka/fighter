@@ -10,6 +10,7 @@
 //   --frames <N>                frame on which the screenshot is taken (default 60)
 //   --mode debug|both|textures  initial mode of the debug layer (debug build)
 //   --showcase                  samples of every debug category (debug build)
+//   --style <name>              a style of data/visuals.json "styles" (smooth, pixel)
 //   --demo walk|fight|kick      scripted input instead of the keyboard
 //   --left <fighter>            fighter sheet of P1 (data/fighters/<fighter>.json), default: built-in
 //   --right <fighter>           the same for P2
@@ -50,6 +51,8 @@ int main(int Argc, char** Argv) {
             Opts.Frames = std::atoi(Argv[++ArgIndex]);
         } else if (Arg == "--mode" && HasValue) {
             Opts.Mode = Argv[++ArgIndex];
+        } else if (Arg == "--style" && HasValue) {
+            Opts.Style = Argv[++ArgIndex];
         } else if (Arg == "--demo" && HasValue) {
             Opts.Demo = app::findDemoScript(Argv[++ArgIndex]);
             if (!Opts.Demo) log::warn("unknown demo script: {}", Argv[ArgIndex]);

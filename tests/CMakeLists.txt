@@ -36,6 +36,7 @@ add_executable(fighter_tests
     combat/test_spacing_smooth.cpp
     combat/test_stride.cpp
     render/test_camera.cpp
+    render/test_pixel_view.cpp
     render/test_visuals.cpp
     render/test_render_list.cpp
     render/test_sprites.cpp

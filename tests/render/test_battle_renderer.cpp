@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <variant>
@@ -67,4 +68,45 @@ TEST_CASE("BattleRenderer: a frame has every fighter part, effects and the HUD",
     Renderer.startBattle({FighterLook{}, FighterLook{}});
     Renderer.buildFrame(Cam, makeSnapshot(11), 0.5f);
     CHECK(countLayer(Renderer.getFrame(), Layer::Effects) == 0);
+}
+
+TEST_CASE("BattleRenderer: styles switch the skin and the pixel mode", "[render][battle_renderer]") {
+    Resources Res(FIGHTER_SOURCE_DIR);
+    BattleRenderer Renderer(Res, 1.0 / 60.0);
+    const Visuals& Vis = Renderer.getVisuals();
+    REQUIRE(Vis.Styles.contains("pixel"));
+    REQUIRE(Vis.Styles.contains("smooth"));
+    CHECK(Renderer.getStyleName() == Vis.Style);
+    Renderer.startBattle({FighterLook{.Name = "A"}, FighterLook{.Name = "B"}});
+
+    Camera Cam;
+    Cam.setWindowSize({1280, 720});
+    REQUIRE(Renderer.selectStyle("smooth"));
+    Renderer.buildFrame(Cam, makeSnapshot(10), 0.0f);
+    CHECK_FALSE(Renderer.getPixelLayout());
+    CHECK(Renderer.getOverlayCamera().getPixelsPerMeter() == Cam.getPixelsPerMeter());
+
+    REQUIRE(Renderer.selectStyle("pixel"));
+    Renderer.buildFrame(Cam, makeSnapshot(10), 0.0f);
+    REQUIRE(Renderer.getPixelLayout());
+    const PixelLayout& Layout = *Renderer.getPixelLayout();
+    CHECK(Layout.Scale >= 1);
+    CHECK(Renderer.getOverlayCamera().getWindowSize() == Cam.getWindowSize());
+    CHECK(Renderer.getOverlayCamera().getPixelsPerMeter() ==
+          static_cast<float>(Layout.Scale) * Layout.PixelsPerMeter);
+    // The HUD is laid out for the window, not for the low-resolution picture.
+    float RightmostBar = 0.0f;
+    for (const RenderItem& Item : Renderer.getFrame().getItems()) {
+        if (const auto* Bar = std::get_if<BarPrim>(&Item.What); Bar && Item.Where == Layer::Hud)
+            RightmostBar = std::max(RightmostBar, Bar->Position.X);
+    }
+    CHECK(RightmostBar > static_cast<float>(Layout.LowResSizePx.x));
+
+    // The key's choice survives F5; an unknown name changes nothing.
+    REQUIRE(Renderer.reloadVisuals());
+    CHECK(Renderer.getStyleName() == "pixel");
+    CHECK_FALSE(Renderer.selectStyle("no_such_style"));
+    CHECK(Renderer.getStyleName() == "pixel");
+    CHECK(Renderer.cycleStyle() == "smooth");
+    CHECK(Renderer.cycleStyle() == "pixel");
 }
