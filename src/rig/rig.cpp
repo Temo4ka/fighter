@@ -1589,6 +1589,19 @@ void Rig::fillPanel() const {
     if (isAgainstWall()) Wall += ", back against it";
     debug::setPanel(Name + " wall", Wall);
 
+    // What the hands hold: weapons, shields, the grip of a two-handed one.
+    std::string Hands;
+    const auto addHand = [&](std::string Text) { Hands += (Hands.empty() ? "" : "; ") + std::move(Text); };
+    for (const auto& Weapon : Weapons) {
+        addHand(std::format("{} weapon {:.2f} m, r {:.3f}", getBodyPartName(Weapon.Part), Weapon.Reach, Weapon.Radius));
+    }
+    for (const auto& Shield : Shields) {
+        addHand(std::format("{} shield {:.2f} x {:.2f} m", getBodyPartName(Shield.Part), Shield.HalfExtents.X * 2.0f,
+                            Shield.HalfExtents.Y * 2.0f));
+    }
+    if (Grip) addHand(std::format("{} grips, {:.3f} m off the handle", getBodyPartName(Grip->Hand), getGripGap()));
+    debug::setPanel(Name + " hands", Hands.empty() ? "empty" : Hands);
+
     std::string Feet;
     for (const auto& Limb : Legs) {
         if (!Feet.empty()) Feet += ", ";

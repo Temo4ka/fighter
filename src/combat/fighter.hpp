@@ -346,6 +346,18 @@ private:
     /// or re-step going on.
     void updateRestStep(TargetPoses& Target, float Dt);
     /// @}
+    /// \name The panel lines of the moveset
+    /// @{
+    /// "sword_shield (pair sword + shield) < sword < unarmed; Short sword in
+    /// ForearmR".
+    std::string describeMoveSet() const;
+    /// "Forward+Light+Heavy (waiting for a combination 0.02/0.05 s)".
+    std::string describeInput() const;
+    /// "Forward+Heavy -> sword_slash (sword), Short sword in the other hand".
+    std::string describeSelected() const;
+    /// "dmg x0.05, max Touch, stamina x0.60; Mid: block_mid, covers Head Torso".
+    std::string describeBlock() const;
+    /// @}
     std::string describeLegs() const;
     /// "step 0.12 of 0.48 m", "settle around FootL, pelvis 0.08 m to go",
     /// "rest; re-steps 2, last FootR 0.07 m".

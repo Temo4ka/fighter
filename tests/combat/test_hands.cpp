@@ -70,3 +70,97 @@ TEST_CASE("Hands: buttons pressed within the combo window start the combination"
         CHECK(Start.Tick == 0);
     }
 }
+
+namespace {
+
+/// A fighter of the shipped stats with \p Items (ids, or {"id", "slot"}).
+FighterConfig makeFighter(const std::vector<stats::ItemRef>& Items) {
+    const stats::ItemCatalog Catalog = stats::loadItemCatalog(std::filesystem::path(FIGHTER_DATA_DIR) / "items");
+    FighterConfig Config;
+    Config.Loadout = stats::buildLoadout(Items, Catalog);
+    return Config;
+}
+
+/// P1 walks up to \p Range and presses \p Cmd whenever it is free, for
+/// \p Ticks; P2 holds \p VictimCmd. Returns P1's strikes that landed.
+std::vector<StrikeLanded> attack(Battle& Fight, const PlayerCommands& Cmd, float Range, const PlayerCommands& VictimCmd,
+                                 int Ticks) {
+    std::vector<StrikeLanded> Landed;
+    for (int Tick = 0; Tick < Ticks && !Fight.getResult(); ++Tick) {
+        const FighterView& Left = getLeft(Fight);
+        PlayerCommands Next;
+        if (getRight(Fight).Position.X - Left.Position.X > Range) {
+            Next.MoveX = 1.0f;
+        } else if (Left.State == FighterState::Idle || Left.State == FighterState::Walking) {
+            Next = Cmd;
+        }
+        Fight.update(Next, VictimCmd, Dt);
+        for (const BattleEvent& Event : Fight.getEvents()) {
+            const auto* Hit = std::get_if<StrikeLanded>(&Event);
+            if (Hit && Hit->Contact.Attacker.Fighter == 0) Landed.push_back(*Hit);
+        }
+    }
+    return Landed;
+}
+
+} // namespace
+
+TEST_CASE("Hands: a sword in the left hand strikes with the left arm", "[combat][hands][data]") {
+    BattleConfig Config = makeConfig();
+    Config.Left = makeFighter({{.Id = "short_sword", .Slot = stats::EquipmentSlot::OffHand}});
+    Battle Fight(Config);
+    const std::vector<PlayerCommands> Heavy = {{.Heavy = true}};
+    CHECK(findFirstStart(Fight, Heavy, 1).MoveId == "sword_slash");
+
+    Battle Duel(Config);
+    const std::vector<StrikeLanded> Hits = attack(Duel, {.Heavy = true}, HeavyRange, {}, 4 * TicksPerSecond);
+    REQUIRE_FALSE(Hits.empty());
+    for (const StrikeLanded& Hit : Hits) {
+        CHECK(Hit.MoveId == "sword_slash");
+        const BodyPart Part = Hit.Contact.Attacker.Part;
+        CHECK((Part == BodyPart::ForearmL || Part == BodyPart::UpperArmL));
+    }
+}
+
+TEST_CASE("Hands: both hands hold a two-handed weapon", "[combat][hands][data]") {
+    const auto getForearmsApart = [](const FighterConfig& Who) {
+        BattleConfig Config = makeConfig();
+        Config.Left = Who;
+        Battle Fight(Config);
+        run(Fight, {}, {}, TicksPerSecond);
+        const FighterView& View = getLeft(Fight);
+        return (getPart(View, BodyPart::ForearmL).Position - getPart(View, BodyPart::ForearmR).Position).getLength();
+    };
+    const float Unarmed = getForearmsApart(FighterConfig{});
+    const float Gripped = getForearmsApart(makeFighter({{.Id = "greatsword"}}));
+    // The left fist is on the handle, a hand's width past the right one.
+    CHECK(Gripped < 0.2f);
+    CHECK(Gripped < Unarmed);
+}
+
+TEST_CASE("Hands: the shield and the pair's block stop a high strike in the middle guard", "[combat][hands][data]") {
+    // The jab is a high move: an empty-handed middle guard does not stop it,
+    // the sword and shield guard (it covers the head too) does, and lets
+    // little damage through.
+    const auto jabAt = [](const FighterConfig& Victim, const PlayerCommands& Guard) {
+        BattleConfig Config = makeConfig();
+        Config.Right = Victim;
+        Battle Fight(Config);
+        run(Fight, {}, Guard, 2);
+        return attack(Fight, {.Light = true}, JabRange, Guard, 3 * TicksPerSecond);
+    };
+    const FighterConfig Shielded = makeFighter({{.Id = "short_sword"}, {.Id = "wooden_shield"}});
+    const std::vector<StrikeLanded> Clean = jabAt(Shielded, {});
+    const std::vector<StrikeLanded> Open = jabAt(FighterConfig{}, {.Block = true});
+    const std::vector<StrikeLanded> Guarded = jabAt(Shielded, {.Block = true});
+    REQUIRE_FALSE(Clean.empty());
+    REQUIRE_FALSE(Open.empty());
+    REQUIRE_FALSE(Guarded.empty());
+    for (const StrikeLanded& Hit : Open) CHECK_FALSE(Hit.Blocked);
+    float CleanDamage = 0.0f;
+    for (const StrikeLanded& Hit : Clean) CleanDamage = std::max(CleanDamage, Hit.Damage);
+    for (const StrikeLanded& Hit : Guarded) {
+        CHECK(Hit.Blocked);
+        CHECK(Hit.Damage < CleanDamage * 0.5f);
+    }
+}

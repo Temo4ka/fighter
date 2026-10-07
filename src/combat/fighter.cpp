@@ -44,8 +44,11 @@ constexpr float CalmKnockback = 0.05f;
 constexpr float BlockBarOffsetM = 0.3f;
 constexpr float BlockBarHalfWidthM = 0.04f;
 
-
 bool hasUpperJoints(const anim::Clip& Source);
+/// "High", "Mid", "Low": the zone as data files write it.
+std::string_view getBlockZoneName(BlockZone Zone);
+/// The names with \p Separator between them.
+std::string joinNames(const std::vector<std::string>& Names, std::string_view Separator);
 
 } // namespace
 
@@ -336,14 +339,12 @@ void Fighter::drawDebug(std::string_view Name) const {
         debug::setPanel(std::format("{} stamina", Name),
                         std::format("{:.0f} / {:.0f} (+{:.0f}/s){}", Stamina, Profile.MaxStamina,
                                     Profile.StaminaRegen, Exhausted ? "  EXHAUSTED" : ""));
-        // The moveset and the input held in the last step (PreviousCmd is
-        // that step's commands by now).
-        const ButtonSet Held = getHeldButtons(PreviousCmd);
-        const InputDirection Direction = getInputDirection(PreviousCmd, Body.isFacingRight());
-        debug::setPanel(std::format("{} moveset", Name),
-                        std::format("{}, input {}", Set->Id,
-                                    Held.isEmpty() ? std::string(getInputDirectionName(Direction))
-                                                   : formatMoveInput({.Direction = Direction, .Buttons = Held})));
+        // The moveset, the input of the last step (PreviousCmd is that
+        // step's commands by now), the move it chose and the block.
+        debug::setPanel(std::format("{} moveset", Name), describeMoveSet());
+        debug::setPanel(std::format("{} input", Name), describeInput());
+        debug::setPanel(std::format("{} move", Name), describeSelected());
+        debug::setPanel(std::format("{} block", Name), describeBlock());
         const ReactionTable& Table = Rules->Reactions;
         debug::setPanel(std::format("{} poise", Name),
                         std::format("buildup {:.2f}, poise {:.2f}: thresholds x{:.2f}", Buildup, Profile.Poise,
@@ -351,10 +352,10 @@ void Fighter::drawDebug(std::string_view Name) const {
         if (LastHit) {
             const HitOutcome& Outcome = LastHit->Outcome;
             debug::setPanel(std::format("{} last hit", Name),
-                            std::format("{} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}", LastHit->MoveId,
+                            std::format("{} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}{}", LastHit->MoveId,
                                         getBodyPartName(LastHit->Part), Outcome.Strength,
                                         getReactionLevelName(Outcome.Reaction), Outcome.Damage,
-                                        Outcome.Blocked ? " (blocked)" : ""));
+                                        Outcome.Blocked ? " (blocked)" : "", LastHit->OnShield ? " on the shield" : ""));
         } else {
             debug::setPanel(std::format("{} last hit", Name), "-");
         }
@@ -375,6 +376,63 @@ void Fighter::drawDebug(std::string_view Name) const {
         debug::setPanel(std::format("{} blend", Name), describeBlends());
         // "P1 facing" (and a pending turn) is the rig's panel line.
     }
+}
+
+std::string Fighter::describeMoveSet() const {
+    std::string Text = Set->Id;
+    if (!Set->Pair.empty()) Text += std::format(" (pair {})", joinNames(Set->Pair, " + "));
+    for (const MoveSet* Parent = Rules->Moves.findSet(Set->Inherit); Parent;
+         Parent = Rules->Moves.findSet(Parent->Inherit)) {
+        Text += " < " + Parent->Id;
+        if (Parent->Inherit.empty()) break;
+    }
+    for (const HandWeapon& Held : Weapons) {
+        Text += std::format("; {} in {}", Held.ItemName, getBodyPartName(Held.Part));
+    }
+    return Text;
+}
+
+std::string Fighter::describeInput() const {
+    const ButtonSet Held = getHeldButtons(PreviousCmd) | Presses.getButtons();
+    const InputDirection Direction = getInputDirection(PreviousCmd, Body.isFacingRight());
+    std::string Text = Held.isEmpty() ? std::string(getInputDirectionName(Direction))
+                                      : formatMoveInput({.Direction = Direction, .Buttons = Held});
+    if (WaitingForCombo) {
+        Text += std::format(" (waiting for a combination {:.2f}/{:.2f} s)", Presses.getAgeSec(),
+                            Rules->Moves.getInputRules().ComboWindowSec);
+    }
+    return Text;
+}
+
+std::string Fighter::describeSelected() const {
+    if (!Selected) return "-";
+    // The set of the line: this set or the parent it came from.
+    std::string_view From = "?";
+    for (const MoveSet* Current = Set; Current; Current = Rules->Moves.findSet(Current->Inherit)) {
+        const auto& Entries = Current->Entries;
+        if (!Entries.empty() && Selected >= Entries.data() && Selected < Entries.data() + Entries.size()) {
+            From = Current->Id;
+            break;
+        }
+        if (Current->Inherit.empty()) break;
+    }
+    std::string Text = std::format("{} -> {} ({})", formatMoveInput(Selected->Input), Selected->MoveId, From);
+    if (getMove() && StrikeWeapon) {
+        Text += std::format(", {}{}", Weapons[*StrikeWeapon].ItemName, StrikeOtherHand ? " in the other hand" : "");
+    }
+    if (ChainRequest) Text += std::format(", chain to {} asked", ChainRequest->Id);
+    return Text;
+}
+
+std::string Fighter::describeBlock() const {
+    std::string Covers;
+    for (const BodyPart Part : Block.Covers[static_cast<size_t>(Guard)]) {
+        Covers += Covers.empty() ? "" : " ";
+        Covers += getBodyPartName(Part);
+    }
+    return std::format("dmg x{:.2f}, max {}, stamina x{:.2f}; {}: {}, covers {}", Block.DamageScale,
+                       getReactionLevelName(Block.MaxLevel), Block.StaminaScale, getBlockZoneName(Guard),
+                       Block.getClip(Guard), Covers);
 }
 
 bool Fighter::isFree() const {
@@ -1425,6 +1483,24 @@ namespace {
 /// Does the clip pose a joint of the upper body (not only the legs)?
 bool hasUpperJoints(const anim::Clip& Source) {
     return (Source.Keys.front().Target.Mask & ~anim::getLegJoints()).any();
+}
+
+std::string_view getBlockZoneName(BlockZone Zone) {
+    switch (Zone) {
+        case BlockZone::High: return "High";
+        case BlockZone::Mid: return "Mid";
+        case BlockZone::Low: return "Low";
+    }
+    return "?";
+}
+
+std::string joinNames(const std::vector<std::string>& Names, std::string_view Separator) {
+    std::string Text;
+    for (const std::string& Name : Names) {
+        if (!Text.empty()) Text += Separator;
+        Text += Name;
+    }
+    return Text;
 }
 
 } // namespace
