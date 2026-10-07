@@ -88,7 +88,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     OpponentGap = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
     OpponentX = Around.OpponentX;
     StateSec += Dt;
+    // Only presses the fighter may act on count: none are kept through a
+    // reaction or a fall to start a move afterwards.
     Presses.update(getNewlyPressed(Cmd, PreviousCmd), Rules->Moves.getInputRules().ComboWindowSec, Dt);
+    if (!isFree() && State != FighterState::Attacking) Presses.clear();
 
     // Where the opponent is. The body turns only when the fighter is free
     // to act: not during an attack, a reaction, on the floor or getting up.
@@ -517,7 +520,12 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
             return Next;
         }
     }
-    if (AttackClip->isFinishedAt(AttackTime)) setState(FighterState::Idle);
+    if (AttackClip->isFinishedAt(AttackTime)) {
+        // The presses of the attack were for a chain; a held button repeats
+        // the attack by itself.
+        Presses.clear();
+        setState(FighterState::Idle);
+    }
     return nullptr;
 }
 
@@ -526,6 +534,9 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         if (State != FighterState::Blocking || *Zone != Guard) StateSec = 0.0f;
         Guard = *Zone;
         PendingAttack = nullptr;
+        // The block wins over attacking: a press while blocking is dropped.
+        Presses.clear();
+        WaitingForCombo = false;
         setState(FighterState::Blocking);
         return nullptr;
     }
