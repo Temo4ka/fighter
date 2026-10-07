@@ -188,14 +188,17 @@ TEST_CASE("parseItemCatalog: applies item validation", "[stats][loading]") {
 
     const std::string_view Sword = R"({"id": "sword", "slot": "MainHand", "mass_kg": 1, "moveset": "sword",
         "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1.2, "radius_m": 0.03, "angle_deg": 10}})";
-    const EquipmentItem& Read = *Parse(Sword).findItem("sword");
+    // The catalogs stay alive while their items are checked.
+    const ItemCatalog SwordCatalog = Parse(Sword);
+    const EquipmentItem& Read = *SwordCatalog.findItem("sword");
     CHECK(Read.MoveSet == "sword");
     CHECK(Read.Armor == 0.0f);
     CHECK(Read.Covers.empty());
     CHECK(Read.Weapon->RadiusM == 0.03f);
     CHECK(Read.Weapon->AngleDeg == 10.0f);
-    const EquipmentItem& Shield = *Parse(R"({"id": "shield", "slot": "OffHand", "mass_kg": 3,
-        "shield": {"length_m": 0.5, "width_m": 0.4}})").findItem("shield");
+    const ItemCatalog ShieldCatalog = Parse(R"({"id": "shield", "slot": "OffHand", "mass_kg": 3,
+        "shield": {"length_m": 0.5, "width_m": 0.4}})");
+    const EquipmentItem& Shield = *ShieldCatalog.findItem("shield");
     CHECK(Shield.Shield->LengthM == 0.5f);
     CHECK(Shield.Shield->AngleDeg == 0.0f);
     CHECK(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3})").findItem("great")->TwoHanded);
