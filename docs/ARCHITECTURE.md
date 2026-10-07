@@ -22,9 +22,9 @@ app ──► render ──► combat ──► stats ──► core
 |---|---|---|---|
 | `core` | `Vec2`, `log`, `Signal`/`Connection`, `FixedStepLoop`, `BodyPart`, `PartTransform`, `readTextFile` | — | — |
 | `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | — | — |
-| `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body` (динамические и кинематические), `RevoluteJoint`, `HitEvent`; Box2D debug draw → `debug::` | — | внутри |
-| `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — гибридное тело: кинематические таз и ноги (`PelvisController`, позы из клипов, стопы на месте), физический корпус на PD-моторах, жёсткость, отбрасывание, нокдаун, разворот, оружие; `keepApart`/`pushApartOnHit` — расстояния между бойцами и стены | — | — |
-| `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose`, слои ног и верха тела и зеркальные ноги (`anim/layers.hpp`) | — | — |
+| `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body` (динамические и кинематические), `RevoluteJoint`, `SpringJoint` (мягкая связь двух точек: хват двуручного), `HitEvent`; Box2D debug draw → `debug::` | — | внутри |
+| `rig` | `RigDef` (тело из `data/rigs/*.json`), `Rig` — гибридное тело: кинематические таз и ноги (`PelvisController`, позы из клипов, стопы на месте), физический корпус на PD-моторах, жёсткость, отбрасывание, нокдаун, разворот, предметы в руках (`HeldItem`: оружие и щит на любом предплечье, хват двуручного второй рукой); `keepApart`/`pushApartOnHit` — расстояния между бойцами и стены | — | — |
+| `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose`, слои ног и верха тела, зеркальные ноги и переставленные руки (`anim/layers.hpp`) | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`), `LegCycle` (цикл ходьбы и его остановка), `LegStep` (шаги в действие ногами) | — | — |
 | `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `PixelLayout` (пиксельный режим), `BattleRenderer`, `DebugOverlay` | да | — |
@@ -107,8 +107,18 @@ app ──► render ──► combat ──► stats ──► core
 вошедшую в соперника своим движением относительно таза, мир физики возвращает к контакту
 (`findPosedStop`, `rewindBody`). Руки двух бойцов сталкиваются, застрявшая в сопернике рука уступает
 (мягче и к позе `yieldPose`, по-прежнему сталкиваясь); лежащее тело сталкивается с ногами стоящего;
-стоящая стопа держит место (IK ноги); разворот зеркалит тело; оружие — вторая капсула предплечья.
+стоящая стопа держит место (IK ноги); разворот зеркалит тело; оружие — вторая капсула держащего
+предплечья (любой руки), щит — пластина на нём; кулак второй руки двуручного оружия держит на рукояти
+пружина (`physics::SpringJoint`), рука при этом мягче.
 Подробности и параметры — [TUNING.md](TUNING.md).
+
+**Наборы движений и руки (М.2).** Удар выбирает `Fighter` по набору движений бойца
+(`MoveLibrary::findEntry`): кнопки, нажатые в окне `combo_window_sec`, считаются нажатыми вместе
+(`PressWindow`), и нажатие ждёт остальные, пока из него ещё может получиться сочетание
+(`MoveLibrary::canGrowCombo`). Блок бойца — блок его набора (`MoveLibrary::getBlock` от
+`getDefaultBlock(reactions.json)`), попадание решает `isBlockedBy` (высота удара по метке, часть тела,
+щит). Удар оружием бьёт оружием, которое держат его ударные части; клип для другой руки играется с
+переставленными руками (`ClipLibrary::getOtherHand`).
 
 **События.** Опрос и события делят работу так:
 
