@@ -1,0 +1,19 @@
+{
+  "loop": false,
+  "duration": 0.8,
+  "active": [0.22, 0.46],
+  "strikers": ["ShinL", "FootL"],
+  "stiffness": 1.6,
+  "allowMove": false,
+  "blendIn": 0.05,
+  "blendOut": 0.1,
+  "keys": [
+    { "t": 0.00, "pose": { "Torso": -8, "ThighL": 25, "ShinL": -30, "FootL": 5 } },
+    { "t": 0.10, "pose": { "Torso": -2, "ThighL": 80, "ShinL": -120, "FootL": 20 } },
+    { "t": 0.20, "pose": { "Torso": 6, "ThighL": 95, "ShinL": -100, "FootL": 10 } },
+    { "t": 0.30, "pose": { "Torso": 14, "ThighL": 95, "ShinL": -3, "FootL": -5 } },
+    { "t": 0.44, "pose": { "Torso": 14, "ThighL": 95, "ShinL": -3, "FootL": -5 } },
+    { "t": 0.58, "pose": { "Torso": 2, "ThighL": 70, "ShinL": -90, "FootL": 15 } },
+    { "t": 0.76, "pose": { "Torso": -8, "ThighL": 25, "ShinL": -30, "FootL": 5 } }
+  ]
+}
