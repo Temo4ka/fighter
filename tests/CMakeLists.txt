@@ -44,6 +44,8 @@ add_executable(fighter_tests
     render/test_battle_renderer.cpp
     app/test_input.cpp
     app/test_demo_script.cpp
+    ui/test_screen_flow.cpp
+    ui/test_ui_data.cpp
     tools/test_placeholder_gen.cpp
 )
 
@@ -58,6 +60,7 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::combat
     fighter::render
     fighter::app_lib
+    fighter::ui
     fighter::placeholder_lib
 )
 fighter_target_options(fighter_tests)

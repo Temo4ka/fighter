@@ -21,6 +21,9 @@
 #include "stats/equipment.hpp"
 #include "stats/fighter_sheet.hpp"
 #include "stats/loading.hpp"
+#include "ui/fighter_list.hpp"
+#include "ui/screen_view.hpp"
+#include "ui/ui_config.hpp"
 
 #if FIGHTER_DEBUG
 #include "app/debug_showcase.hpp"
@@ -36,6 +39,8 @@ constexpr unsigned PreferredWindowWidth = 1600;
 constexpr float DesktopShare = 0.95f;
 
 sf::Vector2u getWindowSize();
+std::optional<ui::MenuKey> getMenuKey(sf::Keyboard::Scancode Key);
+ui::ScreenContext makeScreenContext(const combat::Battle& Fight);
 combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName);
 void publishStatsPanel(const combat::BattleConfig& Config, const stats::BalanceTable& Balance);
 
@@ -66,10 +71,11 @@ App::App(Options Settings)
     : Opts(std::move(Settings)),
       Window(sf::VideoMode(getWindowSize()), "Fighter sandbox"),
       Assets(Opts.Root),
-      Renderer(Assets, FixedStepLoop::Config{}.StepSec)
+      Renderer(Assets, FixedStepLoop::Config{}.StepSec),
 #if FIGHTER_DEBUG
-      , Overlay(Assets)
+      Overlay(Assets),
 #endif
+      Flow(ui::listFighters(Opts.Root / "data" / "fighters"))
 {
     Window.setVerticalSyncEnabled(true);
     Cam.setWindowSize(Window.getSize());
@@ -83,7 +89,16 @@ App::App(Options Settings)
     if (Opts.Mode == "textures") Overlay.setMode(render::ViewMode::TexturesOnly);
 #endif
 
-    restartBattle();
+    loadUiConfig();
+    FlowCommands = Flow.connectCommands([this](ui::FlowCommand Command) { onFlowCommand(Command); });
+    FlowEvents = BattleEvents.connect([this](const combat::BattleEvent& Event, const combat::RenderSnapshot&) {
+        Flow.onBattleEvent(Event);
+    });
+    // Without the menu flag the app starts straight in a battle, as the sandbox always did.
+    if (!Opts.Menu) {
+        restartBattle();
+        Flow.beginBattle();
+    }
     log::info("sandbox started, root: {}", Opts.Root.string());
 }
 
@@ -98,9 +113,11 @@ int App::run() {
         const double FrameSec = Opts.Screenshot ? Loop.getStepSec() : RealFrameSec;
         handleEvents();
 
-        const double Alpha = Loop.advance(FrameSec, [this](double Dt) { stepSimulation(Dt); });
+        // Only a running battle advances; the pause and the other screens freeze it.
+        if (CurrentBattle && Flow.getScreen() == ui::Screen::Battle)
+            LastAlpha = static_cast<float>(Loop.advance(FrameSec, [this](double Dt) { stepSimulation(Dt); }));
         publishFrameStats(RealFrameSec);
-        render(static_cast<float>(Alpha));
+        render(LastAlpha);
 
         if (Opts.Screenshot && ++Frame >= Opts.Frames) {
             saveScreenshot();
@@ -130,8 +147,13 @@ void App::handleEvents() {
 }
 
 void App::onKeyPressed(sf::Keyboard::Scancode Key) {
+    if (Flow.getScreen() != ui::Screen::Battle) {
+        if (const auto MenuKey = getMenuKey(Key)) Flow.onKey(*MenuKey);
+        return;
+    }
     if (Key == sf::Keyboard::Scan::Escape) {
-        Window.close();
+        Input.reset();   // a key held now must not stick through the pause
+        Flow.onKey(ui::MenuKey::Back);
         return;
     }
 #if FIGHTER_DEBUG
@@ -160,6 +182,8 @@ void App::stepSimulation(double Dt) {
     if (ShowcaseVisible) drawDebugShowcase();
 #endif
 
+    Flow.update(Dt);
+
     if (const auto Result = CurrentBattle->getResult(); Result && !ResultReported) {
         ResultReported = true;
         log::info("round over: winner {}, {:.1f} s", getWinnerName(Result->WinnerSide), Result->TimeSec);
@@ -169,6 +193,10 @@ void App::stepSimulation(double Dt) {
 
 void App::render(float Alpha) {
     Window.clear(sf::Color::Black);
+    if (!hasBattleOnScreen()) {
+        ui::drawScreen(Window, Assets, Flow, {});
+        return;
+    }
     const combat::RenderSnapshot Snapshot =
         combat::interpolate(Previous, CurrentBattle->getSnapshot(), Alpha);
 
@@ -182,11 +210,51 @@ void App::render(float Alpha) {
     }
     if (Overlay.shouldShowPrimitives()) Overlay.drawPrimitives(Window, Cam, debug::getDrawList());
     Renderer.drawHud(Window);
+    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
     Overlay.drawPanel(Window, Cam, debug::getDrawList());
 #else
     Renderer.drawWorld(Window);
     Renderer.drawHud(Window);
+    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
 #endif
+}
+
+void App::onFlowCommand(ui::FlowCommand Command) {
+    switch (Command) {
+        case ui::FlowCommand::StartBattle:
+            if (!startMenuBattle()) Flow.onStartFailed();
+            break;
+        case ui::FlowCommand::RestartBattle:
+            restartBattle();
+            break;
+        case ui::FlowCommand::Quit:
+            Window.close();
+            break;
+    }
+}
+
+bool App::startMenuBattle() {
+    Opts.LeftFighter = Flow.getPickedFighter(0);
+    Opts.RightFighter = Flow.getPickedFighter(1);
+    try {
+        return restartBattle();
+    } catch (const std::exception& Error) {
+        log::error("cannot start the battle: {}", Error.what());
+        return false;
+    }
+}
+
+bool App::hasBattleOnScreen() const {
+    return CurrentBattle && (Flow.getScreen() == ui::Screen::Battle || Flow.getScreen() == ui::Screen::Pause ||
+                             Flow.getScreen() == ui::Screen::Results);
+}
+
+void App::loadUiConfig() {
+    try {
+        Flow.setConfig(ui::loadUiConfig(Opts.Root / "data" / "ui.json"));
+    } catch (const std::exception& Error) {
+        log::error("cannot load data/ui.json: {}", Error.what());
+    }
 }
 
 bool App::restartBattle() {
@@ -259,11 +327,18 @@ void App::applyDebugAction(render::DebugAction Action) {
             Loop.setTimeScale(Loop.getTimeScale() * 2.0);
             break;
         case DebugAction::Restart:
-            if (restartBattle()) debug::logEvent("restart");
+            if (restartBattle()) {
+                Flow.beginBattle();
+                debug::logEvent("restart");
+            }
             break;
         case DebugAction::Reload:
             // A new battle re-reads data/rigs and data/poses.
-            if (restartBattle()) debug::logEvent("reload: data files re-read, battle restarted");
+            loadUiConfig();
+            if (restartBattle()) {
+                Flow.beginBattle();
+                debug::logEvent("reload: data files re-read, battle restarted");
+            }
             if (Renderer.reloadVisuals()) debug::logEvent("reload: visuals re-read");
             break;
         case DebugAction::ToggleShowcase:
@@ -281,6 +356,27 @@ sf::Vector2u getWindowSize() {
                                     static_cast<float>(Desktop.y) * DesktopShare * 16.0f / 9.0f);
     const auto Width = static_cast<unsigned>(std::clamp(FitWidth, 640.0f, static_cast<float>(PreferredWindowWidth)));
     return {Width, Width * 9 / 16};
+}
+
+std::optional<ui::MenuKey> getMenuKey(sf::Keyboard::Scancode Key) {
+    using Scan = sf::Keyboard::Scan;
+    switch (Key) {
+        case Scan::Up: return ui::MenuKey::Up;
+        case Scan::Down: return ui::MenuKey::Down;
+        case Scan::Left: return ui::MenuKey::Left;
+        case Scan::Right: return ui::MenuKey::Right;
+        case Scan::Enter: return ui::MenuKey::Confirm;
+        case Scan::Escape: return ui::MenuKey::Back;
+        default: return std::nullopt;
+    }
+}
+
+ui::ScreenContext makeScreenContext(const combat::Battle& Fight) {
+    const combat::BattleConfig& Config = Fight.getConfig();
+    ui::ScreenContext Context;
+    Context.Names = {Config.Left.Name.empty() ? "P1" : Config.Left.Name, Config.Right.Name.empty() ? "P2" : Config.Right.Name};
+    if (const auto& Result = Fight.getResult()) Context.Result = &*Result;
+    return Context;
 }
 
 combat::FighterConfig makeFighterConfig(const std::filesystem::path& Root, const std::string& FighterName) {

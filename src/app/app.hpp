@@ -8,7 +8,8 @@
 /// This file declares App, the sandbox that runs a fight: window, input,
 /// simulation loop and rendering.
 ///
-/// The main menu, pause and results screens are added by agent F (phase 2).
+/// The main menu, fighter selection, pause and results screens are in src/ui;
+/// the App only routes keys and runs the battle that the flow asks for.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +31,7 @@
 #include "render/battle_renderer.hpp"
 #include "render/camera.hpp"
 #include "render/resources.hpp"
+#include "ui/screen_flow.hpp"
 
 #if FIGHTER_DEBUG
 #include "render/debug_overlay.hpp"
@@ -48,6 +50,8 @@ struct Options {
     /// built-in sandbox fighter.
     std::optional<std::string> LeftFighter;
     std::optional<std::string> RightFighter;
+    /// Start in the main menu instead of straight in a battle.
+    bool Menu = false;
 };
 
 class App {
@@ -65,6 +69,11 @@ private:
     bool restartBattle();
     void publishFrameStats(double FrameSec);
     void saveScreenshot();
+    void onFlowCommand(ui::FlowCommand Command);
+    /// Starts a battle of the fighters picked in the menu; false on a data error.
+    bool startMenuBattle();
+    bool hasBattleOnScreen() const;
+    void loadUiConfig();
 
 #if FIGHTER_DEBUG
     void applyDebugAction(render::DebugAction Action);
@@ -89,6 +98,9 @@ private:
     Connection RendererEvents;
 
     InputSystem Input;
+    ui::ScreenFlow Flow;
+    Connection FlowCommands;
+    Connection FlowEvents;
     FixedStepLoop Loop;
     std::unique_ptr<combat::Battle> CurrentBattle;
     combat::RenderSnapshot Previous;
@@ -97,6 +109,8 @@ private:
     /// debug panel. Averaging the time rather than 1/time keeps rare fast
     /// frames from inflating the FPS.
     double FrameSecSmoothed = 0.0;
+    /// The interpolation factor of the last simulated frame, kept while a pause freezes the battle.
+    float LastAlpha = 1.0f;
 };
 
 } // namespace fighter::app
