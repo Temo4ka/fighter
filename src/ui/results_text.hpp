@@ -20,13 +20,21 @@
 
 namespace fighter::ui {
 
+/// One line of the results table: a label and a cell per fighter.
+struct ResultsRow {
+    std::string Label;
+    std::array<std::string, 2> Cells;
+    bool IsHeader = false;   ///< A section title; the cells are empty.
+};
+
 struct ResultsText {
     std::string Headline;   ///< "Knight wins", "Draw".
     std::string Detail;     ///< How it ended and how long it took.
-    /// Per fighter: name, HP left, damage, hits by body part, strikes.
-    std::array<std::vector<std::string>, 2> Columns;
+    std::vector<ResultsRow> Rows;
 };
 
+/// The table: damage and knockdowns, hits taken by body part (parts hit on
+/// either side), strikes thrown/landed/blocked by move (moves of either side).
 ResultsText describeResult(const combat::BattleResult& Result, const std::array<std::string, 2>& Names);
 
 } // namespace fighter::ui

@@ -75,7 +75,8 @@ App::App(Options Settings)
 #if FIGHTER_DEBUG
       Overlay(Assets),
 #endif
-      Flow(ui::listFighters(Opts.Root / "data" / "fighters"))
+      Flow(ui::listFighters(Opts.Root / "data" / "fighters")),
+      Screens(Assets, Opts.Root / "data")
 {
     Window.setVerticalSyncEnabled(true);
     Cam.setWindowSize(Window.getSize());
@@ -119,6 +120,7 @@ int App::run() {
         // Only a running battle advances; the pause and the other screens freeze it.
         if (CurrentBattle && Flow.getScreen() == ui::Screen::Battle)
             LastAlpha = static_cast<float>(Loop.advance(FrameSec, [this](double Dt) { stepSimulation(Dt); }));
+        Screens.update(RealFrameSec, Flow);
         publishFrameStats(RealFrameSec);
         render(LastAlpha);
 
@@ -215,7 +217,7 @@ void App::stepSimulation(double Dt) {
 void App::render(float Alpha) {
     Window.clear(sf::Color::Black);
     if (!hasBattleOnScreen()) {
-        ui::drawScreen(Window, Assets, Flow, {});
+        Screens.draw(Window, Flow, {});
         return;
     }
     const combat::RenderSnapshot Snapshot =
@@ -235,11 +237,11 @@ void App::render(float Alpha) {
     Renderer.drawHud(Window);
     Overlay.drawPanel(Window, OverlayCam, debug::getDrawList());
     // The pause and results go over the debug panel, which stays readable underneath.
-    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
+    Screens.draw(Window, Flow, makeScreenContext(*CurrentBattle));
 #else
     Renderer.drawWorld(Window);
     Renderer.drawHud(Window);
-    ui::drawScreen(Window, Assets, Flow, makeScreenContext(*CurrentBattle));
+    Screens.draw(Window, Flow, makeScreenContext(*CurrentBattle));
 #endif
 }
 
@@ -402,6 +404,7 @@ ui::ScreenContext makeScreenContext(const combat::Battle& Fight) {
     const combat::BattleConfig& Config = Fight.getConfig();
     ui::ScreenContext Context;
     Context.Names = {Config.Left.Name.empty() ? "P1" : Config.Left.Name, Config.Right.Name.empty() ? "P2" : Config.Right.Name};
+    Context.MaxHp = {Fight.getSnapshot().Fighters[0].MaxHp, Fight.getSnapshot().Fighters[1].MaxHp};
     if (const auto& Result = Fight.getResult()) Context.Result = &*Result;
     return Context;
 }

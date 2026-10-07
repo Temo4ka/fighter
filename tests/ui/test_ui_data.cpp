@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "ui/fighter_card.hpp"
 #include "ui/fighter_list.hpp"
 #include "ui/results_text.hpp"
 #include "ui/ui_config.hpp"
@@ -20,13 +21,6 @@ std::filesystem::path makeTempDir(const std::string& Name) {
     std::filesystem::remove_all(Dir);
     std::filesystem::create_directories(Dir);
     return Dir;
-}
-
-bool hasLine(const std::vector<std::string>& Lines, const std::string& Needle) {
-    for (const std::string& Line : Lines) {
-        if (Line.find(Needle) != std::string::npos) return true;
-    }
-    return false;
 }
 
 } // namespace
@@ -68,25 +62,37 @@ TEST_CASE("loadUiConfig: missing file gives the defaults, shipped file parses", 
     CHECK_NOTHROW(loadUiConfig(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data" / "ui.json"));
 }
 
-TEST_CASE("describeResult: winner, hits by part and strikes", "[ui][results]") {
+TEST_CASE("describeResult: winner, aligned rows for both fighters", "[ui][results]") {
     combat::BattleResult Result;
     Result.WinnerSide = combat::Winner::Right;
     Result.End = combat::BattleEnd::Knockout;
     Result.TimeSec = 12.34;
-    Result.Fighters[0].Hp = 0.0f;
     Result.Fighters[0].HitsTaken[static_cast<size_t>(BodyPart::Head)] = {.Hits = 3, .Damage = 21.0f};
-    Result.Fighters[1].Hp = 55.5f;
     Result.Fighters[1].Moves["jab"] = {.Thrown = 5, .Landed = 3, .Blocked = 1, .Damage = 21.0f};
+    Result.Fighters[0].DamageDealt = 7.5f;
 
     const ResultsText Text = describeResult(Result, {"Knight", "Rogue"});
     CHECK(Text.Headline == "Rogue wins");
     CHECK(Text.Detail == "Knockout after 12.3 s");
-    CHECK(Text.Columns[0][0] == "Knight");
-    CHECK(hasLine(Text.Columns[0], "Head: 3"));
-    CHECK(hasLine(Text.Columns[0], "HP left: 0.0"));
-    CHECK(hasLine(Text.Columns[1], "HP left: 55.5"));
-    CHECK(hasLine(Text.Columns[1], "jab: 5/3/1"));
-    CHECK(hasLine(Text.Columns[1], "none"));   // no hits taken
+
+    const auto Find = [&](const std::string& Label) -> const ResultsRow* {
+        for (const ResultsRow& Row : Text.Rows) {
+            if (!Row.IsHeader && Row.Label == Label) return &Row;
+        }
+        return nullptr;
+    };
+    const ResultsRow* Dealt = Find("Dealt");
+    REQUIRE(Dealt);
+    CHECK(Dealt->Cells[0] == "7.5");
+    const ResultsRow* Head = Find("Head");
+    REQUIRE(Head);
+    CHECK(Head->Cells[0] == "3 (21.0)");
+    CHECK(Head->Cells[1] == "-");
+    CHECK(Find("Torso") == nullptr);   // not hit on either side
+    const ResultsRow* Jab = Find("jab");
+    REQUIRE(Jab);
+    CHECK(Jab->Cells[0] == "-");
+    CHECK(Jab->Cells[1] == "5/3/1");
 }
 
 TEST_CASE("describeResult: a draw on time", "[ui][results]") {
@@ -96,4 +102,63 @@ TEST_CASE("describeResult: a draw on time", "[ui][results]") {
     const ResultsText Text = describeResult(Result, {"A", "B"});
     CHECK(Text.Headline == "Draw");
     CHECK(Text.Detail.starts_with("Time up"));
+}
+
+TEST_CASE("parseUiConfig: palette, type scale and timings", "[ui][data]") {
+    const UiConfig Config = parseUiConfig(R"({
+        "highlight_sec": 0.2, "dim_alpha": 99,
+        "colors": {"accent": "#102030", "panel": "#aabbccdd"},
+        "type_scale": {"title": 0.2}
+    })", "t");
+    CHECK(Config.HighlightSec == 0.2);
+    CHECK(Config.DimAlpha == 99);
+    CHECK(Config.Colors.Accent == UiColor{0x10, 0x20, 0x30, 255});
+    CHECK(Config.Colors.Panel == UiColor{0xaa, 0xbb, 0xcc, 0xdd});
+    CHECK(Config.Type.Title == 0.2f);
+    CHECK(Config.Type.Body == UiTypeScale{}.Body);
+}
+
+TEST_CASE("parseUiConfig: bad colors and sizes name the key", "[ui][data]") {
+    using Catch::Matchers::ContainsSubstring;
+    CHECK_THROWS_WITH(parseUiConfig(R"({"colors": {"accent": "red"}})", "ui.json"),
+                      ContainsSubstring("colors.accent") && ContainsSubstring("red"));
+    CHECK_THROWS_WITH(parseUiConfig(R"({"colors": {"glow": "#000000"}})", "ui.json"), ContainsSubstring("colors.glow"));
+    CHECK_THROWS_WITH(parseUiConfig(R"({"type_scale": {"body": 5}})", "ui.json"), ContainsSubstring("type_scale.body"));
+    CHECK_THROWS_WITH(parseUiConfig(R"({"dim_alpha": 300})", "ui.json"), ContainsSubstring("dim_alpha"));
+}
+
+TEST_CASE("parseUiColor: accepts only hex forms", "[ui][data]") {
+    UiColor Color;
+    CHECK(parseUiColor("#FFc800", Color));
+    CHECK(Color == UiColor{255, 200, 0, 255});
+    CHECK_FALSE(parseUiColor("ffc800", Color));
+    CHECK_FALSE(parseUiColor("#ffc80", Color));
+    CHECK_FALSE(parseUiColor("#gggggg", Color));
+}
+
+TEST_CASE("easeToward: approaches without overshoot, zero time jumps", "[ui][data]") {
+    CHECK(easeToward(0.0f, 1.0f, 0.1, 0.0) == 1.0f);
+    float Position = 0.0f;
+    for (int Step = 0; Step < 20; ++Step) {
+        const float Next = easeToward(Position, 1.0f, 0.016, 0.06);
+        CHECK(Next >= Position);
+        CHECK(Next <= 1.0f);
+        Position = Next;
+    }
+    CHECK(Position > 0.9f);
+    CHECK(easeToward(0.5f, 1.0f, 0.0, 0.06) == 0.5f);
+}
+
+TEST_CASE("loadFighterCard: shipped fighter shows name, weapon and stats", "[ui][data]") {
+    const FighterCard Card = loadFighterCard(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data", "knight");
+    CHECK(Card.Error.empty());
+    CHECK(Card.Name == "Knight");
+    CHECK(Card.Strength == 14);
+    CHECK(Card.Weapon != "Unarmed");
+}
+
+TEST_CASE("loadFighterCard: a missing sheet gives an error card", "[ui][data]") {
+    const FighterCard Card = loadFighterCard(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data", "nobody");
+    CHECK_FALSE(Card.Error.empty());
+    CHECK(Card.Name == "nobody");
 }

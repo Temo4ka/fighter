@@ -1,3 +1,25 @@
 {
-    "results_delay_sec": 2.0
+    "results_delay_sec": 2.0,
+    "highlight_sec": 0.06,
+    "dim_alpha": 170,
+    "colors": {
+        "background_top": "#0b0e1a",
+        "background_bottom": "#1c1a2e",
+        "floor": "#2a263c",
+        "panel": "#141624ee",
+        "track": "#2a2d42",
+        "accent": "#ffc84a",
+        "on_accent": "#14120a",
+        "text": "#e6e8f0",
+        "dim": "#7c819a",
+        "player1": "#4a9eff",
+        "player2": "#ff5a5a"
+    },
+    "type_scale": {
+        "title": 0.12,
+        "heading": 0.055,
+        "item": 0.04,
+        "body": 0.026,
+        "hint": 0.021
+    }
 }

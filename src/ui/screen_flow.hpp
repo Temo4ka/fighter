@@ -73,6 +73,7 @@ public:
     void onStartFailed();
 
     Screen getScreen() const { return Current; }
+    const UiConfig& getConfig() const { return Config; }
 
     /// The entries of the current menu (main menu, pause, results) and the
     /// selected one. Empty on the other screens.

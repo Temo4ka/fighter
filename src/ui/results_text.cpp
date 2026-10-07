@@ -1,13 +1,18 @@
 #include "ui/results_text.hpp"
 
 #include <format>
+#include <set>
+#include <utility>
 
 #include "core/body.hpp"
 
 namespace fighter::ui {
 namespace {
 
-std::vector<std::string> describeFighter(const combat::FighterReport& Report, const std::string& Name);
+void addRow(ResultsText& Text, std::string Label, std::string Left, std::string Right);
+void addHeader(ResultsText& Text, std::string Label);
+std::string formatHits(const combat::PartReport& Part);
+std::string formatStrikes(const combat::FighterReport& Report, const std::string& MoveId);
 
 } // namespace
 
@@ -20,38 +25,55 @@ ResultsText describeResult(const combat::BattleResult& Result, const std::array<
     }
     Text.Detail = std::format("{} after {:.1f} s", Result.End == combat::BattleEnd::Knockout ? "Knockout" : "Time up",
                               Result.TimeSec);
-    for (size_t Side = 0; Side < 2; ++Side) Text.Columns[Side] = describeFighter(Result.Fighters[Side], Names[Side]);
+
+    const auto& [Left, Right] = Result.Fighters;
+    addHeader(Text, "Damage");
+    addRow(Text, "Dealt", std::format("{:.1f}", Left.DamageDealt), std::format("{:.1f}", Right.DamageDealt));
+    addRow(Text, "Taken", std::format("{:.1f}", Left.DamageTaken), std::format("{:.1f}", Right.DamageTaken));
+    addRow(Text, "Knockdowns", std::format("{}", Left.Knockdowns), std::format("{}", Right.Knockdowns));
+
+    addHeader(Text, "Hits taken (count, damage)");
+    bool AnyHit = false;
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        const combat::PartReport& LeftPart = Left.HitsTaken[Index];
+        const combat::PartReport& RightPart = Right.HitsTaken[Index];
+        if (LeftPart.Hits == 0 && RightPart.Hits == 0) continue;
+        AnyHit = true;
+        addRow(Text, std::string(getBodyPartName(static_cast<BodyPart>(Index))), formatHits(LeftPart),
+               formatHits(RightPart));
+    }
+    if (!AnyHit) addRow(Text, "none", "", "");
+
+    addHeader(Text, "Strikes (thrown/landed/blocked)");
+    std::set<std::string> MoveIds;
+    for (const combat::FighterReport& Report : Result.Fighters) {
+        for (const auto& Entry : Report.Moves) MoveIds.insert(Entry.first);
+    }
+    for (const std::string& MoveId : MoveIds)
+        addRow(Text, MoveId, formatStrikes(Left, MoveId), formatStrikes(Right, MoveId));
+    if (MoveIds.empty()) addRow(Text, "none", "", "");
     return Text;
 }
 
 namespace {
 
-std::vector<std::string> describeFighter(const combat::FighterReport& Report, const std::string& Name) {
-    std::vector<std::string> Lines;
-    Lines.push_back(Name);
-    Lines.push_back(std::format("HP left: {:.1f}", Report.Hp));
-    Lines.push_back(std::format("Damage dealt: {:.1f}", Report.DamageDealt));
-    Lines.push_back(std::format("Damage taken: {:.1f}", Report.DamageTaken));
-    Lines.push_back(std::format("Knockdowns: {}", Report.Knockdowns));
+void addRow(ResultsText& Text, std::string Label, std::string Left, std::string Right) {
+    Text.Rows.push_back({std::move(Label), {std::move(Left), std::move(Right)}, false});
+}
 
-    Lines.push_back("Hits taken by body part:");
-    bool AnyHit = false;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const combat::PartReport& Part = Report.HitsTaken[Index];
-        if (Part.Hits == 0) continue;
-        AnyHit = true;
-        Lines.push_back(std::format("  {}: {} ({:.1f})", getBodyPartName(static_cast<BodyPart>(Index)), Part.Hits,
-                                    Part.Damage));
-    }
-    if (!AnyHit) Lines.push_back("  none");
+void addHeader(ResultsText& Text, std::string Label) {
+    Text.Rows.push_back({std::move(Label), {}, true});
+}
 
-    Lines.push_back("Strikes thrown/landed/blocked:");
-    for (const auto& [MoveId, Stats] : Report.Moves) {
-        Lines.push_back(std::format("  {}: {}/{}/{}  dmg {:.1f}", MoveId, Stats.Thrown, Stats.Landed, Stats.Blocked,
-                                    Stats.Damage));
-    }
-    if (Report.Moves.empty()) Lines.push_back("  none");
-    return Lines;
+std::string formatHits(const combat::PartReport& Part) {
+    return Part.Hits == 0 ? std::string("-") : std::format("{} ({:.1f})", Part.Hits, Part.Damage);
+}
+
+std::string formatStrikes(const combat::FighterReport& Report, const std::string& MoveId) {
+    const auto Found = Report.Moves.find(MoveId);
+    if (Found == Report.Moves.end()) return "-";
+    const combat::StrikeStats& Stats = Found->second;
+    return std::format("{}/{}/{}", Stats.Thrown, Stats.Landed, Stats.Blocked);
 }
 
 } // namespace

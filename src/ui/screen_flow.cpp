@@ -28,7 +28,11 @@ void ScreenFlow::onKey(MenuKey Key) {
         case MenuKey::Left:
         case MenuKey::Right:
             // On the selection screen the horizontal keys move between the sides.
-            if (Current == Screen::FighterSelect) Side = Key == MenuKey::Left ? 0 : 1;
+            if (Current == Screen::FighterSelect) {
+                Side = Key == MenuKey::Left ? 0 : 1;
+            } else if (Current == Screen::Results) {
+                moveCursor(Key == MenuKey::Left ? -1 : 1);   // the buttons lie in a row
+            }
             break;
         case MenuKey::Confirm: confirm(); break;
         case MenuKey::Back: goBack(); break;

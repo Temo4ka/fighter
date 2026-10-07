@@ -34,6 +34,7 @@
 #include "render/camera.hpp"
 #include "render/resources.hpp"
 #include "ui/screen_flow.hpp"
+#include "ui/screen_view.hpp"
 
 #if FIGHTER_DEBUG
 #include "render/debug_overlay.hpp"
@@ -108,6 +109,7 @@ private:
 
     InputSystem Input;
     ui::ScreenFlow Flow;
+    ui::ScreenView Screens;
     Connection FlowCommands;
     Connection FlowEvents;
     FixedStepLoop Loop;

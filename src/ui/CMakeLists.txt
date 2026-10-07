@@ -6,11 +6,13 @@ fighter_add_module(ui
         fighter_list.cpp
         ui_config.cpp
         results_text.cpp
+        fighter_card.cpp
         screen_view.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::combat
         fighter::render
+        fighter::stats
         SFML::Graphics
     PRIVATE_DEPS
         nlohmann_json::nlohmann_json
