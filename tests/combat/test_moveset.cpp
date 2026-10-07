@@ -89,6 +89,7 @@ TEST_CASE("MoveSet: a pair set is chosen for exactly its pair", "[combat][movese
     CHECK(Library.selectSet("sword", "").Id == "sword");
     CHECK(Library.selectSet("", "").Id == "unarmed");
     CHECK(Library.selectSet("axe", "").Id == "unarmed");
+    CHECK(Library.selectSet("", "shield").Id == "shield");   // the other hand alone
     CHECK(findId(Library, "sword_shield", "Special") == "bash");
     CHECK(findId(Library, "sword_shield", "Forward+Heavy") == "thrust");
 }
@@ -162,4 +163,6 @@ TEST_CASE("MoveLibrary: the sample data loads", "[combat][moveset][data]") {
     CHECK(Find(Library.selectSet("sword", ""), "Heavy") == "sword_slash");
     CHECK(Find(Library.selectSet("hammer", ""), "Heavy") == "hammer_smash");
     CHECK(Find(Library.selectSet("hammer", ""), "Light") == "jab");
+    CHECK(Library.selectSet("sword", "shield").Id == "sword_shield");
+    CHECK(Find(Library.selectSet("sword", "shield"), "Heavy") == "sword_slash");
 }

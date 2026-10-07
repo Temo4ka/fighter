@@ -117,9 +117,10 @@ struct HitRecord {
 class Fighter {
 public:
     /// \p Rules must outlive the fighter. \p StartHp: see
-    /// FighterConfig::StartHp. \p Weapon: the loadout's weapon, if any.
+    /// FighterConfig::StartHp. \p Gear gives the weapon (main hand) and the
+    /// moveset (the items in both hands, MoveLibrary::selectSet()).
     Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const BattleRules& Rules,
-            const stats::PhysicalProfile& NewProfile, const stats::WeaponProps* Weapon, const rig::RigSetup& Setup,
+            const stats::PhysicalProfile& NewProfile, const stats::Loadout& Gear, const rig::RigSetup& Setup,
             std::optional<float> StartHp);
 
     /// Runs the state machine for \p Cmd, sets the rig targets and plans the

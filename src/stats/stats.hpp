@@ -17,6 +17,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/body.hpp"
@@ -54,33 +55,77 @@ struct Stats {
     int Constitution = 10;  ///< CON: mass, HP, knockback resistance.
 };
 
-enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, Weapon };
+/// Where an item is worn. MainHand is the right hand, OffHand the left; a
+/// two-handed item takes both.
+enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, MainHand, OffHand };
 
-/// What makes an item in the Weapon slot a weapon (decision O.12).
+/// Is the slot a hand (MainHand, OffHand)?
+constexpr bool isHandSlot(EquipmentSlot Slot) {
+    return Slot == EquipmentSlot::MainHand || Slot == EquipmentSlot::OffHand;
+}
+
+/// The weapon component of an item (decision O.12): how its strikes differ.
 struct WeaponProps {
-    /// The moveset of the weapon, data/movesets/<MoveSet>.json: its strikes
-    /// and its block.
-    std::string MoveSet;
     float ReachM = 0.0f;       ///< How far it sticks out beyond the fist, m.
-    float SpeedScale = 1.0f;   ///< Multiplies the speed of strikes.
-    float PowerScale = 1.0f;   ///< Multiplies the damage of strikes.
+    float SpeedScale = 1.0f;   ///< Multiplies the speed of the strikes made with it.
+    float PowerScale = 1.0f;   ///< Multiplies the damage of the strikes made with it.
+    /// The thickness of the blade or haft, m, and its angle to the forearm,
+    /// degrees; nullopt: the rig's "weapon" mount (data/rigs/).
+    std::optional<float> RadiusM;
+    std::optional<float> AngleDeg;
 };
 
+/// The shield component of an item: a plate on the forearm that holds it.
+/// The body (task M.2) makes it a physical part; what it blocks is the
+/// business of the moveset's block.
+struct ShieldProps {
+    float LengthM = 0.0f;   ///< Along the forearm, m.
+    float WidthM = 0.0f;    ///< Across it (the plate's thickness is fixed), m.
+    float AngleDeg = 0.0f;  ///< To the forearm, degrees.
+};
+
+/// An item is the common fields plus optional components (decision
+/// 2026-10-08: new items are data only). docs/DATA_FORMATS.md, items/.
 struct EquipmentItem {
     std::string Id;
     std::string Name;               ///< Display name for menus and the debug panel.
     EquipmentSlot Slot = EquipmentSlot::Body;
-    std::vector<BodyPart> Covers;   ///< Body parts that get heavier and protected.
+    /// Takes both hands; only with Slot MainHand.
+    bool TwoHanded = false;
+    /// Body parts that get heavier and protected. Empty in the catalog for
+    /// an item held in a hand: buildLoadout() puts it on the holding forearm.
+    std::vector<BodyPart> Covers;
     float MassKg = 0.0f;            ///< Split evenly between the parts in Covers.
     float Armor = 0.0f;             ///< 0..1: fraction of damage absorbed.
-    std::optional<WeaponProps> Weapon;   ///< Only in the Weapon slot; nullopt there is not a weapon yet.
+    /// The moveset the item gives its holder (data/movesets/); only for an
+    /// item held in a hand; empty: none.
+    std::string MoveSet;
+    std::optional<WeaponProps> Weapon;   ///< Only for an item held in a hand.
+    std::optional<ShieldProps> Shield;   ///< Only for an item held in a hand.
+
+    /// Does the item take \p Which (a two-handed item takes both hands)?
+    bool takesSlot(EquipmentSlot Which) const {
+        return Which == Slot || (TwoHanded && Which == EquipmentSlot::OffHand);
+    }
 };
+
+/// The forearm a hand slot holds items with: MainHand the right, OffHand the
+/// left.
+constexpr BodyPart getHandPart(EquipmentSlot Hand) {
+    return Hand == EquipmentSlot::OffHand ? BodyPart::ForearmL : BodyPart::ForearmR;
+}
 
 struct Loadout {
     std::vector<EquipmentItem> Items;
 
-    /// The properties of the weapon in the loadout, or nullptr if it has none.
+    /// The item that takes \p Which, or nullptr.
+    const EquipmentItem* findInSlot(EquipmentSlot Which) const;
+    /// The weapon in the main hand (the one strikes use until M.2), or
+    /// nullptr.
     const WeaponProps* findWeapon() const;
+    /// The moveset of the item in \p Hand; empty if none. A two-handed item
+    /// gives its set to the main hand only.
+    std::string_view getMoveSet(EquipmentSlot Hand) const;
 };
 
 /// Balance coefficients, loaded from data/balance.json (loadBalanceTable()).

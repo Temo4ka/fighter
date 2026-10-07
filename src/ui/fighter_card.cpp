@@ -21,7 +21,7 @@ FighterCard loadFighterCard(const std::filesystem::path& DataDir, const std::str
         Card.Dexterity = Fighter.BaseStats.Dexterity;
         Card.Constitution = Fighter.BaseStats.Constitution;
         for (const stats::EquipmentItem& Item : Fighter.Gear.Items) {
-            if (Item.Slot == stats::EquipmentSlot::Weapon && Item.Weapon) Card.Weapon = Item.Name;
+            if (Item.Slot == stats::EquipmentSlot::MainHand && Item.Weapon) Card.Weapon = Item.Name;
         }
     } catch (const std::exception& Error) {
         Card.Error = Error.what();

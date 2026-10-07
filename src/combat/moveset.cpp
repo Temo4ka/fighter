@@ -55,6 +55,7 @@ const MoveSet& MoveLibrary::selectSet(std::string_view MainSet, std::string_view
         }
     }
     if (const MoveSet* Main = findSet(MainSet)) return *Main;
+    if (const MoveSet* Off = findSet(OffSet)) return *Off;
     return *findSet(UnarmedMoveSetId);
 }
 

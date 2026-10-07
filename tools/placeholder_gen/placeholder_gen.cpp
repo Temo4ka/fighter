@@ -71,7 +71,7 @@ void addPartMarks(const PartGeometry& Geometry, Rgb Base, std::vector<Layer>& La
 sf::Image renderLayers(Vec2 SizeMeters, float PixelsPerMeter, Variant Kind, const std::vector<Layer>& Layers);
 std::vector<Layer> makeHelmetLayers(const PartGeometry& Geometry, Rgb Metal);
 std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal);
-std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, const PartGeometry& Geometry);
+std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, const PartGeometry& Geometry);
 Rgb getArmorColor(float Armor);
 sf::Image drawReferencePose(const rig::RigDef& Rig, Variant Kind, float Overlap,
                             const std::vector<const stats::EquipmentItem*>& Items);
@@ -148,7 +148,7 @@ sf::Image drawItemOverlay(const stats::EquipmentItem& Item, const PartGeometry& 
     Vec2 Size = Geometry.getImageSize() + Vec2{2.0f * ArmorMargin, 2.0f * ArmorMargin};
     std::vector<Layer> Layers;
     if (Item.Weapon) {
-        Layers = makeWeaponLayers(*Item.Weapon, Geometry);
+        Layers = makeWeaponLayers(*Item.Weapon, Item.MoveSet, Geometry);
         // Symmetric about the forearm centre so that the centre rule holds.
         const float HalfHeight = Geometry.getImageSize().Y * 0.5f + Item.Weapon->ReachM + ArmorMargin;
         Size = {std::max(Geometry.getImageSize().X, MinWeaponWidth), 2.0f * HalfHeight};
@@ -190,7 +190,12 @@ std::vector<std::filesystem::path> generatePlaceholders(const GenerateOptions& O
         }
 
         for (const stats::EquipmentItem* Item : Items) {
-            for (const BodyPart Covered : Item->Covers) {
+            // An item held in a hand covers the holding forearm, which the
+            // fighter sheet chooses: draw both.
+            const std::vector<BodyPart> Parts = stats::isHandSlot(Item->Slot)
+                                                    ? std::vector<BodyPart>{BodyPart::ForearmR, BodyPart::ForearmL}
+                                                    : Item->Covers;
+            for (const BodyPart Covered : Parts) {
                 const auto Geometry = computePartGeometry(Rig.getPart(Covered), Options.Overlap);
                 const auto Path = VariantDir / "items" / Item->Id / (std::string(getBodyPartName(Covered)) + ".png");
                 saveImage(drawItemOverlay(*Item, Geometry, Kind), Path);
@@ -501,7 +506,7 @@ std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal) {
 /// A weapon lies along the forearm with its hilt in the fist and the working
 /// end beyond the fist's lower edge by the reach: a blade for a sword, a head
 /// on a shaft for anything blunt.
-std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, const PartGeometry& Geometry) {
+std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, const PartGeometry& Geometry) {
     const float Fist = -Geometry.ShapeSize.Y * 0.5f;
     const float Reach = Weapon.ReachM;
     const Rgb Wood{0.45f, 0.30f, 0.16f};
@@ -521,7 +526,7 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, const Part
         return [Center, Half](Vec2 Point) { return getSdfBox(Point, Center, Half, 0.0f); };
     };
 
-    if (Weapon.MoveSet == "sword") {
+    if (MoveSet == "sword") {
         const float HalfWidth = 0.024f;
         const float TipLength = 0.05f;
         const float BladeTop = Fist - 0.016f;

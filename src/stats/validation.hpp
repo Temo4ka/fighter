@@ -57,6 +57,10 @@ inline constexpr float MaxItemArmor = 1.0f;
 /// A weapon reaches at most MaxWeaponReachM beyond the fist.
 inline constexpr float MaxWeaponReachM = 1.5f;
 
+/// The largest weapon radius and shield length or width, m.
+inline constexpr float MaxWeaponRadiusM = 0.1f;
+inline constexpr float MaxShieldSizeM = 1.2f;
+
 /// The speed and power scales of a weapon lie in [MinWeaponScale, MaxWeaponScale].
 inline constexpr float MinWeaponScale = 0.25f;
 inline constexpr float MaxWeaponScale = 4.0f;
@@ -68,10 +72,12 @@ inline constexpr float MaxLoadoutMassKg = 60.0f;
 /// Throws DataError if a stat is out of [MinStatValue, MaxStatValue].
 void validateStats(const Stats& BaseStats);
 
-/// Throws DataError if the item has an empty id, covers no body parts, covers
-/// an unknown body part or one part twice, or has mass or armor out of range;
-/// also if it has weapon properties outside the Weapon slot, an empty weapon
-/// class, or a reach or scale out of range.
+/// Throws DataError if the item has an empty id, covers no body parts (an
+/// item held in a hand may: buildLoadout() covers its forearm), covers an
+/// unknown body part or one part twice, or has mass or armor out of range;
+/// if it is two-handed outside MainHand; if it has a moveset, a weapon or a
+/// shield but is not held in a hand; or if a weapon or shield size, angle or
+/// scale is out of range.
 void validateItem(const EquipmentItem& Item);
 
 /// One scalar coefficient of BalanceTable under its key in data/balance.json.

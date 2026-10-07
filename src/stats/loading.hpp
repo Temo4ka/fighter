@@ -26,18 +26,22 @@
 ///      "covers": ["Head"], "mass_kg": 2.5, "armor": 0.3}
 ///   ]}
 ///
-///   // data/items/weapons.json: "weapon" only in the Weapon slot
+///   // data/items/weapons.json: an item held in a hand has no "covers"
+///   // (it covers the holding forearm) and may have components
 ///   {"items": [
-///     {"id": "short_sword", "slot": "Weapon", "covers": ["ForearmR"],
-///      "mass_kg": 1.2, "armor": 0.0,
-///      "weapon": {"moveset": "sword", "reach_m": 0.55,
-///                 "speed_scale": 1.0, "power_scale": 1.2}}
+///     {"id": "short_sword", "slot": "MainHand", "mass_kg": 1.2,
+///      "moveset": "sword",
+///      "weapon": {"reach_m": 0.55, "speed_scale": 1.0, "power_scale": 1.2}},
+///     {"id": "wooden_shield", "slot": "OffHand", "mass_kg": 3.0,
+///      "armor": 0.3, "moveset": "shield",
+///      "shield": {"length_m": 0.5, "width_m": 0.45}}
 ///   ]}
 ///
-///   // data/fighters/knight.json
+///   // data/fighters/knight.json; a one-handed item may change hands
 ///   {"name": "Knight",
 ///    "stats": {"strength": 14, "dexterity": 8, "constitution": 14},
-///    "items": ["iron_helmet", "chainmail"]}
+///    "items": ["iron_helmet", "chainmail",
+///              {"id": "short_sword", "slot": "OffHand"}]}
 /// \endcode
 ///
 /// The balance table, data/balance.json (docs/DATA_FORMATS.md):
@@ -48,9 +52,11 @@
 /// Every field is required and an unknown one is an error; the values are
 /// checked by validateBalanceTable().
 ///
-/// "name" of an item is optional and defaults to its id; "weapon" is optional
-/// (an item in the Weapon slot without it is not a weapon yet); every other
-/// field is required, including all four fields of "weapon".
+/// "name" of an item is optional and defaults to its id; "armor" defaults to
+/// 0; "two_handed", "moveset", "weapon" and "shield" are optional; "covers"
+/// is required except for an item held in a hand, where it is an error.
+/// Within "weapon", "radius_m" and "angle_deg" are optional; within
+/// "shield", "angle_deg".
 ///
 //===----------------------------------------------------------------------===//
 

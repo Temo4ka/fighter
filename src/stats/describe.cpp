@@ -31,8 +31,8 @@ namespace {
 std::string describeWeapon(const Loadout& Gear) {
     const WeaponProps* Weapon = Gear.findWeapon();
     if (Weapon == nullptr) return "unarmed";
-    return std::format("{} (reach +{:.2f} m, speed x{:.2f}, power x{:.2f})", Weapon->MoveSet, Weapon->ReachM,
-                       Weapon->SpeedScale, Weapon->PowerScale);
+    return std::format("{} (reach +{:.2f} m, speed x{:.2f}, power x{:.2f})", Gear.getMoveSet(EquipmentSlot::MainHand),
+                       Weapon->ReachM, Weapon->SpeedScale, Weapon->PowerScale);
 }
 
 } // namespace

@@ -258,8 +258,9 @@ TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json
     Options.OutDir = Out;
     const auto Files = generatePlaceholders(Options);
 
-    // 13 parts, a helmet on the head and a sword on one forearm, two variants.
-    CHECK(Files.size() == 2 * (BodyPartCount + 2));
+    // 13 parts, a helmet on the head and a sword on either forearm (an item
+    // held in a hand may be in either), two variants.
+    CHECK(Files.size() == 2 * (BodyPartCount + 3));
     for (const auto* Dir : {"pixel", "smooth"}) {
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Name = std::string(getBodyPartName(static_cast<BodyPart>(Index))) + ".png";

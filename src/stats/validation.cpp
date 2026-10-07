@@ -71,7 +71,15 @@ void validateBalanceTable(const BalanceTable& Balance) {
 
 void validateItem(const EquipmentItem& Item) {
     if (Item.Id.empty()) throw DataError("item id is empty");
-    if (Item.Covers.empty()) throw DataError(std::format("item '{}' covers no body parts", Item.Id));
+    // An item held in a hand covers the holding forearm (buildLoadout()).
+    const bool Held = isHandSlot(Item.Slot);
+    if (Item.Covers.empty() && !Held) throw DataError(std::format("item '{}' covers no body parts", Item.Id));
+    if (Item.TwoHanded && Item.Slot != EquipmentSlot::MainHand) {
+        throw DataError(std::format("item '{}' is two-handed but its slot is not MainHand", Item.Id));
+    }
+    if (!Held && (!Item.MoveSet.empty() || Item.Weapon || Item.Shield)) {
+        throw DataError(std::format("item '{}' has a moveset, a weapon or a shield but is not held in a hand", Item.Id));
+    }
 
     PerBodyPart<bool> Covered{};
     for (BodyPart Part : Item.Covers) {
@@ -88,12 +96,25 @@ void validateItem(const EquipmentItem& Item) {
     checkItemRange(Item, "mass", Item.MassKg, MaxItemMassKg, " kg");
     checkItemRange(Item, "armor", Item.Armor, MaxItemArmor, "");
 
+    const auto CheckAngle = [&](std::string_view Name, float Degrees) {
+        // Written so that NaN fails the check too.
+        if (Degrees >= -180.0f && Degrees <= 180.0f) return;
+        throw DataError(std::format("item '{}': {} {} is out of [-180, 180] degrees", Item.Id, Name, Degrees));
+    };
+    const auto CheckSize = [&](std::string_view Name, float Value, float Max) {
+        if (Value > 0.0f && Value <= Max) return;
+        throw DataError(std::format("item '{}': {} {} m is out of (0, {}] m", Item.Id, Name, Value, Max));
+    };
+    if (Item.Shield) {
+        CheckSize("shield length", Item.Shield->LengthM, MaxShieldSizeM);
+        CheckSize("shield width", Item.Shield->WidthM, MaxShieldSizeM);
+        CheckAngle("shield angle", Item.Shield->AngleDeg);
+    }
+
     if (!Item.Weapon) return;
     const WeaponProps& Weapon = *Item.Weapon;
-    if (Item.Slot != EquipmentSlot::Weapon) {
-        throw DataError(std::format("item '{}' has weapon properties but is not in the Weapon slot", Item.Id));
-    }
-    if (Weapon.MoveSet.empty()) throw DataError(std::format("weapon '{}' has an empty moveset", Item.Id));
+    if (Weapon.RadiusM) CheckSize("weapon radius", *Weapon.RadiusM, MaxWeaponRadiusM);
+    if (Weapon.AngleDeg) CheckAngle("weapon angle", *Weapon.AngleDeg);
     checkItemRange(Item, "reach", Weapon.ReachM, MaxWeaponReachM, " m");
     const auto CheckScale = [&](std::string_view Name, float Scale) {
         if (Scale >= MinWeaponScale && Scale <= MaxWeaponScale) return;
@@ -117,12 +138,16 @@ void validateLoadout(const Loadout& Gear) {
         if (SlotIndex >= SlotOwners.size()) {
             throw DataError(std::format("item '{}' has an unknown slot (index {})", Item.Id, SlotIndex));
         }
-        if (const EquipmentItem* Owner = SlotOwners[SlotIndex]) {
-            if (Owner->Id == Item.Id) throw DataError(std::format("item '{}' is listed twice", Item.Id));
-            throw DataError(std::format("items '{}' and '{}' both take the {} slot", Owner->Id, Item.Id,
-                                        getEquipmentSlotName(Item.Slot)));
+        for (const EquipmentSlot Slot : EquipmentSlots) {
+            if (!Item.takesSlot(Slot)) continue;
+            const EquipmentItem*& Owner = SlotOwners[static_cast<size_t>(Slot)];
+            if (Owner) {
+                if (Owner->Id == Item.Id) throw DataError(std::format("item '{}' is listed twice", Item.Id));
+                throw DataError(std::format("items '{}' and '{}' both take the {} slot", Owner->Id, Item.Id,
+                                            getEquipmentSlotName(Slot)));
+            }
+            Owner = &Item;
         }
-        SlotOwners[SlotIndex] = &Item;
     }
 
     if (TotalMassKg > MaxLoadoutMassKg) {

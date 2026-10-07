@@ -12,7 +12,7 @@ ResolvedFighter resolveFighterSheet(const FighterSheet& Sheet, const ItemCatalog
         return ResolvedFighter{
             .Name = Sheet.Name,
             .BaseStats = Sheet.BaseStats,
-            .Gear = buildLoadout(Sheet.ItemIds, Catalog),
+            .Gear = buildLoadout(Sheet.Items, Catalog),
         };
     });
 }
