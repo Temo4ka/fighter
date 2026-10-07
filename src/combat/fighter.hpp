@@ -290,7 +290,12 @@ private:
     void startLegStep(const anim::Clip& Top, const anim::Pose& Target);
     /// \p Authored as this fighter plays it now: mirrored (left leg for
     /// right) when it poses the legs and LegsMirrored is set.
-    const anim::Clip& getPlayed(const anim::Clip& Authored) const;
+    /// With \p OtherHand, also with the arms swapped (a weapon in the other
+    /// hand, ClipLibrary::getOtherHand()).
+    const anim::Clip& getPlayed(const anim::Clip& Authored, bool OtherHand = false) const;
+    /// Chooses StrikeWeapon and StrikeOtherHand for a weapon move of the clip
+    /// \p Authored.
+    void chooseStrikeWeapon(const anim::Clip& Authored);
     /// Should a leg action that starts now play mirrored: the right foot is
     /// in front and the tuning says "mirror"?
     bool shouldMirrorLegs() const;
@@ -374,7 +379,18 @@ private:
     rig::Rig Body;
     const BattleRules* Rules = nullptr;
     stats::PhysicalProfile Profile;
-    std::optional<stats::WeaponProps> Weapon;
+    /// A weapon in a hand: the forearm that holds it (RigDef::Weapon).
+    struct HandWeapon {
+        BodyPart Part = BodyPart::ForearmR;
+        stats::WeaponProps Props;
+        std::string ItemName;
+    };
+    std::vector<HandWeapon> Weapons;       ///< Main hand first.
+    /// The weapon of the current weapon move (index into Weapons), if any.
+    std::optional<size_t> StrikeWeapon;
+    /// The current attack plays with the arms swapped: its weapon is in the
+    /// other hand than the clip was authored for.
+    bool StrikeOtherHand = false;
     const MoveSet* Set = nullptr;          ///< From the weapon: which input starts which move, and the block.
     BlockRules Block;                      ///< The block of Set, with its parents and reactions.json.
     float Hp = 0.0f;

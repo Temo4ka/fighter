@@ -308,7 +308,7 @@ TEST_CASE("Rig: the weapon extends the forearm that holds it", "[rig]") {
     Reaching[static_cast<size_t>(BodyPart::UpperArmR)] = 1.57f;
     Reaching[static_cast<size_t>(BodyPart::ForearmR)] = 0.0f;
     RigSetup Armed = makeSetup(0.0f, true);
-    Armed.WeaponReachM = 0.5f;
+    Armed.Held = {{.Part = BodyPart::ForearmR, .WeaponReachM = 0.5f}};
     Solo Bare(makeSetup(0.0f, true), Reaching);
     Solo Sword(Armed, Reaching);
     Bare.run(60);

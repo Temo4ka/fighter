@@ -56,8 +56,12 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 [[maybe_unused]] std::string describeAction(const FighterView& View, const Fighter& Player);
 rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning);
 bool isArm(BodyPart Part);
-rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,
-                           uint8_t Index);
+/// The weapons and shields of the items in both hands, on the forearms of
+/// \p Mount (main hand: Part, the other: OffPart). A two-handed item is held
+/// by the main hand.
+std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::WeaponMount& Mount);
+rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear,
+                           const rig::RigDef& Body, float StartX, uint8_t Index);
 
 } // namespace
 
@@ -109,7 +113,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
         const stats::PhysicalProfile Profile = stats::computeProfile(FighterCfg->Stats, FighterCfg->Loadout, Balance);
         const float StartX = Side * Tuning.SpawnDistance * 0.5f;
         Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Rules, Profile, FighterCfg->Loadout,
-                                   makeRigSetup(Profile, FighterCfg->Loadout, StartX, Index), FighterCfg->StartHp);
+                                   makeRigSetup(Profile, FighterCfg->Loadout, Body, StartX, Index), FighterCfg->StartHp);
     }
     publishSnapshot();
 }
@@ -460,6 +464,28 @@ void addArena(physics::World& PhysWorld, const ArenaConfig& Arena) {
 }
 
 /// An upper arm or a forearm (with the weapon it holds).
+std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::WeaponMount& Mount) {
+    std::vector<rig::HeldItem> Held;
+    for (const stats::EquipmentSlot Hand : {stats::EquipmentSlot::MainHand, stats::EquipmentSlot::OffHand}) {
+        const stats::EquipmentItem* Item = Gear.findInSlot(Hand);
+        // A two-handed item is held by the main hand; the other one grips it.
+        if (!Item || Item->Slot != Hand || (!Item->Weapon && !Item->Shield)) continue;
+        rig::HeldItem& Entry = Held.emplace_back();
+        Entry.Part = Hand == stats::EquipmentSlot::MainHand ? Mount.Part : Mount.OffPart;
+        if (Item->Weapon) {
+            Entry.WeaponReachM = Item->Weapon->ReachM;
+            Entry.WeaponRadiusM = Item->Weapon->RadiusM;
+            Entry.WeaponAngleDeg = Item->Weapon->AngleDeg;
+        }
+        if (Item->Shield) {
+            Entry.ShieldLengthM = Item->Shield->LengthM;
+            Entry.ShieldWidthM = Item->Shield->WidthM;
+            Entry.ShieldAngleDeg = Item->Shield->AngleDeg;
+        }
+    }
+    return Held;
+}
+
 bool isArm(BodyPart Part) {
     return Part == BodyPart::UpperArmL || Part == BodyPart::ForearmL || Part == BodyPart::UpperArmR ||
            Part == BodyPart::ForearmR;
@@ -475,8 +501,8 @@ rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuni
             .MaxSoftOverlap = Tuning.PushSoftOverlap};
 }
 
-rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear, float StartX,
-                           uint8_t Index) {
+rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear,
+                           const rig::RigDef& Body, float StartX, uint8_t Index) {
     rig::RigSetup Setup;
     Setup.Origin = {StartX, SpawnLift};
     Setup.FacingRight = StartX < 0.0f;   // fighters face each other
@@ -485,7 +511,10 @@ rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::L
     Setup.MotorMaxTorque = Profile.MotorMaxTorque;
     Setup.MotorGain = Profile.MotorGain;
     Setup.MoveSpeedScale = Profile.MoveSpeedScale;
-    if (const stats::WeaponProps* Weapon = Gear.findWeapon()) Setup.WeaponReachM = Weapon->ReachM;
+    Setup.Held = getHeldItems(Gear, Body.Weapon);
+    if (const stats::EquipmentItem* Main = Gear.findInSlot(stats::EquipmentSlot::MainHand); Main && Main->TwoHanded) {
+        Setup.GripPart = Body.Weapon.OffPart;
+    }
     return Setup;
 }
 

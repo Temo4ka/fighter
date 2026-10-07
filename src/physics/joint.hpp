@@ -66,4 +66,41 @@ private:
     uint64_t Id = 0;   ///< b2JointId packed with b2StoreJointId; 0 is null.
 };
 
+/// A soft pin between two bodies: a point of each, pulled together by a
+/// spring (a hand on the handle of a two-handed weapon).
+struct SpringJointDef {
+    Body BodyA;
+    Body BodyB;
+    Vec2 LocalAnchorA;           ///< In body A's frame, m.
+    Vec2 LocalAnchorB;           ///< In body B's frame, m.
+    /// Stiffness of the spring, Hz; 0: a rigid pin.
+    float Hertz = 0.0f;
+    float DampingRatio = 1.0f;   ///< Of the spring; 1 is critical.
+    /// The points never get further apart than this, m; 0: no limit.
+    float MaxLength = 0.0f;
+};
+
+/// Non-owning handle to a spring joint (SpringJointDef) of a World.
+class SpringJoint {
+public:
+    SpringJoint() = default;
+
+    bool isValid() const;
+    /// The world points of the two anchors, m.
+    Vec2 getAnchorA() const;
+    Vec2 getAnchorB() const;
+    /// How far apart the anchors are, m.
+    float getLength() const;
+
+    Body getBodyA() const;
+    Body getBodyB() const;
+
+private:
+    friend class World;
+
+    explicit SpringJoint(uint64_t Packed) : Id(Packed) {}
+
+    uint64_t Id = 0;   ///< b2JointId packed with b2StoreJointId; 0 is null.
+};
+
 } // namespace fighter::physics

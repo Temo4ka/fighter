@@ -44,6 +44,7 @@ constexpr std::array TuningFields = {
     TuningField{"crouchWalkSpeedScale", &CombatTuning::CrouchWalkSpeedScale},
     TuningField{"crouchStandUpSec", &CombatTuning::CrouchStandUpSec},
     TuningField{"endSettleSec", &CombatTuning::EndSettleSec},
+    TuningField{"shieldHitMargin", &CombatTuning::ShieldHitMargin},
     TuningField{"contactStopDepth", &CombatTuning::ContactStopDepth},
     TuningField{"contactHoldSec", &CombatTuning::ContactHoldSec},
     TuningField{"contactRecoveryBlendSec", &CombatTuning::ContactRecoveryBlendSec},
@@ -164,6 +165,7 @@ CombatTuning parseCombatTuning(std::string_view JsonText) {
     }
     if (Tuning.CrouchStandUpSec < 0.0f) throw std::runtime_error("crouchStandUpSec must not be negative");
     if (Tuning.EndSettleSec < 0.0f) throw std::runtime_error("endSettleSec must not be negative");
+    if (Tuning.ShieldHitMargin < 0.0f) throw std::runtime_error("shieldHitMargin must not be negative");
     if (Tuning.ContactStopDepth <= 0.0f) throw std::runtime_error("contactStopDepth must be positive");
     if (Tuning.ContactHoldSec < 0.0f) throw std::runtime_error("contactHoldSec must not be negative");
     if (Tuning.ContactRecoveryBlendSec < 0.0f) {

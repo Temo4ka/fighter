@@ -72,19 +72,23 @@ constexpr std::array ControlFields = {
     ControlField{"yieldStiffness", &ControlParams::YieldStiffness},
     ControlField{"yieldSec", &ControlParams::YieldSec},
     ControlField{"yieldReturnClearance", &ControlParams::YieldReturnClearance},
+    ControlField{"gripHertz", &ControlParams::GripHertz},
+    ControlField{"gripDampingRatio", &ControlParams::GripDampingRatio},
+    ControlField{"gripMaxStretch", &ControlParams::GripMaxStretch},
+    ControlField{"gripArmStiffness", &ControlParams::GripArmStiffness},
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 23> NonNegativeFields = {
+constexpr std::array<std::string_view, 26> NonNegativeFields = {
     "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight",     "footLockSlip",
     "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",            "jamSec",
     "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",      "minStiffness",
     "yieldStiffness",  "yieldSec",           "holdGravityMargin", "dampedErrorAngle",    "yieldReturnClearance",
-    "knockdownLegStiffness", "kneeExtraBend", "maxPelvisDrop"};
+    "knockdownLegStiffness", "kneeExtraBend", "maxPelvisDrop", "gripHertz", "gripDampingRatio", "gripMaxStretch"};
 
 /// Parameters that are shares: from 0 to 1.
-constexpr std::array<std::string_view, 4> ShareFields = {"carrierTransfer", "knockbackTransfer", "feedForward",
-                                                         "gravityCompensation"};
+constexpr std::array<std::string_view, 5> ShareFields = {"carrierTransfer", "knockbackTransfer", "feedForward",
+                                                         "gravityCompensation", "gripArmStiffness"};
 
 /// Parameters that must be positive: they divide or set a duration.
 constexpr std::array<std::string_view, 5> PositiveFields = {"walkSpeed", "walkAcceleration", "walkDeceleration",
@@ -137,6 +141,8 @@ RigDef parseRigDef(std::string_view JsonText) {
     validateRig(Result);
     // The weapon continues a capsule from its far end. Without a "weapon"
     // object the default part is used if it is a capsule, else none.
+    // The main hand's part must be a capsule if the file names it; an
+    // item of a hand whose part is not one is left out (RigSetup::Held).
     if (HasWeapon && Result.getPart(Result.Weapon.Part).Shape != physics::ShapeKind::Capsule) {
         throw std::runtime_error(
             std::format("weapon: part {} must be a capsule", getBodyPartName(Result.Weapon.Part)));
@@ -236,9 +242,15 @@ ControlParams parseControl(const Json& Node) {
 }
 
 WeaponMount parseWeapon(const Json& Node) {
-    checkKeys(Node, {"part", "angle", "radius"}, "weapon");
+    checkKeys(Node, {"part", "offPart", "angle", "radius", "grip"}, "weapon");
     WeaponMount Mount;
     if (const auto Part = Node.find("part"); Part != Node.end()) Mount.Part = parseBodyPart(*Part);
+    // The other forearm by default.
+    Mount.OffPart = Mount.Part == BodyPart::ForearmL ? BodyPart::ForearmR : BodyPart::ForearmL;
+    if (const auto Part = Node.find("offPart"); Part != Node.end()) Mount.OffPart = parseBodyPart(*Part);
+    Mount.Grip = Node.value("grip", Mount.Grip);
+    if (Mount.Grip < 0.0f) throw std::runtime_error("weapon: 'grip' must not be negative");
+    if (Mount.Part == Mount.OffPart) throw std::runtime_error("weapon: 'part' and 'offPart' must differ");
     Mount.Angle = Node.value("angle", 0.0f) * RadiansPerDegree;
     Mount.Radius = Node.value("radius", Mount.Radius);
     if (Mount.Radius <= 0.0f) throw std::runtime_error("weapon: 'radius' must be positive");

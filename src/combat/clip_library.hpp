@@ -72,17 +72,32 @@ public:
     /// \p Source played with the other leg: its mirrored copy if it poses
     /// the legs, else \p Source itself (also for a clip of another library).
     const anim::Clip& getMirrored(const anim::Clip& Source) const;
-    /// The clip as authored: \p Source, or the one it is the mirrored copy of.
+    /// \p Source (as authored, or its copy with the legs mirrored) played
+    /// with the other arm: its copy with the arms swapped if it uses the arms
+    /// (anim::usesArms), else \p Source itself (also for a clip of another
+    /// library).
+    const anim::Clip& getOtherHand(const anim::Clip& Source) const;
+    /// The clip as authored: \p Source, or the one it is a copy of (legs
+    /// mirrored, arms swapped or both).
     const anim::Clip& getAuthored(const anim::Clip& Source) const;
-    /// Is \p Source a mirrored copy?
+    /// Is \p Source a copy (legs mirrored, arms swapped or both)?
     bool isMirrored(const anim::Clip& Source) const;
+    /// Is \p Source a copy with the arms swapped?
+    bool isOtherHand(const anim::Clip& Source) const;
 
 private:
     void add(const std::filesystem::path& PosesDir, std::string_view Name);
 
     std::map<std::string, anim::Clip, std::less<>> Clips;
+    /// Makes the copies of the clip \p Name: mirrored legs, swapped arms.
+    void addCopies(const std::string& Name);
+
     /// The mirrored copies of the clips that pose the legs, by the name of the authored clip.
     std::map<std::string, anim::Clip, std::less<>> Mirrored;
+    /// The copies with the arms swapped of the clips that use the arms, and
+    /// of their leg-mirrored copies, by the name of the authored clip.
+    std::map<std::string, anim::Clip, std::less<>> OtherHand;
+    std::map<std::string, anim::Clip, std::less<>> MirroredOtherHand;
 };
 
 } // namespace fighter::combat

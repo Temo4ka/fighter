@@ -80,6 +80,27 @@
 
 namespace fighter::rig {
 
+/// An item held in a hand, as the body shapes it: a weapon is a second
+/// capsule of the holding forearm from the fist outwards, a shield a plate on
+/// it. Both are parts of the forearm for physics and hits.
+struct HeldItem {
+    BodyPart Part = BodyPart::ForearmR;   ///< The forearm that holds it (a capsule).
+    /// How far the weapon sticks out beyond the fist, m; 0: no weapon.
+    float WeaponReachM = 0.0f;
+    /// The weapon's thickness, m, and its angle to the forearm, degrees;
+    /// nullopt: the rig's weapon mount (RigDef::Weapon).
+    std::optional<float> WeaponRadiusM;
+    std::optional<float> WeaponAngleDeg;
+    /// A two-handed weapon: how far along it from the fist the other hand
+    /// grips it, m; nullopt: the mount's (WeaponMount::Grip).
+    std::optional<float> GripM;
+    /// The shield plate along and across the forearm, m, centered on it and
+    /// turned by ShieldAngleDeg; a length of 0: no shield.
+    float ShieldLengthM = 0.0f;
+    float ShieldWidthM = 0.0f;
+    float ShieldAngleDeg = 0.0f;
+};
+
 /// Where a rig is created and how strong it is. Masses, motor values and the
 /// walking speed scale come from the fighter's physical profile.
 struct RigSetup {
@@ -90,10 +111,13 @@ struct RigSetup {
     float MotorMaxTorque = 150.0f; ///< N*m for a joint of strength 1 at stiffness 1.
     float MotorGain = 12.0f;       ///< 1/s: motor speed per radian of angle error.
     float MoveSpeedScale = 1.0f;   ///< Multiplies ControlParams::WalkSpeed (DEX).
-    /// How far the weapon of the loadout sticks out beyond the fist
-    /// (stats::WeaponProps::ReachM), m; 0 is unarmed. The rig file says
-    /// which part holds it (RigDef::Weapon).
-    float WeaponReachM = 0.0f;
+    /// The items held in the hands (weapons, shields); empty: unarmed. An
+    /// item whose part is not a capsule of the rig is left out.
+    std::vector<HeldItem> Held;
+    /// A two-handed weapon: this forearm (the other hand) grips the handle
+    /// of the weapon the other forearm holds (RigDef::Weapon,
+    /// ControlParams::GripHertz); nullopt: no grip.
+    std::optional<BodyPart> GripPart;
 };
 
 /// What the body is doing as a whole.
@@ -370,11 +394,21 @@ public:
     /// its joint range); a point out of reach gets the nearest the leg can do. The
     /// other joints are left as they are. Nothing moves.
     void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
-    /// How far the weapon sticks out beyond the fist, m; 0 if unarmed.
-    float getWeaponReach() const { return WeaponReach; }
-    /// Is \p Point (world, m) on the shield the body holds (within a
-    /// contact's slop of its plate)? False without a shield.
-    bool isOnShield(Vec2 Point) const;
+    /// How far the longest weapon sticks out beyond the fist, m; 0 if
+    /// unarmed.
+    float getWeaponReach() const;
+    /// How far the weapon \p Part holds sticks out, m; 0 if it holds none.
+    float getWeaponReach(BodyPart Part) const;
+    /// Does \p Part hold a shield?
+    bool hasShield(BodyPart Part) const;
+    /// Is \p Point (world, m) on a shield the body holds: within \p Margin
+    /// of its plate? False without a shield.
+    bool isOnShield(Vec2 Point, float Margin = 0.0f) const;
+    /// The forearm that grips a two-handed weapon (RigSetup::GripPart), or
+    /// nullopt.
+    std::optional<BodyPart> getGripPart() const;
+    /// How far the gripping fist is from the handle, m; 0 without a grip.
+    float getGripGap() const;
     /// How deep posed \p Part overlaps the opponent's posed parts, m; 0 if
     /// it does not touch them or is not posed now.
     float getPosedPenetration(BodyPart Part) const;
@@ -477,12 +511,29 @@ private:
         float Angle = 0.0f;
     };
 
-    /// The weapon shape on its part, in the part's body frame.
+    /// A weapon shape on its part, in the part's body frame.
     struct WeaponShape {
         BodyPart Part = BodyPart::ForearmR;
         Vec2 Grip;
         Vec2 Tip;
         float Radius = 0.0f;
+        float Reach = 0.0f;       ///< Beyond the fist, m.
+        float GripOffset = 0.0f;  ///< Where the other hand grips it, from the fist along it, m.
+    };
+
+    /// A shield plate on its part, in the part's body frame.
+    struct ShieldShape {
+        BodyPart Part = BodyPart::ForearmL;
+        Vec2 Center;
+        Vec2 HalfExtents;         ///< Along the forearm (X before the turn) and across, m.
+        float Angle = 0.0f;       ///< rad.
+    };
+
+    /// The other hand on the handle of a two-handed weapon.
+    struct GripState {
+        BodyPart Hand = BodyPart::ForearmL;     ///< The gripping forearm.
+        BodyPart Holder = BodyPart::ForearmR;   ///< The forearm that holds the weapon.
+        physics::SpringJoint Handle;            ///< Holder's handle point (A) to Hand's fist (B).
     };
 
     const PartState& getPart(BodyPart Part) const { return Parts[static_cast<size_t>(Part)]; }
@@ -492,6 +543,12 @@ private:
     void createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup,
                       const PerBodyPart<Vec2>& Centers);
     void setStrikeMasses(physics::World& PhysWorld);
+    /// The weapon and shield shapes \p Item gives the part whose shape (in
+    /// its body frame) is \p Holder; adds them to the body.
+    void addHeldShapes(physics::World& PhysWorld, const RigDef& Def, const HeldItem& Item, const PartDef& Holder,
+                       const physics::ShapeDef& Base);
+    /// The spring of the other hand on a two-handed weapon (RigSetup::GripPart).
+    void createGrip(physics::World& PhysWorld, const RigSetup& Setup);
     const JointState* findJoint(BodyPart Child) const;
     void findLimbs(const RigDef& Def);
     void findLegs();
@@ -577,7 +634,7 @@ private:
     void drawJointsAndMotors() const;
     void drawController() const;
     void drawFeetAndLimbs() const;
-    void drawWeapon() const;
+    void drawHeldItems() const;
     void fillPanel() const;
 
     physics::World* Physics = nullptr;   ///< Switches parts between kinematic and dynamic.
@@ -610,8 +667,11 @@ private:
     float BaseStiffness = 1.0f;
     float HitFactor = 1.0f;           ///< 1 without hits, drops to MinStiffness.
     int WallSide = 0;
-    float WeaponReach = 0.0f;
-    WeaponShape Weapon;
+    std::vector<WeaponShape> Weapons;
+    std::vector<ShieldShape> Shields;
+    std::optional<GripState> Grip;
+    /// The joints (by child part) of the gripping arm: softer while it grips.
+    std::bitset<BodyPartCount> GripLimb;
     std::bitset<BodyPartCount> StrikingParts;   ///< setStrikingParts().
     std::bitset<BodyPartCount> AttackingParts;  ///< setStrikingParts().
     /// The strikers stopAtContact() last held back, and whether it did so

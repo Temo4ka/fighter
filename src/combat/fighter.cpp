@@ -55,7 +55,14 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     : Body(PhysWorld, Description, Setup), Rules(&NewRules), Profile(NewProfile),
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
-    if (const stats::WeaponProps* Held = Gear.findWeapon()) Weapon = *Held;
+    for (const stats::EquipmentSlot Hand : {stats::EquipmentSlot::MainHand, stats::EquipmentSlot::OffHand}) {
+        const stats::EquipmentItem* Item = Gear.findInSlot(Hand);
+        if (!Item || Item->Slot != Hand || !Item->Weapon) continue;
+        Weapons.push_back({.Part = Hand == stats::EquipmentSlot::MainHand ? Description.Weapon.Part
+                                                                          : Description.Weapon.OffPart,
+                           .Props = *Item->Weapon,
+                           .ItemName = Item->Name});
+    }
     Set = &NewRules.Moves.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
                                     Gear.getMoveSet(stats::EquipmentSlot::OffHand));
     Block = NewRules.Moves.getBlock(*Set, getDefaultBlock(NewRules.Reactions));
@@ -181,7 +188,7 @@ bool Fighter::isHittable() const { return State != FighterState::KnockedDown && 
 
 HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack, float PowerScale, float Direction,
                             bool JammedStrike) {
-    const bool OnShield = Body.isOnShield(Hit.Point);
+    const bool OnShield = Body.isOnShield(Hit.Point, Rules->Tuning.ShieldHitMargin);
     const HitInput Input{
         .Impulse = Hit.Impulse,
         .Part = Hit.Victim.Part,
@@ -261,7 +268,7 @@ std::string_view Fighter::getMoveId() const {
 const anim::Clip& Fighter::getBlockClip() const { return Rules->Clips.get(Block.getClip(Guard)); }
 
 float Fighter::getPowerScale(const MoveDef& Attack) const {
-    return Attack.UsesWeapon && Weapon ? Weapon->PowerScale : 1.0f;
+    return Attack.UsesWeapon && StrikeWeapon ? Weapons[*StrikeWeapon].Props.PowerScale : 1.0f;
 }
 
 std::string Fighter::describeClip() const {
@@ -511,13 +518,18 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     // A strike with the legs plays with the foot in front the legs have.
     const anim::Clip& Authored = Rules->Clips.get(Next.getClip(Distance));
     if (anim::usesLegs(Authored)) LegsMirrored = shouldMirrorLegs();
-    const anim::Clip& Clip = getPlayed(Authored);
+    // A weapon move strikes with the weapon its clip's strikers hold, or
+    // with the other arm when the weapon is in the other hand.
+    StrikeWeapon.reset();
+    StrikeOtherHand = false;
+    if (Next.UsesWeapon) chooseStrikeWeapon(Authored);
+    const anim::Clip& Clip = getPlayed(Authored, StrikeOtherHand);
     // A move always starts; without enough stamina it empties it and the
     // fighter is exhausted, so the move itself is already slow.
     spendStamina(Next.Stamina);
 
     float Rate = Profile.AttackSpeedScale;
-    if (Next.UsesWeapon && Weapon) Rate *= Weapon->SpeedScale;
+    if (Next.UsesWeapon && StrikeWeapon) Rate *= Weapons[*StrikeWeapon].Props.SpeedScale;
     if (Exhausted) Rate *= Rules->Tuning.ExhaustedSpeedScale;
 
     const bool FromCrouch = State == FighterState::Crouching;
@@ -1188,8 +1200,29 @@ void Fighter::startLegStep(const anim::Clip& Top, const anim::Pose& Target) {
     }
 }
 
-const anim::Clip& Fighter::getPlayed(const anim::Clip& Authored) const {
-    return LegsMirrored && anim::usesLegs(Authored) ? Rules->Clips.getMirrored(Authored) : Authored;
+const anim::Clip& Fighter::getPlayed(const anim::Clip& Authored, bool OtherHand) const {
+    const anim::Clip& Legs =
+        LegsMirrored && anim::usesLegs(Authored) ? Rules->Clips.getMirrored(Authored) : Authored;
+    return OtherHand ? Rules->Clips.getOtherHand(Legs) : Legs;
+}
+
+void Fighter::chooseStrikeWeapon(const anim::Clip& Authored) {
+    // A weapon its strikers hold as authored; else one the strikers of the
+    // other arm hold (the clip plays with the arms swapped); else the first.
+    for (size_t Index = 0; Index < Weapons.size(); ++Index) {
+        if (Authored.isStriker(Weapons[Index].Part)) {
+            StrikeWeapon = Index;
+            return;
+        }
+    }
+    for (size_t Index = 0; Index < Weapons.size(); ++Index) {
+        if (Authored.isStriker(anim::getMirroredArmPart(Weapons[Index].Part))) {
+            StrikeWeapon = Index;
+            StrikeOtherHand = true;
+            return;
+        }
+    }
+    if (!Weapons.empty()) StrikeWeapon = 0;
 }
 
 bool Fighter::shouldMirrorLegs() const {

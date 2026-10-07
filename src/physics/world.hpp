@@ -95,6 +95,7 @@ public:
     Body createBody(const BodyDef& Def);
     void addShape(Body Target, const ShapeDef& Shape);
     RevoluteJoint createRevoluteJoint(const RevoluteJointDef& Def);
+    SpringJoint createSpringJoint(const SpringJointDef& Def);
     /// @}
 
     /// Switches a body between kinematic and dynamic. Set the mass of a body
@@ -186,6 +187,9 @@ public:
     /// limits swapped and negated; the motor keeps its settings. Returns the
     /// new joint; \p Joint becomes invalid.
     RevoluteJoint mirrorJoint(RevoluteJoint Joint);
+    /// The same for a spring joint: the local anchors mirrored, the spring
+    /// and the limit kept.
+    SpringJoint mirrorJoint(SpringJoint Joint);
     /// @}
 
     /// Hits between body parts of different fighters during the last step,

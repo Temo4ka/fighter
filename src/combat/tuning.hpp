@@ -208,6 +208,10 @@ struct CombatTuning {
     /// After the end of the fight the bodies keep moving this long without
     /// input, so that a knockout fall plays out, s.
     float EndSettleSec = 1.2f;
+    /// A hit whose contact point is within this distance of the victim's
+    /// shield plate landed on the shield: any guard blocks it
+    /// (combat::isBlockedBy), m.
+    float ShieldHitMargin = 0.02f;
     /// \name A posed strike that runs into the opponent
     /// A kick into the legs or the pelvis stops there in any phase of the
     /// attack (Box2D does not collide two posed bodies, so nothing else would
