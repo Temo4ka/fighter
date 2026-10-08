@@ -7,6 +7,12 @@
   "allowMove": false,
   "blendIn": 0.05,
   "blendOut": 0.1,
+  "pelvisX": [
+    { "t": 0.00, "x": 0.0 },
+    { "t": 0.30, "x": 0.25 },
+    { "t": 0.44, "x": 0.25 },
+    { "t": 0.78, "x": 0.1 }
+  ],
   "keys": [
     { "t": 0.00, "pose": { "Torso": -8, "UpperArmR": 25, "ForearmR": 135 } },
     { "t": 0.18, "pose": { "Torso": 8, "UpperArmR": 5, "ForearmR": 140 } },

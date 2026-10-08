@@ -340,9 +340,10 @@ void Battle::drawDebug() {
                                             Body.getPartPosition(BodyPart::Pelvis).X));
             } else {
                 debug::setPanel(std::format("{} pelvis", Name),
-                                std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f})",
+                                std::format("x {:+.2f} m, v {:+.2f} m/s (walk {:+.2f}, knockback {:+.2f}, clip {:+.2f})",
                                             Controller.getPositionX(), Controller.getVelocity(),
-                                            Controller.getWalkVelocity(), Controller.getKnockback()));
+                                            Controller.getWalkVelocity(), Controller.getKnockback(),
+                                            Controller.getClipVelocity()));
             }
             std::string Physical;
             for (size_t Index = 0; Index < BodyPartCount; ++Index) {

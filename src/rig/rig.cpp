@@ -1541,6 +1541,12 @@ void Rig::drawController() const {
         debug::drawArrow(debug::Cat::Velocity, Below, {Knockback * ControllerScale, 0.0f},
                          std::format("kb {:+.2f}", Knockback));
     }
+    // The part of a clip's pelvis track (a lunge) the pelvis made.
+    const float Clip = Controller.getClipVelocity();
+    if (std::abs(Clip) >= MinDrawnSpeed) {
+        const Vec2 Lower = Base + Vec2{0.0f, -0.2f};
+        debug::drawArrow(debug::Cat::Velocity, Lower, {Clip * ControllerScale, 0.0f}, std::format("clip {:+.2f}", Clip));
+    }
 }
 
 void Rig::drawFeetAndLimbs() const {
