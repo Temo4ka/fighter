@@ -27,6 +27,7 @@ float clampRate(float Rate);
 bool hasStartup(const Clip& Source);
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 Pose parsePose(const Json& Node);
+std::vector<PelvisKey> parsePelvisTrack(const Json& Node);
 void validateClip(const Clip& Result);
 
 } // namespace
@@ -61,6 +62,19 @@ Pose sampleClip(const Clip& Source, float TimeSec) {
     return blendPoses(Before.Target, Next->Target, T);
 }
 
+float samplePelvisOffset(const Clip& Source, float TimeSec) {
+    const std::vector<PelvisKey>& Track = Source.PelvisTrack;
+    if (Track.empty()) return 0.0f;
+    const auto Next = std::upper_bound(Track.begin(), Track.end(), TimeSec,
+                                       [](float Value, const PelvisKey& Key) { return Value < Key.TimeSec; });
+    if (Next == Track.begin()) return Track.front().OffsetX;
+    if (Next == Track.end()) return Track.back().OffsetX;
+    const PelvisKey& Before = *std::prev(Next);
+    const float Span = Next->TimeSec - Before.TimeSec;
+    const float T = Span > 0.0f ? (TimeSec - Before.TimeSec) / Span : 1.0f;
+    return Before.OffsetX + (Next->OffsetX - Before.OffsetX) * T;
+}
+
 float advanceClipTime(const Clip& Source, float TimeSec, float Dt, float Rate) {
     const float Next = TimeSec + Dt * clampRate(Rate);
     if (!Source.Loop) return std::min(Next, Source.DurationSec);
@@ -89,7 +103,8 @@ Clip parseClip(std::string_view JsonText, std::string Name) {
     try {
         const Json Root = Json::parse(JsonText);
         checkKeys(Root,
-                  {"loop", "duration", "active", "strikers", "stiffness", "allowMove", "blendIn", "blendOut", "keys"},
+                  {"loop", "duration", "active", "strikers", "stiffness", "allowMove", "blendIn", "blendOut", "keys",
+                   "pelvisX"},
                   "clip");
         Result.Loop = Root.value("loop", false);
         Result.DurationSec = Root.at("duration").get<float>();
@@ -106,6 +121,9 @@ Clip parseClip(std::string_view JsonText, std::string Name) {
             const auto Part = findBodyPart(PartName);
             if (!Part) throw std::runtime_error(std::format("unknown body part '{}'", PartName));
             Result.Strikers.set(static_cast<size_t>(*Part));
+        }
+        if (const auto Track = Root.find("pelvisX"); Track != Root.end()) {
+            Result.PelvisTrack = parsePelvisTrack(*Track);
         }
         for (const auto& Key : Root.at("keys")) {
             checkKeys(Key, {"t", "pose"}, "key");
@@ -156,6 +174,16 @@ Pose parsePose(const Json& Node) {
     return Result;
 }
 
+std::vector<PelvisKey> parsePelvisTrack(const Json& Node) {
+    if (!Node.is_array()) throw std::runtime_error("pelvisX: expected an array of keys");
+    std::vector<PelvisKey> Track;
+    for (const auto& Key : Node) {
+        checkKeys(Key, {"t", "x"}, "pelvisX key");
+        Track.push_back({.TimeSec = Key.at("t").get<float>(), .OffsetX = Key.at("x").get<float>()});
+    }
+    return Track;
+}
+
 void validateClip(const Clip& Result) {
     auto Fail = [&](std::string_view Problem) {
         throw std::runtime_error(std::format("clip '{}': {}", Result.Name, Problem));
@@ -176,6 +204,23 @@ void validateClip(const Clip& Result) {
     }
     const bool Sorted = std::ranges::is_sorted(Result.Keys, {}, &Keyframe::TimeSec);
     if (!Sorted) Fail("keys must be sorted by time");
+
+    const std::vector<PelvisKey>& Track = Result.PelvisTrack;
+    if (Track.empty()) return;
+    if (Result.Loop) Fail("pelvisX: a looping clip cannot move the pelvis");
+    if (Track.front().TimeSec != 0.0f || Track.front().OffsetX != 0.0f) {
+        Fail("pelvisX: the first key must be at t = 0 with x = 0");
+    }
+    for (const auto& Key : Track) {
+        if (Key.TimeSec > Result.DurationSec) {
+            Fail(std::format("pelvisX: a key at t = {} is after the end of the clip", Key.TimeSec));
+        }
+        if (!std::isfinite(Key.OffsetX) || std::abs(Key.OffsetX) > MaxPelvisOffsetM) {
+            Fail(std::format("pelvisX: x = {} is out of [-{}, {}] m", Key.OffsetX, MaxPelvisOffsetM,
+                             MaxPelvisOffsetM));
+        }
+    }
+    if (!std::ranges::is_sorted(Track, {}, &PelvisKey::TimeSec)) Fail("pelvisX: keys must be sorted by time");
 }
 
 } // namespace

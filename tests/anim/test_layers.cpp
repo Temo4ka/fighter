@@ -119,6 +119,23 @@ TEST_CASE("Layers: mirrorClipLegs kicks with the other leg at the same time", "[
     }
 }
 
+TEST_CASE("Layers: the mirrored and other-hand clips keep the pelvis track", "[anim][layers][pelvis]") {
+    const Clip Lunge = parseClip(R"({
+        "duration": 0.6,
+        "active": [0.1, 0.3],
+        "strikers": ["FootL", "ForearmR"],
+        "pelvisX": [ { "t": 0.0, "x": 0.0 }, { "t": 0.3, "x": 0.25 }, { "t": 0.6, "x": 0.1 } ],
+        "keys": [ { "t": 0.0, "pose": { "ThighL": 20, "UpperArmR": 40 } } ]
+    })", "lunge");
+    // The track is forward along the facing: swapping the legs or the arms
+    // does not change where forward is.
+    for (const Clip& Played : {mirrorClipLegs(Lunge), mirrorClipArms(Lunge), mirrorClipArms(mirrorClipLegs(Lunge))}) {
+        for (const float Time : {0.0f, 0.15f, 0.3f, 0.45f, 0.6f}) {
+            CHECK(samplePelvisOffset(Played, Time) == samplePelvisOffset(Lunge, Time));
+        }
+    }
+}
+
 TEST_CASE("Layers: mirrorClipArms strikes with the other arm", "[anim][layers]") {
     const Clip Slash = parseClip(R"({
         "duration": 0.5,
