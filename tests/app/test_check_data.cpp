@@ -19,7 +19,7 @@ TEST_CASE("runDataCheck: a broken file is printed with its name and exits non-ze
     // The scratch copy is a data directory; the root is its parent.
     const combat::test::ScratchData Data("cli_check");
     Data.write("moves/broken.json", R"({"clip": "no_such_clip", "damage": 1.0, "min_reaction": "Touch", "stamina": 1})");
-    const std::filesystem::path Root = Data.getDir().parent_path() / "fighter_test_cli_root";
+    const std::filesystem::path Root = Data.getDir().string() + "_root";
     std::filesystem::remove_all(Root);
     std::filesystem::create_directories(Root);
     std::filesystem::copy(Data.getDir(), Root / "data", std::filesystem::copy_options::recursive);
