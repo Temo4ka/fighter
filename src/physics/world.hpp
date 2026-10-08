@@ -16,11 +16,14 @@
 /// step and read with getHitEvents(), which keeps the order of work explicit
 /// and the simulation deterministic.
 ///
-/// Body parts may be kinematic (moved by code, see Body::moveTo). The solver
-/// treats them as infinitely heavy, so the contact impulse of a hit that
-/// involves one says nothing about the strike; such hits report the impulse
-/// of the same collision between free bodies with the parts' masses instead
-/// (for a kinematic part, the mass of the limb it strikes with).
+/// Every hit is measured the same way, whatever the parts: its impulse is that
+/// of a perfectly inelastic collision of two free bodies, the closing speed at
+/// the contact point before the step along the normal times the reduced mass
+/// mA*mB/(mA+mB) of the parts' strike masses (setStrikeMass(): the mass of
+/// the limb a part strikes with). The solver's own contact impulse is not
+/// used: a kinematic part (moved by code, see Body::moveTo) is infinitely
+/// heavy for it, and between dynamic parts it grows with the sub-steps, the
+/// contact softness, the motors and how long a limb presses in.
 ///
 /// Box2D does not collide two kinematic bodies at all, so the world checks
 /// the kinematic parts of different fighters against each other itself
@@ -102,9 +105,10 @@ public:
     /// part while it is dynamic: a kinematic body has no mass in the solver,
     /// and the world keeps the last dynamic mass for the impulse of hits.
     void setBodyType(Body Target, BodyType Type);
-    /// The mass a body part hits with while it is kinematic, kg: a posed limb
-    /// strikes with the limb behind it, not only with the touching part. By
-    /// default it is the part's own last dynamic mass.
+    /// The mass a body part hits with and is hit with, kg, whether it is
+    /// kinematic or dynamic: a limb strikes with the limb behind it, not
+    /// only with the touching part. By default it is the part's own mass
+    /// (its last dynamic mass while it is kinematic).
     void setStrikeMass(Body Target, float Kg);
 
     /// Advances the simulation by \p Dt and collects the hits of this step.
@@ -220,7 +224,8 @@ private:
         float AngularVelocityBeforeStep = 0.0f;
         /// Mass of the body while it was last dynamic, kg.
         float DynamicMass = 0.0f;
-        /// setStrikeMass(); 0 means DynamicMass.
+        /// setStrikeMass(); 0: the mass of the body (DynamicMass while it
+        /// is kinematic).
         float StrikeMass = 0.0f;
     };
 
@@ -236,19 +241,14 @@ private:
     /// that touched after a step.
     using SlotPair = std::pair<uint32_t, uint32_t>;
 
-    /// A hit between two dynamic parts in the current step: its impulse is
-    /// summed over the Box2D steps of the simulation step.
-    struct SolvedHit {
-        uint64_t ShapeA = 0;   ///< b2ShapeId packed with b2StoreShapeId.
-        uint64_t ShapeB = 0;
-        size_t HitIndex = 0;   ///< Into Hits.
-    };
+    /// Two shapes (b2ShapeId packed with b2StoreShapeId) whose contact was
+    /// reported as a hit in the current step.
+    using ShapePair = std::pair<uint64_t, uint64_t>;
 
     void destroy();
     void recordPartVelocities();
     /// Hits reported by Box2D in its last step. Called after every Box2D
-    /// step of a simulation step: it also adds the contact impulse of that
-    /// Box2D step to the hits between dynamic parts found so far.
+    /// step of a simulation step; a shape pair is reported once a step.
     void collectHits();
     /// Hits between the kinematic parts of different fighters, which Box2D
     /// does not collide.
@@ -256,8 +256,10 @@ private:
     /// Hits of kinematic parts that sank into a dynamic part of another
     /// fighter in the step, before Box2D had a contact for them.
     void collectTunnelHits();
-    void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
-                float Impulse);
+    /// Adds the hit of \p PartA and \p PartB closing at \p ApproachSpeed
+    /// along \p Normal (from A to B) before the step; its impulse is that of
+    /// a perfectly inelastic collision of their strike masses.
+    void addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed);
     Vec2 getVelocityBeforeStep(const PartBody& Entry, Vec2 WorldPoint) const;
     /// The slot of a body part of a fighter, if \p Target is one.
     std::optional<uint32_t> findSlot(Body Target) const;
@@ -275,8 +277,8 @@ private:
     Placement getMotionPlacement(const PartBody& Entry, const PartBody* Carrier, float Fraction) const;
     /// Where \p Entry was at \p Fraction of the last step (1 is now).
     Placement getPlacementDuringStep(const PartBody& Entry, float Fraction) const;
-    /// Mass of a part for the impulse of a hit: its strike mass if it is
-    /// kinematic now, kg.
+    /// Mass of a part for the impulse of a hit: its strike mass if one was
+    /// set, otherwise the mass of the body (while it was last dynamic), kg.
     float getStrikeMass(const PartBody& Entry) const;
 
     uint32_t Id = 0;   ///< b2WorldId packed with b2StoreWorldId; 0 is null.
@@ -285,7 +287,7 @@ private:
     std::optional<float> FighterFriction;   ///< Config::FighterFriction.
     std::vector<PartBody> PartBodies;
     std::vector<HitEvent> Hits;
-    std::vector<SolvedHit> SolvedHits;   ///< Of the current step.
+    std::vector<ShapePair> ReportedPairs;   ///< Of the current step.
     float HitSpeedThreshold = 1.0f;
     std::vector<SlotPair> TouchingPosed;   ///< Sorted.
 };

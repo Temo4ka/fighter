@@ -286,8 +286,20 @@ TEST_CASE("Battle: a jab at the dummy is a hit that sways it", "[combat][dod]") 
         CHECK(Hit.ApproachSpeed > 0.0f);
     }
     // The physical upper body of the dummy reacts, but a jab does not knock
-    // it down.
-    CHECK(Log.LargestSway > 0.05f);
+    // it down. Recalibrated for the hit measure of free strike masses (the
+    // jab's impulse is a quarter of the solver's old one): the sway is
+    // smaller than it was (0.05 rad), but several times what the dummy
+    // sways when it is not hit.
+    Battle Idle(Data.makeConfig());
+    const float IdleRestLean = getTorsoLean(getRight(Idle));
+    float IdleSway = 0.0f;
+    for (int Tick = 0; Tick < 4 * TicksPerSecond; ++Tick) {
+        Idle.update({}, {}, Dt);
+        IdleSway = std::max(IdleSway, std::abs(getTorsoLean(getRight(Idle)) - IdleRestLean));
+    }
+    INFO("sway " << Log.LargestSway << " rad, idle " << IdleSway << " rad");
+    CHECK(Log.LargestSway > 0.02f);
+    CHECK(Log.LargestSway > 3.0f * IdleSway);
     CHECK_FALSE(Log.DownTick.has_value());
     CHECK(isUpright(getLeft(Fight)));
     CHECK(isUpright(getRight(Fight)));
