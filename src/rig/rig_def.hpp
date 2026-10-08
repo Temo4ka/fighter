@@ -203,17 +203,26 @@ struct ControlParams {
 /// object of a rig file). Their shapes come from the loadout (RigSetup::Held);
 /// what an item leaves out comes from here.
 struct WeaponMount {
-    /// The capsule part that holds the items of the main hand; a weapon
-    /// starts at the part's far end ("to", the fist) and is a part of it for
-    /// physics and hits.
+    /// The capsule part that holds the items of the main hand; a weapon is
+    /// a body of its own hinged at the part's far end ("to", the fist) by
+    /// the wrist, and a part of the forearm for hits.
     BodyPart Part = BodyPart::ForearmR;
     /// The capsule part that holds the items of the other hand ("offPart");
     /// by default the other forearm.
     BodyPart OffPart = BodyPart::ForearmL;
-    /// Direction relative to the part's axis (from "from" to "to"), rad;
+    /// The wrist angle of a weapon when neither a clip nor the item sets it:
+    /// direction relative to the part's axis (from "from" to "to"), rad;
     /// 0 continues the forearm.
     float Angle = 0.0f;
-    float Radius = 0.025f;             ///< Thickness, m.
+    /// Width of a weapon whose item sets none ("width"), m: its capsule's
+    /// radius is half of it.
+    float Width = 0.05f;
+    /// The wrist ("wristLimits", degrees in the file): how far the weapon
+    /// turns from the forearm's axis either way, rad; and its share of the
+    /// profile's motor torque ("wristStrength"), as JointDef::Strength.
+    float WristLowerAngle = -2.0f;
+    float WristUpperAngle = 2.0f;
+    float WristStrength = 0.3f;
     /// A two-handed weapon: how far along it from the holding fist the other
     /// hand grips it ("grip"), m.
     float Grip = 0.1f;

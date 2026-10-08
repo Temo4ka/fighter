@@ -55,7 +55,7 @@
 /// "name" of an item is optional and defaults to its id; "armor" defaults to
 /// 0; "two_handed", "moveset", "weapon" and "shield" are optional; "covers"
 /// is required except for an item held in a hand, where it is an error.
-/// Within "weapon", "radius_m" and "angle_deg" are optional; within
+/// Within "weapon", "width_m" and "angle_deg" are optional; within
 /// "shield", "angle_deg".
 ///
 //===----------------------------------------------------------------------===//

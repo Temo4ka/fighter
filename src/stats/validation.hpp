@@ -57,8 +57,8 @@ inline constexpr float MaxItemArmor = 1.0f;
 /// A weapon reaches at most MaxWeaponReachM beyond the fist.
 inline constexpr float MaxWeaponReachM = 1.5f;
 
-/// The largest weapon radius and shield length or width, m.
-inline constexpr float MaxWeaponRadiusM = 0.1f;
+/// The largest weapon width and shield length or width, m.
+inline constexpr float MaxWeaponWidthM = 0.2f;
 inline constexpr float MaxShieldSizeM = 1.2f;
 /// A shield in the main hand at most triples poise.
 inline constexpr float MaxShieldPoiseBonus = 2.0f;

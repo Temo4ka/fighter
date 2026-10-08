@@ -242,7 +242,7 @@ ControlParams parseControl(const Json& Node) {
 }
 
 WeaponMount parseWeapon(const Json& Node) {
-    checkKeys(Node, {"part", "offPart", "angle", "radius", "grip"}, "weapon");
+    checkKeys(Node, {"part", "offPart", "angle", "width", "grip", "wristLimits", "wristStrength"}, "weapon");
     WeaponMount Mount;
     if (const auto Part = Node.find("part"); Part != Node.end()) Mount.Part = parseBodyPart(*Part);
     // The other forearm by default.
@@ -252,8 +252,23 @@ WeaponMount parseWeapon(const Json& Node) {
     if (Mount.Grip < 0.0f) throw std::runtime_error("weapon: 'grip' must not be negative");
     if (Mount.Part == Mount.OffPart) throw std::runtime_error("weapon: 'part' and 'offPart' must differ");
     Mount.Angle = Node.value("angle", 0.0f) * RadiansPerDegree;
-    Mount.Radius = Node.value("radius", Mount.Radius);
-    if (Mount.Radius <= 0.0f) throw std::runtime_error("weapon: 'radius' must be positive");
+    Mount.Width = Node.value("width", Mount.Width);
+    if (Mount.Width <= 0.0f) throw std::runtime_error("weapon: 'width' must be positive");
+    if (const auto Limits = Node.find("wristLimits"); Limits != Node.end()) {
+        const float Lower = Limits->at(0).get<float>();
+        const float Upper = Limits->at(1).get<float>();
+        if (Lower > Upper || Lower < -MaxLimitDegrees || Upper > MaxLimitDegrees) {
+            throw std::runtime_error(std::format("weapon: wristLimits [{}, {}] must be ordered and within +-{} degrees",
+                                                 Lower, Upper, MaxLimitDegrees));
+        }
+        Mount.WristLowerAngle = Lower * RadiansPerDegree;
+        Mount.WristUpperAngle = Upper * RadiansPerDegree;
+    }
+    if (Mount.Angle < Mount.WristLowerAngle || Mount.Angle > Mount.WristUpperAngle) {
+        throw std::runtime_error(std::format("weapon: angle {} is outside wristLimits", Mount.Angle / RadiansPerDegree));
+    }
+    Mount.WristStrength = Node.value("wristStrength", Mount.WristStrength);
+    if (Mount.WristStrength < 0.0f) throw std::runtime_error("weapon: 'wristStrength' must not be negative");
     return Mount;
 }
 

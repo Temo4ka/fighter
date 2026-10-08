@@ -179,12 +179,12 @@ EquipmentItem readItem(const JsonValue& Value) {
 
 WeaponProps readWeapon(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"reach_m", "speed_scale", "power_scale", "radius_m", "angle_deg"});
+    checkFieldNames(Value, {"reach_m", "speed_scale", "power_scale", "width_m", "angle_deg"});
     return {
         .ReachM = readFloatField(Value, "reach_m"),
         .SpeedScale = readFloatField(Value, "speed_scale"),
         .PowerScale = readFloatField(Value, "power_scale"),
-        .RadiusM = readOptionalFloat(Value, "radius_m"),
+        .WidthM = readOptionalFloat(Value, "width_m"),
         .AngleDeg = readOptionalFloat(Value, "angle_deg"),
     };
 }

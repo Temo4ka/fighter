@@ -69,9 +69,11 @@ struct WeaponProps {
     float ReachM = 0.0f;       ///< How far it sticks out beyond the fist, m.
     float SpeedScale = 1.0f;   ///< Multiplies the speed of the strikes made with it.
     float PowerScale = 1.0f;   ///< Multiplies the damage of the strikes made with it.
-    /// The thickness of the blade or haft, m, and its angle to the forearm,
-    /// degrees; nullopt: the rig's "weapon" mount (data/rigs/).
-    std::optional<float> RadiusM;
+    /// The width of the blade or haft, m (the picture's and, halved, the
+    /// radius of its capsule), and its default angle to the forearm (the
+    /// wrist when no clip sets it), degrees; nullopt: the rig's "weapon"
+    /// mount (data/rigs/).
+    std::optional<float> WidthM;
     std::optional<float> AngleDeg;
 };
 
