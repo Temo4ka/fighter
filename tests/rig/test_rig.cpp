@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <ranges>
 
 #include "physics/world.hpp"
@@ -87,6 +88,42 @@ TEST_CASE("Rig: bodies get the masses of the profile", "[rig]") {
     CHECK(Body.getTotalMass() == Approx(Expected).epsilon(0.001));
     CHECK(PhysWorld.getBodyCount() == static_cast<int>(BodyPartCount));
     CHECK(PhysWorld.getJointCount() == static_cast<int>(BodyPartCount) - 1);
+}
+
+TEST_CASE("Rig: a part strikes with its limb, the top of a group with the group", "[rig]") {
+    const RigSetup Setup = makeSetup(true);
+    const auto massOf = [&](std::initializer_list<BodyPart> Parts) {
+        float Sum = 0.0f;
+        for (const BodyPart Part : Parts) Sum += Setup.MassKg[static_cast<size_t>(Part)];
+        return Sum;
+    };
+    using enum BodyPart;
+    {
+        physics::World PhysWorld;
+        const Rig Body(PhysWorld, loadHumanoid(), Setup);
+        // The posed group: a leg up to the pelvis, the pelvis with both legs.
+        CHECK(Body.getStrikeMass(FootL) == Approx(massOf({FootL, ShinL, ThighL})));
+        CHECK(Body.getStrikeMass(ThighR) == Approx(massOf({ThighR})));
+        CHECK(Body.getStrikeMass(Pelvis) ==
+              Approx(massOf({Pelvis, ThighL, ShinL, FootL, ThighR, ShinR, FootR})));
+        // The physical group: an arm up to the torso, the head alone, the
+        // torso with the head and both arms.
+        CHECK(Body.getStrikeMass(ForearmL) == Approx(massOf({ForearmL, UpperArmL})));
+        CHECK(Body.getStrikeMass(UpperArmR) == Approx(massOf({UpperArmR})));
+        CHECK(Body.getStrikeMass(Head) == Approx(massOf({Head})));
+        CHECK(Body.getStrikeMass(Torso) ==
+              Approx(massOf({Torso, Head, UpperArmL, ForearmL, UpperArmR, ForearmR})));
+    }
+    {
+        // A two-handed weapon strikes with both arms.
+        RigSetup TwoHanded = Setup;
+        TwoHanded.Held = {{.Part = ForearmR, .WeaponReachM = 0.9f}};
+        TwoHanded.GripPart = ForearmL;
+        physics::World PhysWorld;
+        const Rig Body(PhysWorld, loadHumanoid(), TwoHanded);
+        CHECK(Body.getStrikeMass(ForearmR) == Approx(massOf({ForearmR, UpperArmR, ForearmL, UpperArmL})));
+        CHECK(Body.getStrikeMass(ForearmL) == Approx(massOf({ForearmL, UpperArmL})));
+    }
 }
 
 TEST_CASE("Rig: the pelvis and the legs are kinematic, the rest is physical", "[rig]") {

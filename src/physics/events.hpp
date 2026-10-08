@@ -35,8 +35,12 @@ struct HitEvent {
     PartRef Attacker;
     PartRef Victim;
     Vec2 Point;                 ///< Contact point, m.
-    float ApproachSpeed = 0.0f; ///< Closing speed at the moment of impact, m/s.
-    float Impulse = 0.0f;       ///< Contact impulse, N*s.
+    float ApproachSpeed = 0.0f; ///< Closing speed at the contact point before the step, m/s.
+    /// The reduced mass of the two parts' strike masses, mA*mB/(mA+mB), kg.
+    float StrikeMass = 0.0f;
+    /// ApproachSpeed * StrikeMass: the impulse of a perfectly inelastic
+    /// collision of the two strike masses, N*s (physics::World).
+    float Impulse = 0.0f;
 };
 
 /// The deepest overlap of two body parts of different fighters
