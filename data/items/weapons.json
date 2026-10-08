@@ -45,9 +45,10 @@
             "armor": 0.3,
             "moveset": "shield",
             "shield": {
-                "length_m": 0.5,
+                "length_m": 0.35,
                 "width_m": 0.45,
-                "angle_deg": 0
+                "angle_deg": 0,
+                "poise_bonus": 0.2
             }
         }
     ]

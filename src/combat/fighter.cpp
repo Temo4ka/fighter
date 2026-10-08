@@ -66,8 +66,11 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
                            .Props = *Item->Weapon,
                            .ItemName = Item->Name});
     }
+    // A shield in the off hand guards and gives no strikes of its own; it
+    // still makes a pair with the main hand's item.
     Set = &NewRules.Moves.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
-                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand));
+                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand),
+                                    !Gear.findShield(stats::EquipmentSlot::OffHand));
     Block = NewRules.Moves.getBlock(*Set, getDefaultBlock(NewRules.Reactions));
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);

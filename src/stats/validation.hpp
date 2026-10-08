@@ -60,6 +60,8 @@ inline constexpr float MaxWeaponReachM = 1.5f;
 /// The largest weapon radius and shield length or width, m.
 inline constexpr float MaxWeaponRadiusM = 0.1f;
 inline constexpr float MaxShieldSizeM = 1.2f;
+/// A shield in the main hand at most triples poise.
+inline constexpr float MaxShieldPoiseBonus = 2.0f;
 
 /// The speed and power scales of a weapon lie in [MinWeaponScale, MaxWeaponScale].
 inline constexpr float MinWeaponScale = 0.25f;

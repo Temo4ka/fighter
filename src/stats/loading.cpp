@@ -191,11 +191,12 @@ WeaponProps readWeapon(const JsonValue& Value) {
 
 ShieldProps readShield(const JsonValue& Value) {
     requireObject(Value);
-    checkFieldNames(Value, {"length_m", "width_m", "angle_deg"});
+    checkFieldNames(Value, {"length_m", "width_m", "angle_deg", "poise_bonus"});
     return {
         .LengthM = readFloatField(Value, "length_m"),
         .WidthM = readFloatField(Value, "width_m"),
         .AngleDeg = readOptionalFloat(Value, "angle_deg").value_or(0.0f),
+        .PoiseBonus = readOptionalFloat(Value, "poise_bonus").value_or(0.0f),
     };
 }
 

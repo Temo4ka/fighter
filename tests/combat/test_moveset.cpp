@@ -89,7 +89,10 @@ TEST_CASE("MoveSet: a pair set is chosen for exactly its pair", "[combat][movese
     CHECK(Library.selectSet("sword", "").Id == "sword");
     CHECK(Library.selectSet("", "").Id == "unarmed");
     CHECK(Library.selectSet("axe", "").Id == "unarmed");
-    CHECK(Library.selectSet("", "shield").Id == "shield");   // the other hand alone
+    CHECK(Library.selectSet("", "sword").Id == "sword");     // the other hand alone
+    // A shield in the off hand gives no strikes of its own.
+    CHECK(Library.selectSet("", "shield", false).Id == "unarmed");
+    CHECK(Library.selectSet("sword", "shield", false).Id == "sword_shield");
     CHECK(findId(Library, "sword_shield", "Special") == "bash");
     CHECK(findId(Library, "sword_shield", "Forward+Heavy") == "thrust");
 }

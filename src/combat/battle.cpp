@@ -481,6 +481,8 @@ std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::W
             Entry.ShieldLengthM = Item->Shield->LengthM;
             Entry.ShieldWidthM = Item->Shield->WidthM;
             Entry.ShieldAngleDeg = Item->Shield->AngleDeg;
+            // Decision 2026-10-08: only a shield in the off hand guards.
+            Entry.ShieldGuards = Hand == stats::EquipmentSlot::OffHand;
         }
     }
     return Held;

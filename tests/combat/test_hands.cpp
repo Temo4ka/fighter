@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -164,4 +165,43 @@ TEST_CASE("Hands: the shield and the pair's block stop a jab in the middle guard
         CHECK(Hit.Blocked);
         CHECK(Hit.Damage < CleanDamage * 0.5f);
     }
+}
+
+TEST_CASE("Hands: a shield strikes only from the main hand", "[combat][hands][data]") {
+    // Decision 2026-10-08: in the off hand a shield guards and gives no
+    // strikes, in the main hand it is a weapon with its own moveset.
+    const auto firstSpecial = [](const FighterConfig& Who) {
+        BattleConfig Config = makeConfig();
+        Config.Left = Who;
+        Battle Fight(Config);
+        const std::vector<PlayerCommands> Special = {{.Special = true}};
+        return findFirstStart(Fight, Special, TicksPerSecond / 2).MoveId;
+    };
+    CHECK(firstSpecial(makeFighter({{.Id = "wooden_shield"}})).empty());
+    CHECK(firstSpecial(makeFighter({{.Id = "wooden_shield", .Slot = stats::EquipmentSlot::MainHand}})) ==
+          "shield_bash");
+    CHECK(firstSpecial(makeFighter({{.Id = "short_sword"}, {.Id = "wooden_shield"}})) == "sword_spin");
+}
+
+TEST_CASE("Hands: the small shield is torso-sized in the middle guard", "[combat][hands][data]") {
+    // Decision 2026-10-08: wooden_shield is the small shield, it covers
+    // about the torso's height and reaches no lower than the pelvis. The
+    // plate lies along the forearm (angle_deg 0), so its height is the
+    // length and width projected on the vertical.
+    constexpr float TorsoHeightM = 0.49f;      // humanoid.json: 0.23 m capsule + 2 x 0.13 m radius
+    constexpr float PelvisHalfHeightM = 0.11f; // 0.08 m half extent + 0.03 m radius
+    const stats::ItemCatalog Catalog = stats::loadItemCatalog(std::filesystem::path(FIGHTER_DATA_DIR) / "items");
+    const stats::ShieldProps& Shield = *Catalog.findItem("wooden_shield")->Shield;
+
+    BattleConfig Config = makeConfig();
+    Config.Left = makeFighter({{.Id = "short_sword"}, {.Id = "wooden_shield"}});
+    Battle Fight(Config);
+    run(Fight, {.Block = true}, {}, TicksPerSecond);
+    const FighterView& View = getLeft(Fight);
+    const PartTransform& Forearm = getPart(View, BodyPart::ForearmL);
+    const float HalfHeight =
+        0.5f * (Shield.LengthM * std::abs(std::cos(Forearm.Angle)) + Shield.WidthM * std::abs(std::sin(Forearm.Angle)));
+    CHECK(HalfHeight * 2.0f > TorsoHeightM * 0.8f);
+    CHECK(HalfHeight * 2.0f < TorsoHeightM * 1.2f);
+    CHECK(Forearm.Position.Y - HalfHeight > getPart(View, BodyPart::Pelvis).Position.Y + PelvisHalfHeightM);
 }

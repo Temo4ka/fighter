@@ -394,6 +394,7 @@ bool Rig::hasShield(BodyPart Part) const {
 
 bool Rig::isOnShield(Vec2 Point, float Margin) const {
     for (const auto& Shield : Shields) {
+        if (!Shield.Guards) continue;
         // The point in the plate's own frame: its center, turned with it.
         const Vec2 Local = rotate(getPart(Shield.Part).Handle.getLocalPoint(Point) - Shield.Center, -Shield.Angle);
         if (std::abs(Local.X) <= Shield.HalfExtents.X + Margin && std::abs(Local.Y) <= Shield.HalfExtents.Y + Margin) {
@@ -661,6 +662,7 @@ void Rig::addHeldShapes(physics::World& PhysWorld, const RigDef& Def, const Held
             .Center = (Holder.Begin + Holder.End) * 0.5f,
             .HalfExtents = {Item.ShieldLengthM * 0.5f, Item.ShieldWidthM * 0.5f},
             .Angle = getHeading(Axis) + Item.ShieldAngleDeg * RadiansPerDegree * Facing,
+            .Guards = Item.ShieldGuards,
         });
         physics::ShapeDef Plate = Base;
         Plate.Kind = physics::ShapeKind::Box;
@@ -1598,8 +1600,8 @@ void Rig::fillPanel() const {
         addHand(std::format("{} weapon {:.2f} m, r {:.3f}", getBodyPartName(Weapon.Part), Weapon.Reach, Weapon.Radius));
     }
     for (const auto& Shield : Shields) {
-        addHand(std::format("{} shield {:.2f} x {:.2f} m", getBodyPartName(Shield.Part), Shield.HalfExtents.X * 2.0f,
-                            Shield.HalfExtents.Y * 2.0f));
+        addHand(std::format("{} shield {:.2f} x {:.2f} m, {}", getBodyPartName(Shield.Part), Shield.HalfExtents.X * 2.0f,
+                            Shield.HalfExtents.Y * 2.0f, Shield.Guards ? "guards" : "strikes"));
     }
     if (Grip) addHand(std::format("{} grips, {:.3f} m off the handle", getBodyPartName(Grip->Hand), getGripGap()));
     debug::setPanel(Name + " hands", Hands.empty() ? "empty" : Hands);

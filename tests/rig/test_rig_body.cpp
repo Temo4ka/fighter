@@ -1106,7 +1106,7 @@ TEST_CASE("Rig: a weapon in the left hand extends the left forearm", "[rig][hand
 
 TEST_CASE("Rig: a shield is a plate on the forearm that holds it", "[rig][hands]") {
     RigSetup Setup = makeSetup(0.0f, true);
-    Setup.Held = {{.Part = BodyPart::ForearmL, .ShieldLengthM = 0.5f, .ShieldWidthM = 0.4f}};
+    Setup.Held = {{.Part = BodyPart::ForearmL, .ShieldLengthM = 0.5f, .ShieldWidthM = 0.4f, .ShieldGuards = true}};
     Solo Bare(makeSetup(0.0f, true));
     Solo Shielded(Setup);
     Bare.run(30);
@@ -1129,6 +1129,20 @@ TEST_CASE("Rig: a shield is a plate on the forearm that holds it", "[rig][hands]
     Shielded.run(30);
     REQUIRE_FALSE(Shielded.Body.isFacingRight());
     CHECK(Shielded.Body.isOnShield(Shielded.Body.getPartPosition(BodyPart::ForearmL)));
+}
+
+TEST_CASE("Rig: a shield that does not guard is only a part of the forearm", "[rig][hands]") {
+    // A shield in the main hand (decision 2026-10-08): the same plate, but a
+    // hit on it is not "on the shield".
+    RigSetup Setup = makeSetup(0.0f, true);
+    Setup.Held = {{.Part = BodyPart::ForearmR, .ShieldLengthM = 0.5f, .ShieldWidthM = 0.4f}};
+    Solo Bare(makeSetup(0.0f, true));
+    Solo Shielded(Setup);
+    Bare.run(30);
+    Shielded.run(30);
+    CHECK(Shielded.Body.hasShield(BodyPart::ForearmR));
+    CHECK_FALSE(Shielded.Body.isOnShield(Shielded.Body.getPartPosition(BodyPart::ForearmR)));
+    CHECK(Shielded.Body.getExtentX().Max - Bare.Body.getExtentX().Max > 0.05f);
 }
 
 TEST_CASE("Rig: the other hand grips a two-handed weapon", "[rig][hands]") {

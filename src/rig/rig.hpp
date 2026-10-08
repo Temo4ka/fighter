@@ -99,6 +99,10 @@ struct HeldItem {
     float ShieldLengthM = 0.0f;
     float ShieldWidthM = 0.0f;
     float ShieldAngleDeg = 0.0f;
+    /// A hit on the plate counts as blocked (a shield in the off hand);
+    /// false: the plate is only a part of the forearm (a shield in the main
+    /// hand, a weapon).
+    bool ShieldGuards = false;
 };
 
 /// Where a rig is created and how strong it is. Masses, motor values and the
@@ -401,8 +405,9 @@ public:
     float getWeaponReach(BodyPart Part) const;
     /// Does \p Part hold a shield?
     bool hasShield(BodyPart Part) const;
-    /// Is \p Point (world, m) on a shield the body holds: within \p Margin
-    /// of its plate? False without a shield.
+    /// Is \p Point (world, m) on a guarding shield the body holds
+    /// (HeldItem::ShieldGuards): within \p Margin of its plate? False
+    /// without one.
     bool isOnShield(Vec2 Point, float Margin = 0.0f) const;
     /// The forearm that grips a two-handed weapon (RigSetup::GripPart), or
     /// nullopt.
@@ -528,6 +533,7 @@ private:
         Vec2 Center;
         Vec2 HalfExtents;         ///< Along the forearm (X before the turn) and across, m.
         float Angle = 0.0f;       ///< rad.
+        bool Guards = false;      ///< HeldItem::ShieldGuards.
     };
 
     /// The other hand on the handle of a two-handed weapon.

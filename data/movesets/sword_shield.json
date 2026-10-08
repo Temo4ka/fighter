@@ -4,9 +4,6 @@
         "shield"
     ],
     "inherit": "sword",
-    "moves": {
-        "Special": "shield_bash"
-    },
     "block": {
         "damage_scale": 0.05,
         "stamina_scale": 0.6,

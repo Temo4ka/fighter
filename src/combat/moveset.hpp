@@ -125,8 +125,10 @@ public:
     /// The set of a fighter whose main hand holds an item of set \p MainSet
     /// and the other hand one of \p OffSet (empty: nothing, or no set): the
     /// pair set for exactly these two if there is one, otherwise MainSet,
-    /// otherwise OffSet (a shield alone), otherwise "unarmed".
-    const MoveSet& selectSet(std::string_view MainSet, std::string_view OffSet) const;
+    /// otherwise OffSet if \p OffAlone (an off-hand item that strikes on its
+    /// own; a shield in the off hand does not, decision 2026-10-08),
+    /// otherwise "unarmed".
+    const MoveSet& selectSet(std::string_view MainSet, std::string_view OffSet, bool OffAlone = true) const;
 
     /// The move started in \p Set with \p Direction held (see the file
     /// comment), or nullptr. An entry matches when all its buttons are in

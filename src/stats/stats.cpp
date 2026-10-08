@@ -15,6 +15,9 @@ constexpr float MinMassScale = 0.5f;
 constexpr float MinResource = 1.0f;   ///< HP, stamina.
 constexpr float MinPoise = 0.1f;
 
+/// The poise bonus of a shield in the main hand, or 0.
+float getShieldPoiseBonus(const Loadout& Gear);
+
 } // namespace
 
 BalanceTable BalanceTable::getDefaults() {
@@ -68,7 +71,8 @@ PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, cons
 
     Profile.MaxHp = std::max(Balance.BaseHp + Balance.HpPerCon * Con, MinResource);
     Profile.Poise = std::max(Balance.BasePoise * (1.0f + Balance.PoisePerCon * Con) *
-                                 (1.0f + Balance.PoisePerArmor * getMeanArmor(Profile, Balance)),
+                                 (1.0f + Balance.PoisePerArmor * getMeanArmor(Profile, Balance)) *
+                                 (1.0f + getShieldPoiseBonus(Gear)),
                              MinPoise);
     Profile.MaxStamina = std::max(Balance.BaseStamina + Balance.StaminaPerCon * Con, MinResource);
     Profile.StaminaRegen = Balance.BaseStaminaRegen * std::max(1.0f + Balance.StaminaRegenPerCon * Con, 0.0f);
@@ -108,5 +112,19 @@ std::string_view Loadout::getMoveSet(EquipmentSlot Hand) const {
     if (!Item || (Item->TwoHanded && Hand == EquipmentSlot::OffHand)) return {};
     return Item->MoveSet;
 }
+
+const ShieldProps* Loadout::findShield(EquipmentSlot Hand) const {
+    const EquipmentItem* Item = findInSlot(Hand);
+    return Item && Item->Slot == Hand && Item->Shield ? &*Item->Shield : nullptr;
+}
+
+namespace {
+
+float getShieldPoiseBonus(const Loadout& Gear) {
+    const ShieldProps* Shield = Gear.findShield(EquipmentSlot::MainHand);
+    return Shield ? Shield->PoiseBonus : 0.0f;
+}
+
+} // namespace
 
 } // namespace fighter::stats
