@@ -38,6 +38,7 @@ constexpr Rgba getColor(Cat Category, Side Owner = Side::None) {
         case Cat::Velocity:   return {40, 220, 200, 255};    // teal
         case Cat::Contacts:   return {255, 40, 80, 255};     // bright red
         case Cat::CoM:        return {255, 255, 255, 255};   // white cross with a dark ring
+        case Cat::Trajectory: return {170, 240, 60, 255};    // lime
         case Cat::Count:      break;
     }
     return {};

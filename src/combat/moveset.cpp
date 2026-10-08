@@ -39,7 +39,17 @@ MoveLibrary MoveLibrary::build(std::vector<MoveDef> NewMoves, std::vector<MoveSe
     Library.Moves = std::move(NewMoves);
     Library.Sets = std::move(NewSets);
     Library.Input = std::move(NewInput);
-    Library.validate();
+    const std::vector<DataProblem> Problems = Library.findProblems();
+    if (!Problems.empty()) throw std::runtime_error(Problems.front().format());
+    return Library;
+}
+
+MoveLibrary MoveLibrary::buildUnchecked(std::vector<MoveDef> NewMoves, std::vector<MoveSet> NewSets,
+                                        InputRules NewInput) {
+    MoveLibrary Library;
+    Library.Moves = std::move(NewMoves);
+    Library.Sets = std::move(NewSets);
+    Library.Input = std::move(NewInput);
     return Library;
 }
 
@@ -122,14 +132,15 @@ BlockRules MoveLibrary::getBlock(const MoveSet& Set, const BlockRules& Defaults)
     return Rules;
 }
 
-void MoveLibrary::validate() const {
+std::vector<DataProblem> MoveLibrary::findProblems() const {
+    std::vector<DataProblem> Problems;
     if (!findSet(UnarmedMoveSetId)) {
-        throw std::runtime_error(std::format("there is no moveset '{}' (movesets/{}.json)", UnarmedMoveSetId,
-                                             UnarmedMoveSetId));
+        Problems.push_back({std::format("movesets/{}.json", UnarmedMoveSetId),
+                            std::format("there is no moveset '{}'", UnarmedMoveSetId)});
     }
     for (const MoveSet& Set : Sets) {
-        const auto Fail = [&](const std::string& What) {
-            throw std::runtime_error(std::format("movesets/{}.json: {}", Set.Id, What));
+        const auto Fail = [&](std::string What) {
+            Problems.push_back({std::format("movesets/{}.json", Set.Id), std::move(What)});
         };
         for (const MoveSetEntry& Entry : Set.Entries) {
             if (!findMove(Entry.MoveId)) {
@@ -140,15 +151,24 @@ void MoveLibrary::validate() const {
         std::vector<std::string_view> Seen = {Set.Id};
         for (std::string_view Parent = Set.Inherit; !Parent.empty();) {
             const MoveSet* Next = findSet(Parent);
-            if (!Next) Fail(std::format("field 'inherit': there is no moveset '{}'", Parent));
-            if (std::ranges::find(Seen, Parent) != Seen.end()) Fail("field 'inherit': the sets inherit in a circle");
+            if (!Next) {
+                Fail(std::format("field 'inherit': there is no moveset '{}'", Parent));
+                break;
+            }
+            if (std::ranges::find(Seen, Parent) != Seen.end()) {
+                Fail("field 'inherit': the sets inherit in a circle");
+                break;
+            }
             Seen.push_back(Parent);
             Parent = Next->Inherit;
         }
         for (const std::string& Member : Set.Pair) {
             const MoveSet* Item = findSet(Member);
-            if (!Item) Fail(std::format("field 'pair': there is no moveset '{}'", Member));
-            if (!Item->Pair.empty()) Fail(std::format("field 'pair': '{}' is a pair set itself", Member));
+            if (!Item) {
+                Fail(std::format("field 'pair': there is no moveset '{}'", Member));
+            } else if (!Item->Pair.empty()) {
+                Fail(std::format("field 'pair': '{}' is a pair set itself", Member));
+            }
         }
         if (!Set.Pair.empty()) {
             const auto Twin = std::ranges::find_if(Sets, [&](const MoveSet& Other) {
@@ -157,6 +177,7 @@ void MoveLibrary::validate() const {
             if (Twin != Sets.end()) Fail(std::format("field 'pair': movesets/{}.json is for the same pair", Twin->Id));
         }
     }
+    return Problems;
 }
 
 MoveSet parseMoveSet(std::string_view JsonText, std::string Id) {

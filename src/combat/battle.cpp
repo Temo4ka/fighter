@@ -111,7 +111,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     for (auto&& [Index, FighterCfg, Side] : std::views::zip(std::views::iota(uint8_t{0}), Configs, SpawnSide)) {
         const rig::RigDef Body = rig::loadRigDef(Cfg.DataDir / "rigs" / (FighterCfg->RigId + ".json"));
         const stats::PhysicalProfile Profile = stats::computeProfile(FighterCfg->Stats, FighterCfg->Loadout, Balance);
-        const float StartX = Side * Tuning.SpawnDistance * 0.5f;
+        const float StartX = Side * Cfg.SpawnDistanceM.value_or(Tuning.SpawnDistance) * 0.5f;
         Sim->Fighters.emplace_back(Sim->PhysWorld, Body, Sim->Rules, Profile, FighterCfg->Loadout,
                                    makeRigSetup(Profile, FighterCfg->Loadout, Body, StartX, Index), FighterCfg->StartHp);
     }

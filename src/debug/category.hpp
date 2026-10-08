@@ -34,6 +34,7 @@ enum class Cat : uint8_t {
     Velocity,    ///< Velocities.
     Contacts,    ///< Contact points and normals.
     CoM,         ///< Center of mass and support point.
+    Trajectory,  ///< Path of a striking part on the move stand; the active phase in Hitbox.
     Count
 };
 
@@ -42,7 +43,7 @@ inline constexpr size_t CatCount = static_cast<size_t>(Cat::Count);
 constexpr std::string_view getCatName(Cat Category) {
     constexpr std::array<std::string_view, CatCount> Names = {
         "Hurtbox", "Hitbox", "Block", "Static", "Joints", "TargetPose",
-        "Motors", "Forces", "Velocity", "Contacts", "CoM",
+        "Motors", "Forces", "Velocity", "Contacts", "CoM", "Trajectory",
     };
     const auto Index = static_cast<size_t>(Category);
     return Index < Names.size() ? Names[Index] : "?";

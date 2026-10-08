@@ -25,6 +25,9 @@ add_executable(fighter_tests
     combat/test_contact.cpp
     combat/test_no_passthrough.cpp
     combat/test_clip_library.cpp
+    combat/test_data_check.cpp
+    combat/test_move_measure.cpp
+    combat/test_stand_config.cpp
     combat/test_fight.cpp
     combat/test_hands.cpp
     combat/test_commands.cpp
@@ -49,6 +52,7 @@ add_executable(fighter_tests
     render/test_battle_renderer.cpp
     app/test_input.cpp
     app/test_demo_script.cpp
+    app/test_check_data.cpp
     ui/test_screen_flow.cpp
     ui/test_ui_data.cpp
     tools/test_placeholder_gen.cpp

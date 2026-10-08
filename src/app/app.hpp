@@ -28,6 +28,7 @@
 #include "app/demo_script.hpp"
 #include "app/input.hpp"
 #include "combat/battle.hpp"
+#include "combat/move_measure.hpp"
 #include "core/fixed_step_loop.hpp"
 #include "core/signal.hpp"
 #include "render/battle_renderer.hpp"
@@ -62,6 +63,11 @@ struct Options {
     /// Round time instead of the default (--round, e.g. to reach the results
     /// screen quickly for a screenshot).
     std::optional<double> RoundSec;
+    /// The move stand (--stand <move> [--weapon <item>]): one fighter repeats
+    /// the move in front of a dummy (combat/move_measure.hpp). F5 reloads the
+    /// move, its clip and the item.
+    std::optional<std::string> StandMove;
+    std::string StandWeapon;
 };
 
 /// Parses "up,down,left,right,enter,esc" (unknown names are skipped).
@@ -81,6 +87,9 @@ private:
     /// the current battle, reports the error and returns false.
     bool restartBattle();
     void publishFrameStats(double FrameSec);
+    /// Records the stand run after a step, draws it and starts the next run
+    /// when this one is over.
+    void stepStand();
     void saveScreenshot();
     void onFlowCommand(ui::FlowCommand Command);
     /// Starts a battle of the fighters picked in the menu; false on a data error.
@@ -122,6 +131,13 @@ private:
     std::unique_ptr<combat::Battle> CurrentBattle;
     combat::RenderSnapshot Previous;
     bool ResultReported = false;
+    /// The move stand (Opts.StandMove): what is being repeated, the current
+    /// run, and the last run that finished, whose paths stay on the screen
+    /// until the next run starts to move.
+    std::optional<combat::StandSetup> Stand;
+    std::unique_ptr<combat::MoveRun> StandRun;
+    combat::MoveMeasure StandShown;
+    bool StandLogged = false;
     /// Exponential moving average of the frame time, shown as FPS in the
     /// debug panel. Averaging the time rather than 1/time keeps rare fast
     /// frames from inflating the FPS.

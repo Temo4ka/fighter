@@ -1,6 +1,7 @@
 # Everything except main() is a library so that its parts (input) can be tested.
 set(app_sources
     app.cpp
+    check_data.cpp
     input.cpp
     demo_script.cpp
 )

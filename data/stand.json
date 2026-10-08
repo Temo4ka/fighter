@@ -1,0 +1,11 @@
+{
+    "attacker": {"strength": 10, "dexterity": 10, "constitution": 10},
+    "dummy": {"strength": 10, "dexterity": 10, "constitution": 10},
+    "dummy_distance_m": 0.8,
+    "use_move_range": true,
+    "settle_sec": 0.5,
+    "start_timeout_sec": 1.0,
+    "move_timeout_sec": 5.0,
+    "repeat_pause_sec": 0.8,
+    "no_dummy_distance_m": 12.0
+}

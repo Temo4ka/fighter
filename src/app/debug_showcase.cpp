@@ -102,6 +102,13 @@ void drawDebugShowcase() {
     {   // CoM
         Label(Cat::CoM);
         debug::drawCross(Cat::CoM, {CellX, CellY + 0.25f});
+        Next();
+    }
+    {   // Trajectory: the path of a fist, the active phase in the Hitbox color.
+        Label(Cat::Trajectory);
+        debug::drawLine(Cat::Trajectory, {CellX - 0.3f, CellY + 0.2f}, {CellX - 0.05f, CellY + 0.3f});
+        debug::drawLine(Cat::Hitbox, {CellX - 0.05f, CellY + 0.3f}, {CellX + 0.3f, CellY + 0.35f});
+        debug::drawCross(Cat::Trajectory, {CellX + 0.3f, CellY + 0.35f}, 0.06f);
     }
 }
 

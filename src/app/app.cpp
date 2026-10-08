@@ -197,7 +197,9 @@ void App::stepSimulation(double Dt) {
     debug::beginTick();
 
     Previous = CurrentBattle->getSnapshot();
-    if (Opts.Demo) {
+    if (StandRun) {
+        CurrentBattle->update(StandRun->getAttackerCommands(), combat::PlayerCommands{}, Dt);
+    } else if (Opts.Demo) {
         const DemoInput Scripted = getDemoInput(*Opts.Demo, Loop.getTick(), Previous);
         CurrentBattle->update(Scripted.Left, Scripted.Right, Dt);
     } else {
@@ -205,6 +207,7 @@ void App::stepSimulation(double Dt) {
     }
     for (const combat::BattleEvent& Event : CurrentBattle->getEvents())
         BattleEvents.emit(Event, CurrentBattle->getSnapshot());
+    if (StandRun) stepStand();
 
 #if FIGHTER_DEBUG
     if (ShowcaseVisible) drawDebugShowcase();
@@ -217,6 +220,21 @@ void App::stepSimulation(double Dt) {
         log::info("round over: winner {}, {:.1f} s", getWinnerName(Result->WinnerSide), Result->TimeSec);
         debug::logEvent(std::format("round over: winner {}", getWinnerName(Result->WinnerSide)));
     }
+}
+
+void App::stepStand() {
+    StandRun->observe(*CurrentBattle);
+    const combat::MoveMeasure& Measure = StandRun->getMeasure();
+    if (Measure.Finished && !StandLogged) {
+        StandLogged = true;
+        StandShown = Measure;
+        const std::string Summary = std::format("stand {}: {}", Stand->MoveId, combat::describeMeasure(Measure));
+        log::info("{}", Summary);
+        debug::logEvent(Summary);
+    }
+    // The paths of the run that is moving, else those of the last finished one.
+    combat::drawMeasure(*Stand, Measure.Started ? Measure : StandShown);
+    if (StandRun->isOver()) restartBattle();
 }
 
 void App::render(float Alpha) {
@@ -311,8 +329,14 @@ void App::loadUiConfig() {
 bool App::restartBattle() {
     // The battle reads the data files (rigs, poses) when it is created.
     std::unique_ptr<combat::Battle> Fresh;
+    std::optional<combat::StandSetup> FreshStand;
     try {
-        const combat::BattleConfig Config = makeSandboxBattle(Opts);
+        // The stand reads the move, its clip and the item again every run.
+        if (Opts.StandMove) {
+            FreshStand = combat::prepareStand(
+                {.MoveId = *Opts.StandMove, .WeaponId = Opts.StandWeapon, .WithDummy = true, .DataDir = Opts.Root / "data"});
+        }
+        const combat::BattleConfig Config = FreshStand ? FreshStand->Config : makeSandboxBattle(Opts);
         // The same table the battle loads, to show the profiles in the debug panel.
         const stats::BalanceTable Balance = stats::loadBalanceTable(Config.DataDir / "balance.json");
         Fresh = std::make_unique<combat::Battle>(Config);
@@ -322,9 +346,16 @@ bool App::restartBattle() {
         // A typo in a JSON file during live tuning must not close the sandbox.
         log::error("cannot restart the battle: {}", Error.what());
         debug::logEvent(std::format("reload failed: {}", Error.what()));
+        // The stand goes on with what it has, trying again after the next run.
+        if (StandRun) StandRun = std::make_unique<combat::MoveRun>(*Stand);
         return false;
     }
     CurrentBattle = std::move(Fresh);
+    if (FreshStand) {
+        Stand = std::move(FreshStand);
+        StandRun = std::make_unique<combat::MoveRun>(*Stand);
+        StandLogged = false;
+    }
     const combat::BattleConfig& Config = CurrentBattle->getConfig();
     Renderer.startBattle({render::makeFighterLook(Config.Left, Skins[0], "P1"),
                           render::makeFighterLook(Config.Right, Skins[1], "P2")});
