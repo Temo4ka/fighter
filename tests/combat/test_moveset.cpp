@@ -30,7 +30,7 @@ MoveLibrary makeLibrary() {
     }
     std::vector<MoveSet> Sets = {
         parseMoveSet(R"({"moves": {"Light": "jab", "Kick": "body_kick", "Down+Kick": "sweep"}})", "unarmed"),
-        parseMoveSet(R"({"inherit": "unarmed",
+        parseMoveSet(R"({"inherit": "unarmed", "stance": "stance_sword",
             "moves": {"Heavy": "slash", "Forward+Heavy": "thrust", "Light+Heavy": "spin"},
             "block": {"damage_scale": 0.1, "clips": {"Mid": "block_mid_sword"}}})", "sword"),
         parseMoveSet(R"({"moves": {}})", "shield"),
@@ -130,6 +130,17 @@ TEST_CASE("MoveSet: parse rejects bad fields", "[combat][moveset]") {
     CHECK_THROWS_WITH(Parse(R"({"block": {"clips": {"Top": "c"}}})"), ContainsSubstring("not High, Mid or Low"));
     CHECK_THROWS_WITH(Parse(R"({"block": {"covers": {"Mid": ["Tail"]}}})"), ContainsSubstring("unknown body part"));
     CHECK_THROWS_WITH(Parse(R"({"weapon": "sword"})"), Equals("unknown field 'weapon'"));
+    CHECK_THROWS_WITH(Parse(R"({"stance": ""})"), ContainsSubstring("field 'stance'"));
+    CHECK_THROWS_WITH(Parse(R"({"stance": 3})"), ContainsSubstring("type"));
+}
+
+TEST_CASE("MoveSet: the stance clip is inherited", "[combat][moveset]") {
+    const MoveLibrary Library = makeLibrary();
+    CHECK(Library.getStance(*Library.findSet("unarmed"), "stance") == "stance");   // the default
+    CHECK(Library.getStance(*Library.findSet("sword"), "stance") == "stance_sword");
+    CHECK(Library.getStance(*Library.findSet("sword_shield"), "stance") == "stance_sword");   // from sword
+    CHECK(Library.getStance(*Library.findSet("shield"), "stance") == "stance");
+    CHECK(parseMoveSet(R"({"stance": "x"})", "s").Stance == "x");
 }
 
 TEST_CASE("MoveLibrary: references are checked", "[combat][moveset]") {

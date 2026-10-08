@@ -80,7 +80,8 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
                                     Gear.getMoveSet(stats::EquipmentSlot::OffHand),
                                     !Gear.findShield(stats::EquipmentSlot::OffHand));
     Block = NewRules.Moves.getBlock(*Set, getDefaultBlock(NewRules.Reactions));
-    Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
+    StanceName = NewRules.Moves.getStance(*Set, clips::Stance);
+    Shown = anim::sampleClip(NewRules.Clips.get(StanceName), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
     const float MinSpread = NewRules.Tuning.RestMinFootSpread;
@@ -287,7 +288,7 @@ float Fighter::getPowerScale(const MoveDef& Attack) const {
 
 std::string Fighter::describeClip() const {
     const anim::Clip* Top = getTopClip();
-    const anim::Clip& Playing = Top ? *Top : Rules->Clips.get(Walk.isPlaying() ? clips::Walk : clips::Stance);
+    const anim::Clip& Playing = Top ? *Top : Rules->Clips.get(Walk.isPlaying() ? std::string_view(clips::Walk) : std::string_view(StanceName));
     const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
     return anim::describePlayback(Playing, getClipTime(), Rate, Fade);
 }
@@ -1110,7 +1111,7 @@ void Fighter::stopLegs(LegCycle& Cycle, bool Crouched, float Dt) {
 
 Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt) {
     const ClipLibrary& Clips = Rules->Clips;
-    const anim::Pose Stance = anim::sampleClip(Clips.get(clips::Stance), 0.0f);
+    const anim::Pose Stance = anim::sampleClip(Clips.get(StanceName), 0.0f);
     const bool LegAction = Top && anim::usesLegs(*Top);
     updateRestLegs(LegAction, Dt);
 
@@ -1221,7 +1222,7 @@ void Fighter::chooseStop(LegCycle& Cycle, bool Crouched) {
 
 anim::Pose Fighter::getCyclePose(bool Crouched, float TimeSec) const {
     const ClipLibrary& Clips = Rules->Clips;
-    anim::Pose Pose = anim::sampleClip(Clips.get(clips::Stance), 0.0f);
+    anim::Pose Pose = anim::sampleClip(Clips.get(StanceName), 0.0f);
     if (!Crouched) {
         anim::layerPose(Pose, anim::sampleClip(Clips.get(clips::Walk), TimeSec));
         return Pose;
@@ -1343,7 +1344,7 @@ bool Fighter::shouldMirrorLegs() const {
 }
 
 anim::Pose Fighter::getStanceLegs(BodyPart FrontFoot) const {
-    const anim::Pose Legs = anim::selectJoints(anim::sampleClip(Rules->Clips.get(clips::Stance), 0.0f),
+    const anim::Pose Legs = anim::selectJoints(anim::sampleClip(Rules->Clips.get(StanceName), 0.0f),
                                                anim::getLegJoints());
     return FrontFoot == BodyPart::FootR ? anim::mirrorLegs(Legs) : Legs;
 }
@@ -1411,7 +1412,7 @@ std::string Fighter::describeStride() const {
 
 std::string Fighter::describeUpper() const {
     const anim::Clip* Top = getTopClip();
-    if (!Top || !hasUpperJoints(*Top)) return "stance";
+    if (!Top || !hasUpperJoints(*Top)) return StanceName;
     const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
     return anim::describePlayback(*Top, getTopClipTime(), Rate, Fade);
 }

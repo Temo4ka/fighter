@@ -205,3 +205,22 @@ TEST_CASE("Hands: the small shield is torso-sized in the middle guard", "[combat
     CHECK(HalfHeight * 2.0f < TorsoHeightM * 1.2f);
     CHECK(Forearm.Position.Y - HalfHeight > getPart(View, BodyPart::Pelvis).Position.Y + PelvisHalfHeightM);
 }
+
+TEST_CASE("Fight: a fighter idles in the stance of its moveset", "[combat][fight][data]") {
+    const auto idleTorsoAngle = [](const BattleConfig& Config, const FighterConfig& Who) {
+        BattleConfig Setup = Config;
+        Setup.Left = Who;
+        Battle Fight(Setup);
+        run(Fight, {}, {}, TicksPerSecond);
+        return getPart(getLeft(Fight), BodyPart::Torso).Angle;
+    };
+    const FighterConfig Swordsman = makeFighter({{.Id = "short_sword"}});
+    const float Before = idleTorsoAngle(makeConfig(), Swordsman);
+    const float Bare = idleTorsoAngle(makeConfig(), FighterConfig{});
+
+    ScratchData Data("stance_moveset");
+    Data.replace("poses/stance_sword.json", "\"Torso\": -8", "\"Torso\": 25");
+    // The sword's stance is read; the bare hands keep the general one.
+    CHECK(std::abs(idleTorsoAngle(Data.makeConfig(), Swordsman) - Before) > 0.05f);
+    CHECK(idleTorsoAngle(Data.makeConfig(), FighterConfig{}) == Bare);
+}

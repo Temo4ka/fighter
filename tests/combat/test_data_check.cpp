@@ -104,6 +104,14 @@ TEST_CASE("checkData: the clips of a moveset's block must exist", "[combat][data
     CHECK(hasProblem(Problems, "movesets/odd_block.json", "field 'block.clips.Mid': clip 'no_such_block'"));
 }
 
+TEST_CASE("checkData: the stance clip of a moveset must exist", "[combat][data_check]") {
+    const test::ScratchData Data("check_stance");
+    Data.write("movesets/odd_stance.json", R"({"stance": "no_such_stance"})");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(hasProblem(Problems, "movesets/odd_stance.json", "field 'stance': clip 'no_such_stance'"));
+}
+
 TEST_CASE("checkData: the clips of the state machine must exist", "[combat][data_check]") {
     const test::ScratchData Data("check_state_clips");
     std::filesystem::remove(Data.getDir() / "poses" / "stance.json");

@@ -1,5 +1,6 @@
 {
     "inherit": "unarmed",
+    "stance": "stance_hammer",
     "moves": {
         "Light": "hammer_bash",
         "Heavy": "hammer_smash",

@@ -1,5 +1,6 @@
 {
     "inherit": "unarmed",
+    "stance": "stance_shield",
     "moves": {
         "Special": "shield_bash"
     },
