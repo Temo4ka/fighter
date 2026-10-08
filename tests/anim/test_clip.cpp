@@ -202,3 +202,50 @@ TEST_CASE("layerPose and blendPoses: the wrist of the top pose wins, blends from
     CHECK(blendPoses(Pose{}, To, 0.25f).WeaponAngle == Approx(1.0f));
     CHECK(blendPoses(From, Pose{}, 0.25f).HasWeapon);
 }
+
+TEST_CASE("parseClip: the WeaponOff key is the other wrist, checked like Weapon", "[anim]") {
+    const Clip Parsed = parseClip(R"({
+        "duration": 1.0,
+        "keys": [
+            { "t": 0.0, "pose": { "ForearmL": 0, "Weapon": 0, "WeaponOff": -20 } },
+            { "t": 0.5, "pose": { "ForearmL": 90, "Weapon": 80, "WeaponOff": 20 } }
+        ]
+    })", "dual");
+    const Pose Half = sampleClip(Parsed, 0.25f);
+    REQUIRE(Half.HasWeaponOff);
+    CHECK(Half.WeaponOffAngle == Approx(0.0f).margin(1e-6));
+    CHECK(Half.WeaponAngle == Approx(40.0f * RadiansPerDegree));
+    CHECK(Half.Mask.count() == 1);
+    CHECK_FALSE(sampleClip(parseClip(OneShotJson, "plain"), 0.25f).HasWeaponOff);
+    CHECK_THROWS_AS(parseClip(R"({
+        "duration": 1.0,
+        "keys": [
+            { "t": 0.0, "pose": { "ForearmL": 0, "WeaponOff": 0 } },
+            { "t": 0.5, "pose": { "ForearmL": 90 } }
+        ]
+    })", "uneven_off"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(R"({
+        "duration": 1.0,
+        "keys": [ { "t": 0.0, "pose": { "WeaponOff": -190 } } ]
+    })", "too_far_off"), std::runtime_error);
+}
+
+TEST_CASE("layerPose and blendPoses: the other wrist layers and blends on its own", "[anim]") {
+    Pose Base;
+    Base.setWeaponAngle(1.0f);
+    Base.setWeaponOffAngle(-1.0f);
+    Pose Top;
+    Top.setWeaponOffAngle(0.5f);
+    layerPose(Base, Top);
+    CHECK(Base.WeaponAngle == Approx(1.0f));
+    CHECK(Base.WeaponOffAngle == Approx(0.5f));
+
+    Pose From;
+    From.setWeaponOffAngle(0.0f);
+    Pose To;
+    To.setWeaponOffAngle(1.0f);
+    const Pose Blended = blendPoses(From, To, 0.25f);
+    CHECK(Blended.WeaponOffAngle == Approx(0.25f));
+    CHECK_FALSE(Blended.HasWeapon);
+    CHECK(blendPoses(Pose{}, To, 0.25f).WeaponOffAngle == Approx(1.0f));
+}

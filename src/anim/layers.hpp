@@ -24,6 +24,14 @@
 /// ForearmL <-> ForearmR): a strike authored with the weapon in the right
 /// hand plays with the left one when the weapon is held there.
 ///
+/// The wrists go with the arms. A pose names them by role, not by side:
+/// "Weapon" is the wrist of the clip's weapon arm, "WeaponOff" that of the
+/// other arm. The weapon arm is the arm the clip strikes with (its strikers),
+/// so swapping the arms, which swaps the strikers, moves both wrists to the
+/// other forearm with the arm joints, and the pose's fields stay as they are
+/// (getWeaponArm()). A clip that strikes with no arm (the stance, blocks,
+/// kicks) has the main hand as its weapon arm.
+///
 //===----------------------------------------------------------------------===//
 
 #pragma once
@@ -89,8 +97,20 @@ BodyPart getMirroredArmPart(BodyPart Part);
 bool usesArms(const Clip& Source);
 
 /// \p Source with the two arms swapped: the angles and the mask of each arm
-/// joint move to the same joint of the other arm.
+/// joint move to the same joint of the other arm. The wrists (Weapon,
+/// WeaponOff) stay: they are named by role (see the file comment).
 Pose mirrorArms(const Pose& Source);
+
+/// The forearm whose wrist the key "Weapon" of \p Source sets as it plays:
+/// \p MainForearm (the main hand), unless the clip strikes only with the
+/// other arm (a forearm or an upper arm of it among its strikers), then the
+/// other forearm. The key "WeaponOff" sets the wrist of the other one.
+BodyPart getWeaponArm(const Clip& Source, BodyPart MainForearm);
+
+/// \p Source with its two wrists (Weapon and WeaponOff, values and whether
+/// they are set) exchanged: a pose of a clip whose weapon arm is the off
+/// hand, turned into the main hand's terms.
+Pose swapWrists(const Pose& Source);
 
 /// \p Parts with the parts of the two arms swapped (a clip's strikers).
 std::bitset<BodyPartCount> mirrorArmParts(const std::bitset<BodyPartCount>& Parts);

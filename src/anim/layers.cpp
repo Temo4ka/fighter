@@ -50,6 +50,7 @@ Pose joinLayers(const Pose& Upper, const Pose& Legs) {
     Pose Result = selectJoints(Upper, ~getLegJoints());
     layerPose(Result, selectJoints(Legs, getLegJoints()));
     if (Upper.HasWeapon) Result.setWeaponAngle(Upper.WeaponAngle);
+    if (Upper.HasWeaponOff) Result.setWeaponOffAngle(Upper.WeaponOffAngle);
     return Result;
 }
 
@@ -110,6 +111,23 @@ Pose mirrorArms(const Pose& Source) {
         std::swap(Result.Angles[static_cast<size_t>(Left)], Result.Angles[static_cast<size_t>(Right)]);
         swapBits(Result.Mask, Left, Right);
     }
+    return Result;
+}
+
+BodyPart getWeaponArm(const Clip& Source, BodyPart MainForearm) {
+    const BodyPart OtherForearm = getMirroredArmPart(MainForearm);
+    const auto strikesWith = [&](BodyPart Forearm) {
+        const BodyPart UpperArm = Forearm == BodyPart::ForearmL ? BodyPart::UpperArmL : BodyPart::UpperArmR;
+        return Source.isStriker(Forearm) || Source.isStriker(UpperArm);
+    };
+    if (OtherForearm == MainForearm || strikesWith(MainForearm)) return MainForearm;
+    return strikesWith(OtherForearm) ? OtherForearm : MainForearm;
+}
+
+Pose swapWrists(const Pose& Source) {
+    Pose Result = Source;
+    std::swap(Result.WeaponAngle, Result.WeaponOffAngle);
+    std::swap(Result.HasWeapon, Result.HasWeaponOff);
     return Result;
 }
 

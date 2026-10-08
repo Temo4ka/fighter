@@ -181,3 +181,47 @@ TEST_CASE("joinLayers: the wrist comes with the upper layer, selectJoints drops 
     CHECK(mirrorArms(Upper).WeaponAngle == 0.7f);
     CHECK(mirrorLegs(Upper).WeaponAngle == 0.7f);
 }
+
+TEST_CASE("joinLayers and mirrorArms: the other wrist goes with the upper layer, by role", "[anim][layers]") {
+    Pose Upper;
+    Upper.setWeaponAngle(0.7f);
+    Upper.setWeaponOffAngle(-0.4f);
+    const Pose Joined = joinLayers(Upper, Pose{});
+    REQUIRE(Joined.HasWeaponOff);
+    CHECK(Joined.WeaponOffAngle == -0.4f);
+    CHECK_FALSE(selectJoints(Upper, getLegJoints()).HasWeaponOff);
+    // Swapping the arms keeps the roles: the weapon arm swaps with them.
+    const Pose Mirrored = mirrorArms(Upper);
+    CHECK(Mirrored.WeaponAngle == 0.7f);
+    CHECK(Mirrored.WeaponOffAngle == -0.4f);
+}
+
+TEST_CASE("getWeaponArm: the main hand unless the clip strikes only with the other arm", "[anim][layers]") {
+    const Clip Stance;
+    CHECK(getWeaponArm(Stance, BodyPart::ForearmL) == BodyPart::ForearmL);
+    Clip Cut;
+    Cut.Strikers = makeParts({BodyPart::ForearmR});
+    CHECK(getWeaponArm(Cut, BodyPart::ForearmL) == BodyPart::ForearmR);
+    CHECK(getWeaponArm(Cut, BodyPart::ForearmR) == BodyPart::ForearmR);
+    // Played with the arms swapped, the weapon arm swaps too.
+    CHECK(getWeaponArm(mirrorClipArms(Cut), BodyPart::ForearmL) == BodyPart::ForearmL);
+    Clip Elbow;
+    Elbow.Strikers = makeParts({BodyPart::UpperArmR});
+    CHECK(getWeaponArm(Elbow, BodyPart::ForearmL) == BodyPart::ForearmR);
+    Clip Both;
+    Both.Strikers = makeParts({BodyPart::ForearmL, BodyPart::ForearmR});
+    CHECK(getWeaponArm(Both, BodyPart::ForearmL) == BodyPart::ForearmL);
+    Clip Kick;
+    Kick.Strikers = makeParts({BodyPart::ShinL});
+    CHECK(getWeaponArm(Kick, BodyPart::ForearmL) == BodyPart::ForearmL);
+}
+
+TEST_CASE("swapWrists: exchanges the two wrists and whether they are set", "[anim][layers]") {
+    Pose Source;
+    Source.setWeaponAngle(0.3f);
+    const Pose Swapped = swapWrists(Source);
+    CHECK_FALSE(Swapped.HasWeapon);
+    REQUIRE(Swapped.HasWeaponOff);
+    CHECK(Swapped.WeaponOffAngle == 0.3f);
+    CHECK(swapWrists(Swapped).WeaponAngle == 0.3f);
+}

@@ -173,6 +173,10 @@ Pose parsePose(const Json& Node) {
             Result.setWeaponAngle(Degrees.get<float>() * RadiansPerDegree);
             continue;
         }
+        if (PartName == WeaponOffKey) {
+            Result.setWeaponOffAngle(Degrees.get<float>() * RadiansPerDegree);
+            continue;
+        }
         const auto Part = findBodyPart(PartName);
         if (!Part) throw std::runtime_error(std::format("unknown body part '{}'", PartName));
         Result.setAngle(*Part, Degrees.get<float>() * RadiansPerDegree);
@@ -206,11 +210,16 @@ void validateClip(const Clip& Result) {
     if (Result.Keys.front().TimeSec != 0.0f) Fail("the first key must be at t = 0");
     for (const auto& Key : Result.Keys) {
         if (Key.Target.Mask != Result.Keys.front().Target.Mask ||
-            Key.Target.HasWeapon != Result.Keys.front().Target.HasWeapon) {
+            Key.Target.HasWeapon != Result.Keys.front().Target.HasWeapon ||
+            Key.Target.HasWeaponOff != Result.Keys.front().Target.HasWeaponOff) {
             Fail("every key must set the same joints");
         }
         if (Key.Target.HasWeapon && std::abs(Key.Target.WeaponAngle) > MaxWeaponAngle) {
             Fail(std::format("{} = {} deg is out of [-180, 180]", WeaponKey, Key.Target.WeaponAngle / RadiansPerDegree));
+        }
+        if (Key.Target.HasWeaponOff && std::abs(Key.Target.WeaponOffAngle) > MaxWeaponAngle) {
+            Fail(std::format("{} = {} deg is out of [-180, 180]", WeaponOffKey,
+                             Key.Target.WeaponOffAngle / RadiansPerDegree));
         }
         if (Key.TimeSec > Result.DurationSec) Fail("a key is after the end of the clip");
     }
