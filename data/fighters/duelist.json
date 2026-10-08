@@ -1,0 +1,15 @@
+{
+    "name": "Duelist",
+    "stats": {
+        "strength": 10,
+        "dexterity": 14,
+        "constitution": 9
+    },
+    "items": [
+        "leather_cap",
+        "leather_vest",
+        "soft_boots",
+        "short_sword",
+        { "id": "short_sword", "slot": "OffHand" }
+    ]
+}

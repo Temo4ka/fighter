@@ -39,6 +39,16 @@ FighterConfig makeSwordsman(const std::filesystem::path& Dir = DataDir) {
     return Config;
 }
 
+/// A fighter with a short sword in each hand, of the items in \p Dir.
+FighterConfig makeDuelist(const std::filesystem::path& Dir = DataDir) {
+    const stats::ItemCatalog Catalog = stats::loadItemCatalog(Dir / "items");
+    FighterConfig Config;
+    const std::vector<stats::ItemRef> Items = {{.Id = "short_sword", .Slot = std::nullopt},
+                                               {.Id = "short_sword", .Slot = stats::EquipmentSlot::OffHand}};
+    Config.Loadout = stats::buildLoadout(Items, Catalog);
+    return Config;
+}
+
 /// The wrist of the weapon \p Holder holds, as a pose writes it (for a
 /// fighter facing right): the weapon's turn from the forearm.
 float getWrist(const FighterView& View, BodyPart Holder) {
@@ -200,4 +210,111 @@ TEST_CASE("Wrist: a sword fight with a moving wrist is deterministic", "[combat]
         }
     }
     CHECK(Hits > 0);
+}
+
+TEST_CASE("Wrist: a weapon in each hand, each on its own wrist", "[combat][wrist][data]") {
+    BattleConfig Config = makeConfig();
+    Config.Left = loadFighter("duelist");
+    Battle Fight(Config);
+    run(Fight, {}, {}, TicksPerSecond / 2);
+    const FighterView& Left = getLeft(Fight);
+    REQUIRE(Left.Weapons.size() == 2);
+    CHECK(Left.Weapons[0].Part == BodyPart::ForearmL);
+    CHECK(Left.Weapons[1].Part == BodyPart::ForearmR);
+}
+
+TEST_CASE("Wrist: each hand falls back on its own: stance Weapon, WeaponOff, the item", "[combat][wrist][data]") {
+    const auto getIdleWrists = [](const ScratchData& Data) {
+        BattleConfig Config = Data.makeConfig();
+        Config.Left = makeDuelist(Data.getDir());
+        Battle Fight(Config);
+        run(Fight, {}, {}, TicksPerSecond);
+        return std::pair(getWrist(getLeft(Fight), BodyPart::ForearmL), getWrist(getLeft(Fight), BodyPart::ForearmR));
+    };
+    ScratchData Data("wrist_dual_fallback");
+    stripWrists(Data);
+    Data.replace("items/weapons.json", R"("reach_m": 0.55,)", R"("reach_m": 0.55, "angle_deg": 40,)");
+    // Neither set: both the item's.
+    auto [Main, Off] = getIdleWrists(Data);
+    CHECK(Main == Approx(40.0f * RadiansPerDegree).margin(0.05f));
+    CHECK(Off == Approx(40.0f * RadiansPerDegree).margin(0.05f));
+    // The stance's Weapon is the main hand's only.
+    Data.replace("poses/stance_sword.json", R"("Pelvis": 0,)", R"("Pelvis": 0, "Weapon": -30,)");
+    std::tie(Main, Off) = getIdleWrists(Data);
+    CHECK(Main == Approx(-30.0f * RadiansPerDegree).margin(0.05f));
+    CHECK(Off == Approx(40.0f * RadiansPerDegree).margin(0.05f));
+    // WeaponOff is the other hand's.
+    Data.replace("poses/stance_sword.json", R"("Weapon": -30,)", R"("Weapon": -30, "WeaponOff": 10,)");
+    std::tie(Main, Off) = getIdleWrists(Data);
+    CHECK(Main == Approx(-30.0f * RadiansPerDegree).margin(0.05f));
+    CHECK(Off == Approx(10.0f * RadiansPerDegree).margin(0.05f));
+}
+
+TEST_CASE("Wrist: a clip's Weapon goes to the arm it strikes with, WeaponOff to the other", "[combat][wrist][data]") {
+    // sword_slash is authored for the right arm. One sword (left hand): the
+    // clip plays with the arms swapped, its Weapon on the left wrist. Two
+    // swords: it plays as authored with the right one, its Weapon on the
+    // right wrist and its WeaponOff on the left.
+    ScratchData Data("wrist_dual_clip");
+    stripWrists(Data);
+    const std::filesystem::path Clip = "poses/sword_slash.json";
+    Data.write(Clip, insertAfterEach(readText(Data.getDir() / Clip), R"("pose": { )",
+                                     R"("Weapon": 60, "WeaponOff": -40, )"));
+    const auto getSwungWrists = [&](const FighterConfig& Fighter) {
+        BattleConfig Config = Data.makeConfig();
+        Config.Left = Fighter;
+        Battle Fight(Config);
+        run(Fight, {}, {}, TicksPerSecond / 2);
+        for (int Tick = 0; Tick < TicksPerSecond; ++Tick) {
+            Fight.update({.Heavy = true}, {}, Dt);
+            const FighterView& Left = getLeft(Fight);
+            if (Left.MoveId == "sword_slash" && Left.Phase == AttackPhase::Active) {
+                const BodyPart Other = Left.Weapons.size() > 1 ? BodyPart::ForearmR : BodyPart::ForearmL;
+                return std::pair(getWrist(Left, BodyPart::ForearmL), getWrist(Left, Other));
+            }
+        }
+        FAIL("the slash did not reach its active phase");
+        return std::pair(0.0f, 0.0f);
+    };
+    const auto [Single, Unused] = getSwungWrists(makeSwordsman(Data.getDir()));
+    CHECK(Single == Approx(60.0f * RadiansPerDegree).margin(0.2f));
+    const auto [Main, Off] = getSwungWrists(makeDuelist(Data.getDir()));
+    CHECK(Off == Approx(60.0f * RadiansPerDegree).margin(0.2f));
+    CHECK(Main == Approx(-40.0f * RadiansPerDegree).margin(0.2f));
+}
+
+TEST_CASE("Wrist: a hit with the off hand's weapon is the right forearm's; dual fights are deterministic",
+          "[combat][wrist][dod]") {
+    ScratchData Data("wrist_dual_fight");
+    stripWrists(Data);
+    BattleConfig Config = Data.makeConfig();
+    Config.Left = makeDuelist(Data.getDir());
+    Config.Right = makeDuelist(Data.getDir());
+    Battle First(Config);
+    Battle Second(Config);
+    size_t LeftHits = 0;
+    for (int Tick = 0; Tick < 6 * TicksPerSecond; ++Tick) {
+        const float Distance = getRight(First).Position.X - getLeft(First).Position.X;
+        const PlayerCommands LeftCmd{.MoveX = Distance > HeavyRange ? 1.0f : 0.0f, .Light = Tick % 41 == 0};
+        const PlayerCommands RightCmd{.Light = Tick % 53 == 0};
+        First.update(LeftCmd, RightCmd, Dt);
+        Second.update(LeftCmd, RightCmd, Dt);
+        for (const physics::HitEvent& Hit : getHits(First)) {
+            // sword_cut strikes with the right arm: the off hand's sword.
+            CHECK(Hit.Attacker.Part == BodyPart::ForearmR);
+            if (Hit.Attacker.Fighter == 0) ++LeftHits;
+        }
+        for (size_t Index = 0; Index < 2; ++Index) {
+            const FighterView& One = First.getSnapshot().Fighters[Index];
+            const FighterView& Two = Second.getSnapshot().Fighters[Index];
+            REQUIRE(One.Weapons.size() == 2);
+            REQUIRE(Two.Weapons.size() == 2);
+            for (size_t Weapon = 0; Weapon < One.Weapons.size(); ++Weapon) {
+                REQUIRE(One.Weapons[Weapon].Position.X == Two.Weapons[Weapon].Position.X);
+                REQUIRE(One.Weapons[Weapon].Angle == Two.Weapons[Weapon].Angle);
+            }
+            REQUIRE(One.Hp == Two.Hp);
+        }
+    }
+    CHECK(LeftHits > 0);
 }
