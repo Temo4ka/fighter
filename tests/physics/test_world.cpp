@@ -231,7 +231,7 @@ TEST_CASE("physics::World: a punch and a kick with equal speed and strike masses
     constexpr float TargetMass = 30.0f;
     constexpr float Dt = 1.0f / 60.0f;
     const auto strike = [&](bool Posed) {
-        World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f, .StepPasses = 8});
+        World PhysWorld({.Gravity = {0.0f, 0.0f}, .StepPasses = 8, .HitSpeedThreshold = 1.0f});
         Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, Posed ? Vec2{} : Vec2{Speed, 0.0f});
         if (Posed) PhysWorld.setBodyType(Striker, BodyType::Kinematic);
         PhysWorld.setStrikeMass(Striker, StrikerMass);
@@ -263,7 +263,7 @@ TEST_CASE("physics::World: a contact pressed through a step is one hit of the cl
     // through all the Box2D steps of a simulation step (the target bounces
     // and is caught again): one hit in the step, and its impulse is that of
     // the collision, not what the solver pushes in the rest of the step.
-    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f, .StepPasses = 8});
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .StepPasses = 8, .HitSpeedThreshold = 1.0f});
     Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, {6.0f, 0.0f});
     Striker.setMass(500.0f);
     PhysWorld.setStrikeMass(Striker, 4.0f);
