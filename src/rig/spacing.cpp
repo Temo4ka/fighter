@@ -25,8 +25,8 @@ constexpr float MinUsefulShift = 0.001f;
 /// Pushes slower than this are not told in the event log, m/s.
 constexpr float MinLoggedPush = 0.05f;
 
-void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt);
-void keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt);
+SpacingReport separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt);
+float keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt);
 PelvisController::SpacingMotion splitCorrection(const PelvisController& Motion, float Planned, float Corrected,
                                                 float Dt);
 // Only the debug build fills the panel.
@@ -34,7 +34,7 @@ PelvisController::SpacingMotion splitCorrection(const PelvisController& Motion, 
 
 } // namespace
 
-void keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt) {
+SpacingReport keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt) {
     const float MaxX = Params.ArenaHalfWidth - Params.BodyHalfWidth;
     const float WallX = Params.ArenaHalfWidth;
     First.updateWallContact(-MaxX, MaxX, WallX);
@@ -48,12 +48,13 @@ void keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt) {
         First.getController().setSpacingMotion({});
         Second.getController().setSpacingMotion({});
     }
+    SpacingReport Report;
     if (FirstUp && SecondUp) {
-        separateStanding(First, Second, MaxX, Params, Dt);
+        Report = separateStanding(First, Second, MaxX, Params, Dt);
     } else if (FirstUp) {
-        keepOffLying(First, Second, MaxX, Params, Dt);
+        Report.OffLying[0] = keepOffLying(First, Second, MaxX, Params, Dt);
     } else if (SecondUp) {
-        keepOffLying(Second, First, MaxX, Params, Dt);
+        Report.OffLying[1] = keepOffLying(Second, First, MaxX, Params, Dt);
     }
     // The corrections may have taken a pelvis to a wall.
     if (FirstUp || SecondUp) {
@@ -64,6 +65,7 @@ void keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt) {
         reportCorrections(First, Dt);
         reportCorrections(Second, Dt);
     }
+    return Report;
 }
 
 float pushApartOnHit(Rig& Attacker, Rig& Victim) {
@@ -96,7 +98,7 @@ namespace {
 
 /// Keeps two standing fighters apart: their pelvises 2 * BodyHalfWidth, and
 /// their posed parts (the legs) off each other.
-void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt) {
+SpacingReport separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& Params, float Dt) {
     // Who is on the left now: a fighter may have got up on the other side.
     const bool InOrder = First.getController().getPositionX() <= Second.getController().getPositionX();
     Rig& Left = InOrder ? First : Second;
@@ -211,14 +213,15 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
         Hard = true;
     }
     const float Shift = Slowed + Pushed;
+    const SpacingReport Report{.Standing = true,
+                               .Overlap = std::max(Overlap, 0.0f),
+                               .Needed = Needed,
+                               .Slowed = Slowed,
+                               .Pushed = Pushed,
+                               .PushSpeed = Pushed / Dt,
+                               .Hard = Hard,
+                               .Eased = !Hard && Needed - Slowed > MaxPush + 1e-6f};
     if constexpr (FIGHTER_DEBUG) {
-        debug::setPanel("spacing", std::format("{} needs {:.3f} m: slows {:.3f}, pushes {:.3f} m ({:.2f} m/s){}",
-                                               Overlap > 0.0f ? std::format("bodies overlap {:.3f} m,", Overlap)
-                                                              : std::string("pelvises"),
-                                               Needed, Slowed, Pushed, Pushed / Dt,
-                                               Hard                              ? ", hard"
-                                               : Needed - Slowed > MaxPush + 1e-6f ? ", eased"
-                                                                                   : ""));
         if (Hard) {
             debug::logEvent(std::format("spacing hard push: bodies overlap {:.3f} m, apart {:.3f} m at once", Overlap,
                                         Pushed));
@@ -252,15 +255,17 @@ void separateStanding(Rig& First, Rig& Second, float MaxX, const SpacingParams& 
                                   .Wall = (Corrected - Free) / Dt,
                                   .Overlap = OverlapLeft});
     }
-    if (Shift <= 0.0f) return;
+    if (Shift <= 0.0f) return Report;
     Left.pushBody(LeftX - LeftPlanned);
     Right.pushBody(RightX - RightPlanned);
     LeftMotion.limit(-MaxX, MaxX);
     RightMotion.limit(-MaxX, MaxX);
+    return Report;
 }
 
 /// Keeps a standing pelvis away from the body of a fighter on the floor.
-void keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt) {
+/// Returns how far it stepped off a body under it, m (signed along X).
+float keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingParams& Params, float Dt) {
     const ExtentX Body = Lying.getExtentX();
     const float Clearance = Params.BodyHalfWidth + Standing.getControl().LyingClearance;
     const float Low = Body.Min - Clearance;
@@ -269,15 +274,18 @@ void keepOffLying(Rig& Standing, const Rig& Lying, float MaxX, const SpacingPara
     const float Now = Motion.getPositionX();
     if (Now <= Low) {
         Motion.limit(-MaxX, Low);
-    } else if (Now >= High) {
-        Motion.limit(High, MaxX);
-    } else {
-        // The body fell onto the fighter's feet: step out to the nearer side.
-        const float Edge = Now - Low <= High - Now ? Low : High;
-        const float Step = std::clamp(Edge - Now, -Params.SeparationSpeed * Dt, Params.SeparationSpeed * Dt);
-        Motion.shift(Now + Step - Motion.getPlannedX());
-        Motion.limit(-MaxX, MaxX);
+        return 0.0f;
     }
+    if (Now >= High) {
+        Motion.limit(High, MaxX);
+        return 0.0f;
+    }
+    // The body fell onto the fighter's feet: step out to the nearer side.
+    const float Edge = Now - Low <= High - Now ? Low : High;
+    const float Step = std::clamp(Edge - Now, -Params.SeparationSpeed * Dt, Params.SeparationSpeed * Dt);
+    Motion.shift(Now + Step - Motion.getPlannedX());
+    Motion.limit(-MaxX, MaxX);
+    return Step;
 }
 
 /// The correction of a pelvis planned at \p Planned to \p Corrected, as

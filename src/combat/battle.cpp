@@ -23,7 +23,7 @@
 #include "rig/pelvis_controller.hpp"
 #include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
-#include "rig/spacing.hpp"
+#include "rig/contact.hpp"
 #include "stats/loading.hpp"
 
 namespace fighter::combat {
@@ -46,16 +46,11 @@ constexpr float HitDisplaySec = 0.5f;
 constexpr float HitArrowScale = 0.04f;   // m per N*s
 /// Radius of the circle drawn around a striking part, m.
 constexpr float HitboxRadius = 0.16f;
-/// Overlaps of the fighters shallower than this are not marked, m (Box2D
-/// lets touching bodies sink into each other by a few millimetres).
-constexpr float MinDrawnOverlap = 0.005f;
-constexpr float OverlapMarkRadius = 0.04f;   // m
 
 void addArena(physics::World& PhysWorld, const ArenaConfig& Arena);
 // Only the debug build draws the panel.
 [[maybe_unused]] std::string describeAction(const FighterView& View, const Fighter& Player);
-rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning);
-bool isArm(BodyPart Part);
+rig::ContactParams getContactParams(const ArenaConfig& Arena, const CombatTuning& Tuning);
 /// The weapons and shields of the items in both hands, on the forearms of
 /// \p Mount (main hand: Part, the other: OffPart). A two-handed item is held
 /// by the main hand.
@@ -78,10 +73,9 @@ struct Battle::Simulation {
     BattleRules Rules;               ///< Moves, clips, tuning and reactions; the fighters point here.
     std::vector<Fighter> Fighters;   ///< [0] left, [1] right; never resized after creation.
     std::vector<RecentHit> RecentHits;
-    /// The worst overlap of the fighters seen so far (furthest beyond its
-    /// tolerance) and when, for the panel (debug build only).
-    std::optional<physics::PartOverlap> WorstOverlap;
-    double WorstOverlapSec = 0.0;
+    /// Keeps the fighters from passing through each other: its stages run
+    /// around the physics step (rig/contact.hpp).
+    rig::ContactResolver Contacts;
 };
 
 Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
@@ -103,6 +97,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
                   .Tuning = Tuning,
                   .Reactions = loadReactionTable(Cfg.DataDir / "reactions.json"),
                   .PelvisLimitX = Cfg.Arena.HalfWidthM - Tuning.BodyHalfWidth},
+        .Contacts = rig::ContactResolver(getContactParams(Cfg.Arena, Tuning)),
     });
     addArena(Sim->PhysWorld, Cfg.Arena);
 
@@ -130,7 +125,9 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     }
     const float StepDt = static_cast<float>(Dt);
 
-    // Explicit order: controllers plan -> spacing -> bodies move -> physics -> hits.
+    // Explicit order: controllers plan -> contacts before the step (walls,
+    // spacing) -> bodies move -> physics -> contacts after the step (posed
+    // limbs) -> hits -> contacts of the hits (push-out).
     Fighter& Left = Sim->Fighters[0];
     Fighter& Right = Sim->Fighters[1];
     std::array<rig::Posture, 2> PostureBefore{};
@@ -144,17 +141,14 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         ++Reports[Index].Moves[Started->Id].Thrown;
         Events.push_back(StrikeStarted{.Fighter = Index, .MoveId = Started->Id});
     }
-    rig::keepApart(Left.getRig(), Right.getRig(), getSpacing(Cfg.Arena, Sim->Rules.Tuning), StepDt);
+    Sim->Contacts.beforeStep(Left.getRig(), Right.getRig(), StepDt);
     Left.applyControl(StepDt);
     Right.applyControl(StepDt);
     Sim->PhysWorld.step(StepDt);
     // Nothing in physics stops a posed limb: a kick that sank into the
     // opponent's posed legs or pelvis goes back to the contact. The hits of
     // the step are already collected, with the speed the limb came in at.
-    for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
-    // Each stop above saw the other fighter's limbs before their own stop:
-    // two legs that both moved into each other may still be too deep.
-    for (Fighter& Player : Sim->Fighters) Player.holdLimbsBack();
+    stopPosedLimbs();
     for (auto& Recent : Sim->RecentHits) Recent.AgeSec += StepDt;
     std::erase_if(Sim->RecentHits, [](const auto& Recent) { return Recent.AgeSec > HitDisplaySec; });
 
@@ -195,7 +189,7 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         const HitOutcome Outcome = Victim.takeHit(Hit, Move, Attacker.getPowerScale(Move),
                                                   VictimX >= AttackerX ? 1.0f : -1.0f, Landed->Jammed);
         Attacker.onStrikeLanded(!Outcome.Blocked && !Landed->Jammed);
-        rig::pushApartOnHit(Attacker.getRig(), Victim.getRig());
+        Sim->Contacts.onStrikeLanded(Attacker.getRig(), Victim.getRig());
 
         FighterReport& Hitter = Reports[Hit.Attacker.Fighter];
         FighterReport& Target = Reports[Hit.Victim.Fighter];
@@ -257,8 +251,6 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
     }
 
     publishSnapshot();
-    // The overlap first: its panel line stays near the top.
-    drawOverlap();
     drawDebug();
 }
 
@@ -279,39 +271,30 @@ void Battle::settle(float Dt) {
     // The bodies move on without input; hits are bumps and nothing is told.
     const std::array<Surroundings, 2> Around = {getSurroundings(0), getSurroundings(1)};
     for (auto&& [Player, Near] : std::views::zip(Sim->Fighters, Around)) Player.control({}, Near, Dt);
-    rig::keepApart(Sim->Fighters[0].getRig(), Sim->Fighters[1].getRig(), getSpacing(Cfg.Arena, Sim->Rules.Tuning), Dt);
+    Sim->Contacts.beforeStep(Sim->Fighters[0].getRig(), Sim->Fighters[1].getRig(), Dt);
     for (Fighter& Player : Sim->Fighters) Player.applyControl(Dt);
     Sim->PhysWorld.step(Dt);
-    for (Fighter& Player : Sim->Fighters) Player.stopAtContact();
-    // Each stop above saw the other fighter's limbs before their own stop:
-    // two legs that both moved into each other may still be too deep.
-    for (Fighter& Player : Sim->Fighters) Player.holdLimbsBack();
+    stopPosedLimbs();
     ++Tick;
     publishSnapshot();
-    // The overlap first: its panel line stays near the top.
-    drawOverlap();
     drawDebug();
+}
+
+void Battle::stopPosedLimbs() {
+    const std::array<rig::PosedStop, 2> Stops =
+        Sim->Contacts.afterStep(Sim->Fighters[0].getRig(), Sim->Fighters[1].getRig());
+    for (auto&& [Player, Stop] : std::views::zip(Sim->Fighters, Stops)) Player.onPosedStop(Stop.StrikeKept);
 }
 
 std::optional<physics::PartOverlap> Battle::findDeepestOverlap() const { return Sim->PhysWorld.findDeepestOverlap(); }
 
 
 std::optional<physics::PartOverlap> Battle::findWorstOverlap() const {
-    std::optional<physics::PartOverlap> Worst;
-    float WorstExcess = 0.0f;
-    for (const auto& Overlap : Sim->PhysWorld.findOverlaps()) {
-        const float Excess = Overlap.Depth - getOverlapTolerance(Overlap);
-        if (Worst && Excess <= WorstExcess) continue;
-        Worst = Overlap;
-        WorstExcess = Excess;
-    }
-    return Worst;
+    return Sim->Contacts.findWorstOverlap(Sim->PhysWorld);
 }
 
 float Battle::getOverlapTolerance(const physics::PartOverlap& Overlap) const {
-    const CombatTuning& Tuning = Sim->Rules.Tuning;
-    return isArm(Overlap.First.Part) && isArm(Overlap.Second.Part) ? Tuning.ArmOverlapTolerance
-                                                                   : Tuning.OverlapTolerance;
+    return Sim->Contacts.getOverlapTolerance(Overlap);
 }
 
 Surroundings Battle::getSurroundings(size_t Index) const {
@@ -327,8 +310,10 @@ void Battle::publishSnapshot() {
     for (auto&& [Player, View] : std::views::zip(Sim->Fighters, Snapshot.Fighters)) Player.fillView(View);
 }
 
-void Battle::drawDebug() const {
+void Battle::drawDebug() {
     if constexpr (FIGHTER_DEBUG) {
+        // The contacts first: their panel lines (the overlap) stay near the top.
+        Sim->Contacts.drawDebug(Sim->PhysWorld, ElapsedSec, PlayerNames);
         Sim->PhysWorld.drawDebug();
 
         for (auto&& [Player, Name, View] : std::views::zip(Sim->Fighters, PlayerNames, Snapshot.Fighters)) {
@@ -386,36 +371,6 @@ void Battle::drawDebug() const {
         std::string Round = std::format("{:.1f} s left", Snapshot.TimeLeftSec);
         if (Result) Round += std::format(", over: {}", Result->End == BattleEnd::Knockout ? "knockout" : "time up");
         debug::setPanel("round", Round);
-    }
-}
-
-void Battle::drawOverlap() {
-    if constexpr (FIGHTER_DEBUG) {
-        const std::optional<physics::PartOverlap> Now = findWorstOverlap();
-        const auto getExcess = [&](const physics::PartOverlap& Overlap) {
-            return Overlap.Depth - getOverlapTolerance(Overlap);
-        };
-        if (Now && (!Sim->WorstOverlap || getExcess(*Now) > getExcess(*Sim->WorstOverlap))) {
-            Sim->WorstOverlap = Now;
-            Sim->WorstOverlapSec = ElapsedSec;
-        }
-        const auto describe = [&](const physics::PartOverlap& Overlap) {
-            return std::format("{:.3f} m {} {} / {} {}{}", Overlap.Depth, PlayerNames[Overlap.First.Fighter],
-                               getBodyPartName(Overlap.First.Part), PlayerNames[Overlap.Second.Fighter],
-                               getBodyPartName(Overlap.Second.Part),
-                               getExcess(Overlap) > 0.0f
-                                   ? std::format(" OVER {:.3f} allowed", getOverlapTolerance(Overlap))
-                                   : std::string());
-        };
-        std::string Text = Now ? describe(*Now) : "-";
-        if (Sim->WorstOverlap) {
-            Text += std::format(" (worst {} at {:.1f} s)", describe(*Sim->WorstOverlap), Sim->WorstOverlapSec);
-        }
-        debug::setPanel("overlap", Text);
-        if (Now && Now->Depth >= MinDrawnOverlap) {
-            debug::drawCircle(debug::Cat::Contacts, Now->Point, OverlapMarkRadius);
-            debug::drawText(debug::Cat::Contacts, Now->Point, std::format("overlap {:.3f}", Now->Depth));
-        }
     }
 }
 
@@ -488,19 +443,17 @@ std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::W
     return Held;
 }
 
-bool isArm(BodyPart Part) {
-    return Part == BodyPart::UpperArmL || Part == BodyPart::ForearmL || Part == BodyPart::UpperArmR ||
-           Part == BodyPart::ForearmR;
-}
-
-rig::SpacingParams getSpacing(const ArenaConfig& Arena, const CombatTuning& Tuning) {
-    return {.ArenaHalfWidth = Arena.HalfWidthM,
-            .BodyHalfWidth = Tuning.BodyHalfWidth,
-            .SeparationSpeed = Tuning.SeparationSpeed,
-            .PosedSeparationSpeed = Tuning.PosedSeparationSpeed,
-            .PushMaxSpeed = Tuning.PushMaxSpeed,
-            .PushAcceleration = Tuning.PushAcceleration,
-            .MaxSoftOverlap = Tuning.PushSoftOverlap};
+rig::ContactParams getContactParams(const ArenaConfig& Arena, const CombatTuning& Tuning) {
+    return {.Spacing = {.ArenaHalfWidth = Arena.HalfWidthM,
+                        .BodyHalfWidth = Tuning.BodyHalfWidth,
+                        .SeparationSpeed = Tuning.SeparationSpeed,
+                        .PosedSeparationSpeed = Tuning.PosedSeparationSpeed,
+                        .PushMaxSpeed = Tuning.PushMaxSpeed,
+                        .PushAcceleration = Tuning.PushAcceleration,
+                        .MaxSoftOverlap = Tuning.PushSoftOverlap},
+            .StopDepth = Tuning.ContactStopDepth,
+            .ArmOverlapTolerance = Tuning.ArmOverlapTolerance,
+            .OverlapTolerance = Tuning.OverlapTolerance};
 }
 
 rig::RigSetup makeRigSetup(const stats::PhysicalProfile& Profile, const stats::Loadout& Gear,

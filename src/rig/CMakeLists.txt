@@ -3,6 +3,7 @@ fighter_add_module(rig
         rig_def.cpp
         rig.cpp
         spacing.cpp
+        contact.cpp
         pelvis_controller.cpp
     PUBLIC_DEPS
         fighter::core
