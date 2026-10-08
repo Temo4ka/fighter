@@ -13,6 +13,7 @@ add_executable(fighter_tests
     rig/test_rig_body.cpp
     rig/test_rig_scenarios.cpp
     rig/test_rig_smooth.cpp
+    rig/test_rig_wrist.cpp
     anim/test_clip.cpp
     anim/test_playback.cpp
     anim/test_layers.cpp
