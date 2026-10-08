@@ -104,6 +104,18 @@ struct BlockRules {
 /// The moveset used without a weapon, and the root of the others.
 inline constexpr std::string_view UnarmedMoveSetId = "unarmed";
 
+/// One thing wrong in the data: the file (relative to the data directory,
+/// for example "movesets/sword.json") and what is wrong in it, naming the
+/// field and the value.
+struct DataProblem {
+    std::string File;
+    std::string Detail;
+
+    /// "File: Detail".
+    std::string format() const { return File + ": " + Detail; }
+    bool operator==(const DataProblem&) const = default;
+};
+
 /// Every move and moveset of a battle, checked against each other.
 class MoveLibrary {
 public:
@@ -118,6 +130,18 @@ public:
     const std::vector<MoveDef>& getMoves() const { return Moves; }
     const std::vector<MoveSet>& getSets() const { return Sets; }
     const InputRules& getInputRules() const { return Input; }
+
+    /// Builds a library without checking it: for the data check
+    /// (combat/data_check.hpp), which reports every problem findProblems()
+    /// finds. Looking up through such a library is safe, but it may hold
+    /// circular parents; use only to list the problems.
+    static MoveLibrary buildUnchecked(std::vector<MoveDef> Moves, std::vector<MoveSet> Sets, InputRules Input);
+
+    /// Every broken reference between the moves and the sets: a missing
+    /// "unarmed" set, an input that names no move, a parent or pair member
+    /// that is no set, parents in a circle, two sets for one pair. Empty if
+    /// the library is sound; build() and load() throw the first one.
+    std::vector<DataProblem> findProblems() const;
 
     const MoveDef* findMove(std::string_view Id) const { return findMoveById(Moves, Id); }
     const MoveSet* findSet(std::string_view Id) const;
@@ -151,8 +175,6 @@ public:
     BlockRules getBlock(const MoveSet& Set, const BlockRules& Defaults) const;
 
 private:
-    void validate() const;
-
     std::vector<MoveDef> Moves;
     std::vector<MoveSet> Sets;
     InputRules Input;
