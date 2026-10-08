@@ -48,6 +48,9 @@ std::optional<Resolved> resolveWeapon(const MoveLibrary& Library, const stats::I
 PlayerCommands makeCommands(const MoveInput& Input);
 BodyPart getMirroredPart(BodyPart Part);
 void addCandidates(std::vector<BodyPart>& Candidates, const anim::Clip& Source);
+/// The working end of the weapon \p Part holds in \p Fighter (the far end of
+/// its body, FighterView::Weapons); nullopt if it holds none.
+std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part);
 
 } // namespace
 
@@ -309,8 +312,11 @@ void MoveRun::recordTips(const FighterView& Attacker) {
     Measure.PelvisEndM = Travel;
     for (StrikerPath& Path : Measure.Paths) {
         const PartTransform& Part = Attacker.Parts[static_cast<size_t>(Path.Part)];
-        const float WeaponReach = Path.Part == stats::getHandPart(stats::EquipmentSlot::MainHand) ? Setup.WeaponReachM : 0.0f;
-        Path.Points.push_back({.TimeSec = TimeSec, .Tip = getPartTip(Part, Pelvis, WeaponReach), .Phase = Attacker.Phase});
+        // A weapon move reaches with the weapon body, turned by the wrist.
+        const std::optional<Vec2> Weapon =
+            Setup.WeaponReachM > 0.0f ? findWeaponTip(Attacker, Path.Part) : std::nullopt;
+        Path.Points.push_back(
+            {.TimeSec = TimeSec, .Tip = Weapon.value_or(getPartTip(Part, Pelvis, 0.0f)), .Phase = Attacker.Phase});
     }
 }
 
@@ -450,6 +456,12 @@ void addCandidates(std::vector<BodyPart>& Candidates, const anim::Clip& Source) 
             if (std::ranges::find(Candidates, Each) == Candidates.end()) Candidates.push_back(Each);
         }
     }
+}
+
+std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part) {
+    const auto Found = std::ranges::find(Fighter.Weapons, Part, &PartTransform::Part);
+    if (Found == Fighter.Weapons.end()) return std::nullopt;
+    return Found->Position + rotate({0.0f, -1.0f}, Found->Angle) * (Found->Size.Y * 0.5f);
 }
 
 } // namespace

@@ -298,6 +298,9 @@ private:
         anim::Pose Still;
     };
     TargetPoses buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt);
+    /// The idle stance (StanceName) at its start, its wrist filled in from
+    /// the held weapon's default when the stance leaves it out.
+    anim::Pose getStancePose() const;
     /// The leg pose the legs rest in when no clip poses them, and the same
     /// without the step's travel: the walk cycle once it has played (it
     /// rests at the phase where it stopped), else the stance with RestFront
