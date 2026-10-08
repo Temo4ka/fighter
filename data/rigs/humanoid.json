@@ -43,7 +43,7 @@
   "yieldPose": { "UpperArmL": 30, "ForearmL": 145, "UpperArmR": 20, "ForearmR": 145 },
 
   "weapon": { "part": "ForearmL", "offPart": "ForearmR", "angle": 0, "width": 0.05, "grip": 0.1,
-              "wristLimits": [-120, 120], "wristStrength": 0.3 },
+              "wristLimits": [-120, 120], "wristStrength": 0.5 },
 
   "control": {
     "torqueScale": 1.0,
