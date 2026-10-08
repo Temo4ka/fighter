@@ -60,8 +60,8 @@ bool setsAll(const Clip& Source, std::initializer_list<BodyPart> Parts) {
     return std::ranges::all_of(Parts, [&](BodyPart Part) { return sets(Source, Part); });
 }
 
-const std::vector<std::string> AttackNames = {"jab",         "kick",         "heavy_punch",  "low_kick",
-                                              "jab_close",   "heavy_punch_close", "sword_slash", "hammer_smash"};
+const std::vector<std::string> AttackNames = {"jab",       "kick",              "heavy_punch", "jab_close",
+                                              "heavy_punch_close", "sword_slash", "hammer_smash"};
 const std::vector<std::string> ReactionNames = {"flinch", "stagger", "knockback"};
 const std::vector<std::string> HeldNames = {"crouch", "block_high", "block_mid", "block_low"};
 
@@ -69,7 +69,7 @@ const std::vector<std::string> HeldNames = {"crouch", "block_high", "block_mid",
 
 TEST_CASE("Clips: every clip of data/poses loads and the expected ones exist", "[anim][clips]") {
     const auto& Clips = getClips();
-    for (const auto* Name : {"stance", "walk", "jab", "kick", "heavy_punch", "low_kick", "jab_close",
+    for (const auto* Name : {"stance", "walk", "jab", "kick", "heavy_punch", "jab_close",
                              "heavy_punch_close", "sword_slash", "hammer_smash", "crouch", "block_high",
                              "block_mid", "block_low", "flinch", "stagger", "knockback"}) {
         INFO(Name);
@@ -120,7 +120,7 @@ TEST_CASE("Clips: attacks have strikers and an active window", "[anim][clips]") 
 
 TEST_CASE("Clips: startup of the attacks is inside the corridor of O.7", "[anim][clips]") {
     // The jab starts striking 0.15-0.20 s after the button, a heavy strike
-    // 0.30-0.40 s; the low kick is in between (its move floor is 0.2 s).
+    // 0.30-0.40 s.
     struct Corridor {
         const char* Name;
         float MinSec;
@@ -130,7 +130,6 @@ TEST_CASE("Clips: startup of the attacks is inside the corridor of O.7", "[anim]
         {"jab", 0.15f, 0.20f},          {"jab_close", 0.15f, 0.20f},
         {"heavy_punch", 0.30f, 0.40f},  {"heavy_punch_close", 0.30f, 0.40f},
         {"sword_slash", 0.30f, 0.40f},  {"hammer_smash", 0.30f, 0.40f},
-        {"low_kick", 0.20f, 0.40f},
     };
     for (const auto& [Name, MinSec, MaxSec] : Corridors) {
         const Clip& Attack = getClip(Name);
@@ -162,12 +161,6 @@ TEST_CASE("Clips: the punches use the right arm parts", "[anim][clips]") {
         CHECK_FALSE(setsAny(Attack, {BodyPart::UpperArmL, BodyPart::ForearmL}));
         CHECK_FALSE(Attack.AllowMove);
     }
-    // The low kick strikes with the shin and the foot of the lead leg.
-    const Clip& LowKick = getClip("low_kick");
-    CHECK(LowKick.isStriker(BodyPart::ShinL));
-    CHECK(LowKick.isStriker(BodyPart::FootL));
-    CHECK(setsAll(LowKick, {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}));
-    CHECK_FALSE(setsAny(LowKick, {BodyPart::UpperArmL, BodyPart::ForearmL, BodyPart::UpperArmR, BodyPart::ForearmR}));
 }
 
 TEST_CASE("Clips: weapon moves are slower and wider than the cross", "[anim][clips]") {

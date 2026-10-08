@@ -18,7 +18,7 @@
 ///       Block wins over attacking, attacking over crouching, crouching
 ///       over walking. Crouched, the fighter walks slowly with bent knees
 ///       (the crouch_walk clip) and may strike with a move mapped to a
-///       downward direction (Down+Kick: the low kick) or
+///       downward direction (Down+Heavy of a sword: its low cut) or
 ///       block low; any other strike stands it up first (Idle for
 ///       CombatTuning::CrouchStandUpSec), then starts. Blocking, it can only
 ///       step back, slowly.
@@ -502,7 +502,7 @@ private:
     };
     std::optional<StrideAnchor> Anchor;
     std::string LastRestep;                ///< The last one, for the debug panel.
-    bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
+    bool AttackFromCrouch = false;         ///< The attack (a downward move) started crouched: the crouch stays below it.
     const MoveDef* PendingAttack = nullptr; ///< Pressed while crouched: starts once the fighter stood up.
     float StandUpLeftSec = 0.0f;
 

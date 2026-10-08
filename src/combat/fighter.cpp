@@ -563,7 +563,7 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         Held.isEmpty() || WaitingForCombo ? nullptr : Rules->Moves.findEntry(*Set, Direction, Held, Held);
     if (Entry) Selected = Entry;
     if (const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr) {
-        // Crouched, a move mapped to a downward direction (the low kick)
+        // Crouched, a move mapped to a downward direction (a sword's low cut)
         // starts at once; the rest stand up first.
         if (State == FighterState::Crouching && !isDownward(Entry->Input.Direction) &&
             Rules->Tuning.CrouchStandUpSec > 0.0f) {
@@ -1117,7 +1117,7 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     }
     if (TopChanged) {
         // Steps lead from the resting legs into a leg action. From one leg
-        // action into the next (the crouch into a low kick or the low block)
+        // action into the next (the crouch into the low block)
         // the legs are already the action's: the change blends as authored.
         // From the stance with the same foot in front the legs are in the
         // pose the action is authored from: no steps either.

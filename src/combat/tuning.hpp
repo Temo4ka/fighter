@@ -202,7 +202,7 @@ struct CombatTuning {
     float StepMinSpeed = 0.15f;
     /// Walking while crouched is this much slower than walking.
     float CrouchWalkSpeedScale = 0.5f;
-    /// A strike other than the low kick pressed while crouched: the fighter
+    /// A strike not mapped to a downward direction pressed while crouched: the fighter
     /// stands up for this long before the strike starts, s.
     float CrouchStandUpSec = 0.12f;
     /// After the end of the fight the bodies keep moving this long without

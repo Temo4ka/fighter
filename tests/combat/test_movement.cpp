@@ -423,15 +423,18 @@ TEST_CASE("Movement: crouched, the fighter walks slowly with the pelvis low", "[
     CHECK(areFeetDown(getLeft(Fight)));
 }
 
-TEST_CASE("Movement: from the crouch a low kick starts at once, a low block too", "[combat][movement]") {
-    Battle Fight(makeConfig());
+TEST_CASE("Movement: from the crouch a downward strike starts at once, a low block too", "[combat][movement]") {
+    // The rogue's sword set maps Down+Heavy to the low cut.
+    BattleConfig Config = makeConfig();
+    Config.Left = loadFighter("rogue");
+    Battle Fight(Config);
     const float StandingPelvis = getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y;
     run(Fight, {.Down = true}, {}, TicksPerSecond / 2);
-    run(Fight, {.Down = true, .Kick = true}, {}, 1);
+    run(Fight, {.Down = true, .Heavy = true}, {}, 1);
     CHECK(getLeft(Fight).State == FighterState::Attacking);
-    CHECK(getLeft(Fight).MoveId == "low_kick");
-    // Kicked from the crouch: the right leg stays bent, the pelvis lower than
-    // standing during the startup (the kicking leg of low_kick lifts it some).
+    CHECK(getLeft(Fight).MoveId == "sword_low_cut");
+    // Struck from the crouch: the crouch stays below the strike, the pelvis
+    // lower than standing during the startup.
     run(Fight, {.Down = true}, {}, 6);
     CHECK(getLeft(Fight).Phase == AttackPhase::Startup);
     CHECK(getPart(getLeft(Fight), BodyPart::Pelvis).Position.Y < StandingPelvis - 0.05f);
@@ -444,8 +447,8 @@ TEST_CASE("Movement: from the crouch a low kick starts at once, a low block too"
 }
 
 TEST_CASE("Movement: from the crouch other strikes stand up first", "[combat][movement]") {
-    // The kick is not here: with Down held it is Down+Kick, the low kick.
-    for (const MoveButton Button : {MoveButton::Jab, MoveButton::HeavyPunch}) {
+    // Down+Kick has no move of its own: it falls back to the body kick.
+    for (const MoveButton Button : {MoveButton::Jab, MoveButton::HeavyPunch, MoveButton::BodyKick}) {
         INFO(getMoveButtonName(Button));
         Battle Fight(makeConfig());
         run(Fight, {.Down = true}, {}, TicksPerSecond / 2);

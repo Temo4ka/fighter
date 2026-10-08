@@ -45,10 +45,10 @@ public:
     explicit InputSystem(std::vector<Binding> NewBindings);
 
     /// The default layout (task 2.0.2):
-    ///   P1: A/D walk, W up, S down, F jab, G heavy punch, R body kick,
-    ///       T low kick, Left Shift block.
-    ///   P2: Left/Right walk, Up up, Down down, K jab, L heavy punch,
-    ///       I body kick, O low kick, Right Shift block.
+    ///   P1: A/D walk, W up, S down, F Light, G Heavy, R Kick, T Special,
+    ///       Left Shift block.
+    ///   P2: Left/Right walk, Up up, Down down, K Light, L Heavy, I Kick,
+    ///       O Special, Right Shift block.
     static std::vector<Binding> getDefaultBindings();
 
     /// Returns true if the key is bound to some action.

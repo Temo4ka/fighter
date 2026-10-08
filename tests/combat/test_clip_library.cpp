@@ -55,7 +55,7 @@ TEST_CASE("ClipLibrary: a missing clip names its file", "[combat][clips]") {
 TEST_CASE("ClipLibrary: the clips that pose the legs have a mirrored copy", "[combat][clips][data]") {
     const std::vector<MoveDef> Moves = loadMoves(DataDir / "moves");
     const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", Moves);
-    for (const char* Name : {"kick", "low_kick", "crouch", "crouch_walk", "block_low"}) {
+    for (const char* Name : {"kick", "crouch", "crouch_walk", "block_low"}) {
         INFO(Name);
         const anim::Clip& Authored = Clips.get(Name);
         const anim::Clip& Mirrored = Clips.getMirrored(Authored);

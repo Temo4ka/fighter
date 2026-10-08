@@ -586,7 +586,7 @@ TEST_CASE("pushApartOnHit: against the wall the attacker takes all of the push",
 }
 
 TEST_CASE("Rig: a posed leg hits the opponent's posed legs and pelvis", "[rig]") {
-    // A low kick: the left fighter swings its front leg into the right
+    // A kick at the legs: the left fighter swings its front leg into the right
     // one's front shin. Both legs are kinematic; the world reports the hit.
     Duel Low(-0.45f, 0.45f);
     Low.run(10);

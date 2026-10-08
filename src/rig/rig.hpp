@@ -283,7 +283,7 @@ public:
     /// knockback (the horizontal part of the push) or, if the hit is strong
     /// enough, is knocked down: it falls the way it was pushed and spins
     /// about its center of mass by where the hit landed (a head hit topples
-    /// it backwards, a low kick sweeps the legs). Combat calls it for every
+    /// it backwards, a kick to the legs sweeps them). Combat calls it for every
     /// landed strike with HitEvent::Point.
     void applyHit(float Impulse, Vec2 Direction, Vec2 Point);
     /// The same as above, but the caller decides whether the hit knocks the

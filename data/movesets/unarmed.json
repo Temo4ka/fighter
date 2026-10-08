@@ -3,7 +3,6 @@
         "Light": "jab",
         "Heavy": "heavy_punch",
         "Kick": "body_kick",
-        "Down+Kick": "low_kick",
         "Up+Light": "cross",
         "Up+Heavy": "rising_punch",
         "Forward+Kick": "push_kick"

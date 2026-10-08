@@ -20,16 +20,16 @@ const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 
 MoveDef makeMove(std::string Id) { return {.Id = std::move(Id), .Clip = "clip"}; }
 
-/// unarmed: Light jab, Kick body_kick, Down+Kick low_kick;
+/// unarmed: Light jab, Kick body_kick, Down+Kick sweep;
 /// sword (inherits unarmed): Heavy slash, Forward+Heavy thrust, Light+Heavy spin;
 /// sword_shield (pair sword + shield, inherits sword): Special bash.
 MoveLibrary makeLibrary() {
     std::vector<MoveDef> Moves;
-    for (const char* Id : {"jab", "body_kick", "low_kick", "slash", "thrust", "spin", "bash"}) {
+    for (const char* Id : {"jab", "body_kick", "sweep", "slash", "thrust", "spin", "bash"}) {
         Moves.push_back(makeMove(Id));
     }
     std::vector<MoveSet> Sets = {
-        parseMoveSet(R"({"moves": {"Light": "jab", "Kick": "body_kick", "Down+Kick": "low_kick"}})", "unarmed"),
+        parseMoveSet(R"({"moves": {"Light": "jab", "Kick": "body_kick", "Down+Kick": "sweep"}})", "unarmed"),
         parseMoveSet(R"({"inherit": "unarmed",
             "moves": {"Heavy": "slash", "Forward+Heavy": "thrust", "Light+Heavy": "spin"},
             "block": {"damage_scale": 0.1, "clips": {"Mid": "block_mid_sword"}}})", "sword"),
@@ -58,7 +58,7 @@ TEST_CASE("MoveSet: an input picks its move, then fallbacks, then the parent", "
     CHECK(findId(Library, "sword", "Forward+Heavy") == "thrust");
     CHECK(findId(Library, "sword", "Back+Heavy") == "slash");           // Back falls back to Neutral
     CHECK(findId(Library, "sword", "Kick") == "body_kick");             // from the parent
-    CHECK(findId(Library, "sword", "DownForward+Kick") == "low_kick");  // DownForward -> Down, in the parent
+    CHECK(findId(Library, "sword", "DownForward+Kick") == "sweep");     // DownForward -> Down, in the parent
     CHECK(findId(Library, "unarmed", "Heavy") == "-");
     CHECK(findId(Library, "unarmed", "Special") == "-");
 }
@@ -162,7 +162,7 @@ TEST_CASE("MoveLibrary: the sample data loads", "[combat][moveset][data]") {
     CHECK(Find(Unarmed, "Light") == "jab");
     CHECK(Find(Unarmed, "Heavy") == "heavy_punch");
     CHECK(Find(Unarmed, "Kick") == "body_kick");
-    CHECK(Find(Unarmed, "Down+Kick") == "low_kick");
+    CHECK(Find(Unarmed, "Down+Kick") == "body_kick");   // unassigned: Down falls back to Neutral
     CHECK(Find(Library.selectSet("sword", ""), "Heavy") == "sword_slash");
     CHECK(Find(Library.selectSet("hammer", ""), "Heavy") == "hammer_smash");
     CHECK(Find(Library.selectSet("hammer", ""), "Light") == "jab");

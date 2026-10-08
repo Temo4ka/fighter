@@ -25,7 +25,7 @@
 /// Box2D does not collide two kinematic bodies at all, so the world checks
 /// the kinematic parts of different fighters against each other itself
 /// after every step: a posed leg that starts touching the opponent's posed
-/// leg or pelvis fast enough is a hit like any other (a low kick). Nothing
+/// leg or pelvis fast enough is a hit like any other (a kick to the legs). Nothing
 /// pushes back: both bodies are moved by code. A fast limb moves far in one
 /// step, so the normal of such a hit is taken from where the two parts were
 /// closest before the step, when they were still apart. Nothing stops a posed
