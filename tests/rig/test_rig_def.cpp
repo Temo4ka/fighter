@@ -159,7 +159,7 @@ TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]"
 
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
-    CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);
+    CHECK(Humanoid.Weapon.Part == BodyPart::ForearmL);
     CHECK(Humanoid.Weapon.Radius > 0.0f);
     // Without a "weapon" object the default mount is kept, whatever the part.
     CHECK(parseRigDef(makeRigJson()).Weapon.Part == BodyPart::ForearmR);
@@ -213,4 +213,22 @@ TEST_CASE("parseRigDef: the smooth body parameters are read and checked", "[rig]
         CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
                         std::runtime_error);
     }
+}
+
+TEST_CASE("parseRigDef: the other hand's part and the two-handed grip", "[rig]") {
+    const RigDef Humanoid = loadRigDef(HumanoidPath);
+    CHECK(Humanoid.Weapon.OffPart == BodyPart::ForearmR);
+    CHECK(Humanoid.Weapon.Grip > 0.0f);
+    CHECK(Humanoid.Control.GripHertz > 0.0f);
+    CHECK(Humanoid.Control.GripMaxStretch > 0.0f);
+    // The other forearm by default.
+    CHECK(parseRigDef(makeRigJson()).Weapon.OffPart == BodyPart::ForearmL);
+    const RigDef Grip = parseRigDef(makeRigJson(R"(, "control": { "gripHertz": 3, "gripDampingRatio": 0.5,
+        "gripMaxStretch": 0.2, "gripArmStiffness": 0.25 })"));
+    CHECK(Grip.Control.GripHertz == 3.0f);
+    CHECK(Grip.Control.GripDampingRatio == 0.5f);
+    CHECK(Grip.Control.GripMaxStretch == 0.2f);
+    CHECK(Grip.Control.GripArmStiffness == 0.25f);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "gripHertz": -1 })")), std::runtime_error);
+    CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "gripArmStiffness": 1.5 })")), std::runtime_error);
 }

@@ -221,10 +221,9 @@ TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat
 }
 
 TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat][fight]") {
-    // A body kick staggers for 2 s; the low kicks that follow are weaker
-    // (flinch) but neither lower the level nor keep the stagger going. (Not
-    // jabs: they land on the raised guard, and a jab that reaches the torso
-    // is as strong as the body kick on the pelvis, 0.5-0.6 m/s.)
+    // A body kick staggers for 2 s; the jabs that follow land on the raised
+    // guard and are weaker (flinch), but neither lower the level nor keep
+    // the stagger going.
     constexpr float StaggerSec = 2.0f;
     ScratchData Data("no_drop");
     Data.write("reactions.json", makeReactionsJson({.MinStrength = {0.01f, 0.03f, 0.4f, 5.0f, 1000.0f},
@@ -238,7 +237,7 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
     REQUIRE(Kick.front().Reaction == ReactionLevel::Stagger);
     REQUIRE(getRight(Fight).State == FighterState::Reacting);
 
-    // Then low kicks while the victim staggers.
+    // Then jabs while the victim staggers.
     ReactionLevel Previous = ReactionLevel::Stagger;
     bool Dropped = false;
     std::optional<int> FreeTick;
@@ -254,14 +253,14 @@ TEST_CASE("Fight: the reaction level does not drop during a reaction", "[combat]
         Dropped = Dropped || Victim.Reaction < Previous;
         Previous = Victim.Reaction;
     };
-    const std::vector<StrikeLanded> LowKicks = strike(
-        Fight, {.Button = MoveButton::LowKick, .Range = KickRange, .WaitForVictim = false, .OnTick = Watch},
+    const std::vector<StrikeLanded> Jabs = strike(
+        Fight, {.Button = MoveButton::Jab, .Range = JabRange, .WaitForVictim = false, .OnTick = Watch},
         3 * TicksPerSecond);
 
     const auto IsWeaker = [](const StrikeLanded& Hit) { return Hit.Reaction < ReactionLevel::Stagger; };
-    REQUIRE(std::ranges::any_of(LowKicks, IsWeaker));
+    REQUIRE(std::ranges::any_of(Jabs, IsWeaker));
     CHECK_FALSE(Dropped);
-    // The stagger ends on time: the low kicks' own stun is short.
+    // The stagger ends on time: the jabs' own stun is short.
     REQUIRE(FreeTick.has_value());
     CHECK(static_cast<float>(*FreeTick) / TicksPerSecond < StaggerSec + 0.3f);
 }
@@ -464,19 +463,25 @@ TEST_CASE("Fight: a hit may be chained into the next strike", "[combat][fight]")
 }
 
 TEST_CASE("Fight: a weapon brings its own move", "[combat][fight][data]") {
-    const auto heavyMoveOf = [](const FighterConfig& Who) {
+    const auto moveOf = [](const FighterConfig& Who, MoveButton Button) {
         BattleConfig Config = makeConfig();
         Config.Left = Who;
         Battle Fight(Config);
-        Fight.update(press(MoveButton::HeavyPunch), {}, Dt);
+        Fight.update(press(Button), {}, Dt);
         for (const BattleEvent& Event : Fight.getEvents()) {
             if (const auto* Start = std::get_if<StrikeStarted>(&Event)) return Start->MoveId;
         }
         return std::string();
     };
+    const auto heavyMoveOf = [&](const FighterConfig& Who) { return moveOf(Who, MoveButton::HeavyPunch); };
     CHECK(heavyMoveOf(FighterConfig{}) == "heavy_punch");
     CHECK(heavyMoveOf(loadFighter("rogue")) == "sword_slash");
     CHECK(heavyMoveOf(loadFighter("knight")) == "hammer_smash");
+    // With a weapon, Light strikes with it too (decision 2026-10-08).
+    const auto lightMoveOf = [&](const FighterConfig& Who) { return moveOf(Who, MoveButton::Jab); };
+    CHECK(lightMoveOf(FighterConfig{}) == "jab");
+    CHECK(lightMoveOf(loadFighter("rogue")) == "sword_cut");
+    CHECK(lightMoveOf(loadFighter("knight")) == "hammer_bash");
 }
 
 TEST_CASE("Fight: DEX speeds strikes up within the O.7 corridor", "[combat][fight][data]") {

@@ -125,8 +125,10 @@ public:
     /// The set of a fighter whose main hand holds an item of set \p MainSet
     /// and the other hand one of \p OffSet (empty: nothing, or no set): the
     /// pair set for exactly these two if there is one, otherwise MainSet,
-    /// otherwise OffSet (a shield alone), otherwise "unarmed".
-    const MoveSet& selectSet(std::string_view MainSet, std::string_view OffSet) const;
+    /// otherwise OffSet if \p OffAlone (an off-hand item that strikes on its
+    /// own; a shield in the off hand does not, decision 2026-10-08),
+    /// otherwise "unarmed".
+    const MoveSet& selectSet(std::string_view MainSet, std::string_view OffSet, bool OffAlone = true) const;
 
     /// The move started in \p Set with \p Direction held (see the file
     /// comment), or nullptr. An entry matches when all its buttons are in
@@ -137,6 +139,12 @@ public:
     /// input tells which direction matched), or nullptr.
     const MoveSetEntry* findEntry(const MoveSet& Set, InputDirection Direction, ButtonSet Pressed,
                                   ButtonSet Held) const;
+
+    /// Could more buttons pressed with \p Buttons still start another move:
+    /// is there a line in \p Set or its parents, for a direction tried for
+    /// \p Direction, with every button of \p Buttons and more? Then a press
+    /// waits for the rest of the combination (InputRules::ComboWindowSec).
+    bool canGrowCombo(const MoveSet& Set, InputDirection Direction, ButtonSet Buttons) const;
 
     /// The block of \p Set with its parents and the defaults filled in.
     /// \p Defaults are the general rules (reactions.json, the O.2 zones).

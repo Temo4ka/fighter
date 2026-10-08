@@ -48,14 +48,14 @@ const MoveSet* MoveLibrary::findSet(std::string_view Id) const {
     return Found != Sets.end() ? &*Found : nullptr;
 }
 
-const MoveSet& MoveLibrary::selectSet(std::string_view MainSet, std::string_view OffSet) const {
+const MoveSet& MoveLibrary::selectSet(std::string_view MainSet, std::string_view OffSet, bool OffAlone) const {
     if (!MainSet.empty() && !OffSet.empty()) {
         for (const MoveSet& Set : Sets) {
             if (Set.Pair.size() == 2 && Set.Pair[0] == MainSet && Set.Pair[1] == OffSet) return Set;
         }
     }
     if (const MoveSet* Main = findSet(MainSet)) return *Main;
-    if (const MoveSet* Off = findSet(OffSet)) return *Off;
+    if (const MoveSet* Off = findSet(OffSet); Off && OffAlone) return *Off;
     return *findSet(UnarmedMoveSetId);
 }
 
@@ -82,6 +82,22 @@ const MoveSetEntry* MoveLibrary::findEntry(const MoveSet& Set, InputDirection Di
         }
     }
     return nullptr;
+}
+
+bool MoveLibrary::canGrowCombo(const MoveSet& Set, InputDirection Direction, ButtonSet Buttons) const {
+    if (Buttons.isEmpty()) return false;
+    for (const InputDirection Tried : Input.getTryOrder(Direction)) {
+        for (const MoveSet* Current = &Set; Current; Current = findSet(Current->Inherit)) {
+            for (const MoveSetEntry& Entry : Current->Entries) {
+                if (Entry.Input.Direction == Tried && Entry.Input.Buttons.containsAll(Buttons) &&
+                    Entry.Input.Buttons.getSize() > Buttons.getSize()) {
+                    return true;
+                }
+            }
+            if (Current->Inherit.empty()) break;
+        }
+    }
+    return false;
 }
 
 BlockRules MoveLibrary::getBlock(const MoveSet& Set, const BlockRules& Defaults) const {

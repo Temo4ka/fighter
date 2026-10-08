@@ -64,6 +64,7 @@ constexpr float LegReachMargin = 1e-4f;
 /// A kept foot is held this much inside the leg's full reach: the pelvis
 /// goes down for it rather than straightening the knee completely, m.
 constexpr float KeptReachMargin = 0.01f;
+constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
 PartDef mirrorPart(const PartDef& Source, float Facing);
 PartDef moveShape(const PartDef& Source, Vec2 Offset);
@@ -76,6 +77,9 @@ float wrapAngle(float Angle);
 float smoothStep(float T);
 Vec2 getDirection(float Angle);
 float getHeading(Vec2 Vector);
+/// The corners of a box of \p HalfExtents centered at \p Center and turned by
+/// \p Angle about it, in the same frame.
+std::array<Vec2, 4> getBoxCorners(Vec2 Center, Vec2 HalfExtents, float Angle);
 float getRealizedShare(float Part, float Realized);
 void drawShape(debug::Cat Category, const PartDef& Shape, Vec2 Position, float Angle);
 
@@ -101,13 +105,11 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
       MotorGain(Setup.MotorGain * Def.Control.GainScale),
       MoveSpeedScale(Setup.MoveSpeedScale),
       YieldAngles(Def.YieldAngles),
-      YieldPosed(Def.YieldPosed),
-      WeaponReach(std::max(0.0f, Setup.WeaponReachM)) {
+      YieldPosed(Def.YieldPosed) {
     PerBodyPart<Vec2> Centers{};
     createParts(PhysWorld, Def, Setup, Centers);
-    // A rig whose weapon part is not a capsule cannot hold a weapon.
-    if (Def.getPart(Def.Weapon.Part).Shape != physics::ShapeKind::Capsule) WeaponReach = 0.0f;
     createJoints(PhysWorld, Def, Setup, Centers);
+    createGrip(PhysWorld, Setup);
     for (auto& Part : Parts) {
         if (Part.Kinematic) PhysWorld.setBodyType(Part.Handle, physics::BodyType::Kinematic);
     }
@@ -375,6 +377,39 @@ void Rig::getPartTransforms(std::vector<PartTransform>& Out) const {
     }
 }
 
+float Rig::getWeaponReach() const {
+    float Reach = 0.0f;
+    for (const auto& Weapon : Weapons) Reach = std::max(Reach, Weapon.Reach);
+    return Reach;
+}
+
+float Rig::getWeaponReach(BodyPart Part) const {
+    const auto Found = std::ranges::find(Weapons, Part, &WeaponShape::Part);
+    return Found == Weapons.end() ? 0.0f : Found->Reach;
+}
+
+bool Rig::hasShield(BodyPart Part) const {
+    return std::ranges::find(Shields, Part, &ShieldShape::Part) != Shields.end();
+}
+
+bool Rig::isOnShield(Vec2 Point, float Margin) const {
+    for (const auto& Shield : Shields) {
+        if (!Shield.Guards) continue;
+        // The point in the plate's own frame: its center, turned with it.
+        const Vec2 Local = rotate(getPart(Shield.Part).Handle.getLocalPoint(Point) - Shield.Center, -Shield.Angle);
+        if (std::abs(Local.X) <= Shield.HalfExtents.X + Margin && std::abs(Local.Y) <= Shield.HalfExtents.Y + Margin) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<BodyPart> Rig::getGripPart() const {
+    return Grip ? std::optional(Grip->Hand) : std::nullopt;
+}
+
+float Rig::getGripGap() const { return Grip ? Grip->Handle.getLength() : 0.0f; }
+
 ExtentX Rig::getExtentX() const {
     ExtentX Result{.Min = std::numeric_limits<float>::max(), .Max = std::numeric_limits<float>::lowest()};
     for (const auto& Part : Parts) {
@@ -382,12 +417,20 @@ ExtentX Rig::getExtentX() const {
         Result.Min = std::min(Result.Min, Shape.Min);
         Result.Max = std::max(Result.Max, Shape.Max);
     }
-    if (WeaponReach > 0.0f) {
+    for (const auto& Weapon : Weapons) {
         const PartState& Holder = getPart(Weapon.Part);
         for (const auto& End : {Weapon.Grip, Weapon.Tip}) {
             const float X = Holder.Handle.getWorldPoint(End).X;
             Result.Min = std::min(Result.Min, X - Weapon.Radius);
             Result.Max = std::max(Result.Max, X + Weapon.Radius);
+        }
+    }
+    for (const auto& Shield : Shields) {
+        const PartState& Holder = getPart(Shield.Part);
+        for (const Vec2 Corner : getBoxCorners(Shield.Center, Shield.HalfExtents, Shield.Angle)) {
+            const float X = Holder.Handle.getWorldPoint(Corner).X;
+            Result.Min = std::min(Result.Min, X);
+            Result.Max = std::max(Result.Max, X);
         }
     }
     return Result;
@@ -487,7 +530,7 @@ void Rig::drawDebug() const {
         drawTargetPose();
         drawController();
         drawFeetAndLimbs();
-        drawWeapon();
+        drawHeldItems();
 
         for (const auto& Part : Parts) {
             const Vec2 Velocity = Part.Handle.getLinearVelocity();
@@ -540,24 +583,13 @@ void Rig::createParts(physics::World& PhysWorld, const RigDef& Def, const RigSet
         });
         PhysWorld.addShape(State.Handle, makeShapeDef(State.Shape, CollisionGroup, Category, Mask));
 
-        // The weapon is a second capsule of the part that holds it: from the
-        // fist (the far end of the part) outwards, so that its surface ends
-        // WeaponReach beyond the fist's.
-        if (WeaponReach > 0.0f && Source.Part == Def.Weapon.Part && Source.Shape == physics::ShapeKind::Capsule) {
-            const PartDef& Holder = State.Shape;
-            const Vec2 Axis = (Holder.End - Holder.Begin).getNormalized();
-            const Vec2 Direction = rotate(Axis, Def.Weapon.Angle * Facing);
-            Weapon = {
-                .Part = Source.Part,
-                .Grip = Holder.End,
-                .Tip = Holder.End + Direction * std::max(Holder.Radius + WeaponReach - Def.Weapon.Radius, 0.0f),
-                .Radius = Def.Weapon.Radius,
-            };
-            PartDef Blade = Holder;
-            Blade.Begin = Weapon.Grip;
-            Blade.End = Weapon.Tip;
-            Blade.Radius = Weapon.Radius;
-            PhysWorld.addShape(State.Handle, makeShapeDef(Blade, CollisionGroup, Category, Mask));
+        // Weapons and shields are more shapes of the forearm that holds them.
+        if (Source.Shape == physics::ShapeKind::Capsule) {
+            for (const HeldItem& Item : Setup.Held) {
+                if (Item.Part != Source.Part) continue;
+                addHeldShapes(PhysWorld, Def, Item, State.Shape,
+                              makeShapeDef(State.Shape, CollisionGroup, Category, Mask));
+            }
         }
 
         // The mass is set while the body is dynamic; the densities stay when
@@ -595,6 +627,80 @@ void Rig::createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSe
             .MaxMotorTorque = MotorMaxTorque * Source.Strength,
         });
     }
+}
+
+void Rig::addHeldShapes(physics::World& PhysWorld, const RigDef& Def, const HeldItem& Item, const PartDef& Holder,
+                        const physics::ShapeDef& Base) {
+    const PartState& State = getPart(Item.Part);
+    const Vec2 Axis = (Holder.End - Holder.Begin).getNormalized();
+    // A weapon is a second capsule of the part: from the fist (the far end
+    // of the part) outwards, so that its surface ends its reach beyond the
+    // fist's.
+    if (Item.WeaponReachM > 0.0f) {
+        const float Radius = Item.WeaponRadiusM.value_or(Def.Weapon.Radius);
+        const float Angle = Item.WeaponAngleDeg ? *Item.WeaponAngleDeg * RadiansPerDegree : Def.Weapon.Angle;
+        const Vec2 Direction = rotate(Axis, Angle * Facing);
+        const WeaponShape& Weapon = Weapons.emplace_back(WeaponShape{
+            .Part = Item.Part,
+            .Grip = Holder.End,
+            .Tip = Holder.End + Direction * std::max(Holder.Radius + Item.WeaponReachM - Radius, 0.0f),
+            .Radius = Radius,
+            .Reach = Item.WeaponReachM,
+            .GripOffset = Item.GripM.value_or(Def.Weapon.Grip),
+        });
+        physics::ShapeDef Blade = Base;
+        Blade.Begin = Weapon.Grip;
+        Blade.End = Weapon.Tip;
+        Blade.Radius = Weapon.Radius;
+        PhysWorld.addShape(State.Handle, Blade);
+    }
+    // A shield is a plate centered on the forearm, along it and turned by
+    // its angle.
+    if (Item.ShieldLengthM > 0.0f && Item.ShieldWidthM > 0.0f) {
+        const ShieldShape& Shield = Shields.emplace_back(ShieldShape{
+            .Part = Item.Part,
+            .Center = (Holder.Begin + Holder.End) * 0.5f,
+            .HalfExtents = {Item.ShieldLengthM * 0.5f, Item.ShieldWidthM * 0.5f},
+            .Angle = getHeading(Axis) + Item.ShieldAngleDeg * RadiansPerDegree * Facing,
+            .Guards = Item.ShieldGuards,
+        });
+        physics::ShapeDef Plate = Base;
+        Plate.Kind = physics::ShapeKind::Box;
+        Plate.Center = Shield.Center;
+        Plate.HalfExtents = Shield.HalfExtents;
+        Plate.Angle = Shield.Angle;
+        Plate.Radius = 0.0f;
+        PhysWorld.addShape(State.Handle, Plate);
+    }
+}
+
+void Rig::createGrip(physics::World& PhysWorld, const RigSetup& Setup) {
+    if (!Setup.GripPart) return;
+    const BodyPart Hand = *Setup.GripPart;
+    const auto Held = std::ranges::find_if(Weapons, [&](const WeaponShape& Weapon) { return Weapon.Part != Hand; });
+    const PartState& HandState = getPart(Hand);
+    if (Held == Weapons.end() || HandState.Shape.Shape != physics::ShapeKind::Capsule) return;
+    // The handle point: GripOffset from the holding fist along the weapon.
+    const Vec2 Along = Held->Tip - Held->Grip;
+    const float Length = Along.getLength();
+    const Vec2 HandlePoint =
+        Length > 0.0f ? Held->Grip + Along * (std::min(Held->GripOffset, Length) / Length) : Held->Grip;
+    Grip = GripState{
+        .Hand = Hand,
+        .Holder = Held->Part,
+        .Handle = PhysWorld.createSpringJoint({
+            .BodyA = getPart(Held->Part).Handle,
+            .BodyB = HandState.Handle,
+            .LocalAnchorA = HandlePoint,
+            .LocalAnchorB = HandState.Shape.End,
+            .Hertz = Control.GripHertz,
+            .DampingRatio = Control.GripDampingRatio,
+            .MaxLength = Control.GripMaxStretch,
+        }),
+    };
+    // The gripping arm: the forearm and the part it hangs from.
+    GripLimb.set(static_cast<size_t>(Hand));
+    if (const JointState* Joint = findJoint(Hand)) GripLimb.set(static_cast<size_t>(Joint->Parent));
 }
 
 void Rig::setStrikeMasses(physics::World& PhysWorld) {
@@ -1096,9 +1202,12 @@ void Rig::driveMotors(float Dt) {
         // a ragdoll standing on stiff legs spread in the stance could stay
         // up as a trestle instead of falling.
         const PartState& Child = getPart(Joint.Child);
-        const float JointStiffness = Child.Yielding               ? Stiffness * Control.YieldStiffness
-                                     : !Holding && Child.Kinematic ? Stiffness * Control.KnockdownLegStiffness
-                                                                   : Stiffness;
+        // The arm that grips a two-handed weapon is led by the grip's
+        // spring more than by its own pose.
+        const float GripScale = GripLimb.test(static_cast<size_t>(Joint.Child)) ? Control.GripArmStiffness : 1.0f;
+        const float JointStiffness = GripScale * (Child.Yielding               ? Stiffness * Control.YieldStiffness
+                                                  : !Holding && Child.Kinematic ? Stiffness * Control.KnockdownLegStiffness
+                                                                                : Stiffness);
         const float Gain = MotorGain * JointStiffness;
         const float FeedForward = Holding ? Control.FeedForward * TargetSpeed : 0.0f;
         const float Speed = FeedForward + (Joint.Target - Joint.Handle.getAngle()) * Gain;
@@ -1320,8 +1429,17 @@ void Rig::turnAround() {
         Joint.ChildFromAnchor.X = -Joint.ChildFromAnchor.X;
         Joint.RestDirection = getHeading(Joint.ChildFromAnchor);
     }
-    Weapon.Grip.X = -Weapon.Grip.X;
-    Weapon.Tip.X = -Weapon.Tip.X;
+    for (auto& Weapon : Weapons) {
+        Weapon.Grip.X = -Weapon.Grip.X;
+        Weapon.Tip.X = -Weapon.Tip.X;
+    }
+    // A plate mirrored about the body's Y axis: a box is symmetric, so its
+    // turn just changes sign.
+    for (auto& Shield : Shields) {
+        Shield.Center.X = -Shield.Center.X;
+        Shield.Angle = -Shield.Angle;
+    }
+    if (Grip) Grip->Handle = Physics->mirrorJoint(Grip->Handle);
     Facing = RequestedFacing;
     setTargetAngles(TargetAngles);
     // The targets are mirrored, not moved: no joint speed for the motors.
@@ -1442,13 +1560,27 @@ void Rig::drawFeetAndLimbs() const {
     }
 }
 
-void Rig::drawWeapon() const {
-    if (WeaponReach <= 0.0f) return;
-    // The physics draw shows the capsule as a hurtbox; mark it as a weapon.
-    const PartState& Holder = getPart(Weapon.Part);
-    const Vec2 Tip = Holder.Handle.getWorldPoint(Weapon.Tip);
-    debug::drawLine(debug::Cat::Hurtbox, Holder.Handle.getWorldPoint(Weapon.Grip), Tip);
-    debug::drawText(debug::Cat::Hurtbox, Tip, std::format("weapon {:.2f} m", WeaponReach));
+void Rig::drawHeldItems() const {
+    for (const auto& Weapon : Weapons) {
+        // The physics draw shows the capsule as a hurtbox; mark it as a weapon.
+        const PartState& Holder = getPart(Weapon.Part);
+        const Vec2 Tip = Holder.Handle.getWorldPoint(Weapon.Tip);
+        debug::drawLine(debug::Cat::Hurtbox, Holder.Handle.getWorldPoint(Weapon.Grip), Tip);
+        debug::drawText(debug::Cat::Hurtbox, Tip, std::format("weapon {:.2f} m", Weapon.Reach));
+    }
+    for (const auto& Shield : Shields) {
+        const PartState& Holder = getPart(Shield.Part);
+        std::array<Vec2, 4> Corners = getBoxCorners(Shield.Center, Shield.HalfExtents, Shield.Angle);
+        for (Vec2& Corner : Corners) Corner = Holder.Handle.getWorldPoint(Corner);
+        debug::drawPoly(debug::Cat::Block, Corners);
+        debug::drawText(debug::Cat::Block, Holder.Handle.getWorldPoint(Shield.Center), "shield");
+    }
+    if (Grip) {
+        const Vec2 Handle = Grip->Handle.getAnchorA();
+        debug::drawLine(debug::Cat::Joints, Handle, Grip->Handle.getAnchorB());
+        debug::drawCircle(debug::Cat::Joints, Handle, 0.02f);
+        debug::drawText(debug::Cat::Joints, Handle, std::format("grip {:.3f} m", getGripGap()));
+    }
 }
 
 void Rig::fillPanel() const {
@@ -1460,6 +1592,19 @@ void Rig::fillPanel() const {
     std::string Wall = WallSide == 0 ? "none" : WallSide < 0 ? "left" : "right";
     if (isAgainstWall()) Wall += ", back against it";
     debug::setPanel(Name + " wall", Wall);
+
+    // What the hands hold: weapons, shields, the grip of a two-handed one.
+    std::string Hands;
+    const auto addHand = [&](std::string Text) { Hands += (Hands.empty() ? "" : "; ") + std::move(Text); };
+    for (const auto& Weapon : Weapons) {
+        addHand(std::format("{} weapon {:.2f} m, r {:.3f}", getBodyPartName(Weapon.Part), Weapon.Reach, Weapon.Radius));
+    }
+    for (const auto& Shield : Shields) {
+        addHand(std::format("{} shield {:.2f} x {:.2f} m, {}", getBodyPartName(Shield.Part), Shield.HalfExtents.X * 2.0f,
+                            Shield.HalfExtents.Y * 2.0f, Shield.Guards ? "guards" : "strikes"));
+    }
+    if (Grip) addHand(std::format("{} grips, {:.3f} m off the handle", getBodyPartName(Grip->Hand), getGripGap()));
+    debug::setPanel(Name + " hands", Hands.empty() ? "empty" : Hands);
 
     std::string Feet;
     for (const auto& Limb : Legs) {
@@ -1578,6 +1723,11 @@ physics::ShapeDef makeShapeDef(const PartDef& Shape, int CollisionGroup, uint64_
         .CollisionMask = Mask,
         .EnableHitEvents = true,
     };
+}
+
+std::array<Vec2, 4> getBoxCorners(Vec2 Center, Vec2 HalfExtents, float Angle) {
+    return {Center + rotate({-HalfExtents.X, -HalfExtents.Y}, Angle), Center + rotate({HalfExtents.X, -HalfExtents.Y}, Angle),
+            Center + rotate({HalfExtents.X, HalfExtents.Y}, Angle), Center + rotate({-HalfExtents.X, HalfExtents.Y}, Angle)};
 }
 
 /// The corners of a box shape in body coordinates.

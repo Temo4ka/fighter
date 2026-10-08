@@ -109,6 +109,11 @@ void validateItem(const EquipmentItem& Item) {
         CheckSize("shield length", Item.Shield->LengthM, MaxShieldSizeM);
         CheckSize("shield width", Item.Shield->WidthM, MaxShieldSizeM);
         CheckAngle("shield angle", Item.Shield->AngleDeg);
+        // Written so that NaN fails the check too.
+        if (!(Item.Shield->PoiseBonus >= 0.0f && Item.Shield->PoiseBonus <= MaxShieldPoiseBonus)) {
+            throw DataError(std::format("item '{}': shield poise_bonus {} is out of [0, {}]", Item.Id,
+                                        Item.Shield->PoiseBonus, MaxShieldPoiseBonus));
+        }
     }
 
     if (!Item.Weapon) return;

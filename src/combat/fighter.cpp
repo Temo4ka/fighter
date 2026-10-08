@@ -44,8 +44,11 @@ constexpr float CalmKnockback = 0.05f;
 constexpr float BlockBarOffsetM = 0.3f;
 constexpr float BlockBarHalfWidthM = 0.04f;
 
-
 bool hasUpperJoints(const anim::Clip& Source);
+/// "High", "Mid", "Low": the zone as data files write it.
+std::string_view getBlockZoneName(BlockZone Zone);
+/// The names with \p Separator between them.
+std::string joinNames(const std::vector<std::string>& Names, std::string_view Separator);
 
 } // namespace
 
@@ -55,9 +58,20 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     : Body(PhysWorld, Description, Setup), Rules(&NewRules), Profile(NewProfile),
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
-    if (const stats::WeaponProps* Held = Gear.findWeapon()) Weapon = *Held;
+    for (const stats::EquipmentSlot Hand : {stats::EquipmentSlot::MainHand, stats::EquipmentSlot::OffHand}) {
+        const stats::EquipmentItem* Item = Gear.findInSlot(Hand);
+        if (!Item || Item->Slot != Hand || !Item->Weapon) continue;
+        Weapons.push_back({.Part = Hand == stats::EquipmentSlot::MainHand ? Description.Weapon.Part
+                                                                          : Description.Weapon.OffPart,
+                           .Props = *Item->Weapon,
+                           .ItemName = Item->Name});
+    }
+    // A shield in the off hand guards and gives no strikes of its own; it
+    // still makes a pair with the main hand's item.
     Set = &NewRules.Moves.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
-                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand));
+                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand),
+                                    !Gear.findShield(stats::EquipmentSlot::OffHand));
+    Block = NewRules.Moves.getBlock(*Set, getDefaultBlock(NewRules.Reactions));
     Shown = anim::sampleClip(NewRules.Clips.get(clips::Stance), 0.0f);
     Body.setTargetAngles(Shown.Angles);
     Body.snapToTargets();
@@ -77,6 +91,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     OpponentGap = std::abs(Around.OpponentX - Body.getPartPosition(BodyPart::Pelvis).X);
     OpponentX = Around.OpponentX;
     StateSec += Dt;
+    // Only presses the fighter may act on count: none are kept through a
+    // reaction or a fall to start a move afterwards.
+    Presses.update(getNewlyPressed(Cmd, PreviousCmd), Rules->Moves.getInputRules().ComboWindowSec, Dt);
+    if (!isFree() && State != FighterState::Attacking) Presses.clear();
 
     // Where the opponent is. The body turns only when the fighter is free
     // to act: not during an attack, a reaction, on the floor or getting up.
@@ -107,8 +125,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     // the legs have (an attack chose in startMove()).
     if (State == FighterState::Crouching || State == FighterState::Blocking) {
         const ClipLibrary& Clips = Rules->Clips;
-        const anim::Clip& Authored = State == FighterState::Crouching ? Clips.get(clips::Crouch)
-                                                                      : Clips.getBlock(Guard);
+        const anim::Clip& Authored = State == FighterState::Crouching ? Clips.get(clips::Crouch) : getBlockClip();
         const bool Continues = ShownTop && &Clips.getAuthored(*ShownTop) == &Authored;
         if (anim::usesLegs(Authored) && !Continues) LegsMirrored = shouldMirrorLegs();
     }
@@ -180,6 +197,7 @@ bool Fighter::isHittable() const { return State != FighterState::KnockedDown && 
 
 HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack, float PowerScale, float Direction,
                             bool JammedStrike) {
+    const bool OnShield = Body.isOnShield(Hit.Point, Rules->Tuning.ShieldHitMargin);
     const HitInput Input{
         .Impulse = Hit.Impulse,
         .Part = Hit.Victim.Part,
@@ -188,6 +206,8 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
         .Poise = Profile.Poise,
         .Buildup = Buildup,
         .Guard = State == FighterState::Blocking ? std::optional(Guard) : std::nullopt,
+        .Block = &Block,
+        .OnShield = OnShield,
         .MoveDamage = Attack.Damage,
         .PowerScale = PowerScale,
         .MinReaction = JammedStrike ? ReactionLevel::None : Attack.MinReaction,
@@ -196,7 +216,7 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
     Hp = std::max(0.0f, Hp - Outcome.Damage);
     Buildup += Outcome.BuildupAdded;
     if (Outcome.Blocked) spendStamina(Outcome.BlockStamina);
-    LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome};
+    LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome, .OnShield = OnShield};
     react(Outcome.Reaction, Hit.Impulse, Direction, Hit.Point);
     return Outcome;
 }
@@ -253,8 +273,10 @@ std::string_view Fighter::getMoveId() const {
     return Current ? std::string_view(Current->Id) : std::string_view();
 }
 
+const anim::Clip& Fighter::getBlockClip() const { return Rules->Clips.get(Block.getClip(Guard)); }
+
 float Fighter::getPowerScale(const MoveDef& Attack) const {
-    return Attack.UsesWeapon && Weapon ? Weapon->PowerScale : 1.0f;
+    return Attack.UsesWeapon && StrikeWeapon ? Weapons[*StrikeWeapon].Props.PowerScale : 1.0f;
 }
 
 std::string Fighter::describeClip() const {
@@ -322,14 +344,12 @@ void Fighter::drawDebug(std::string_view Name) const {
         debug::setPanel(std::format("{} stamina", Name),
                         std::format("{:.0f} / {:.0f} (+{:.0f}/s){}", Stamina, Profile.MaxStamina,
                                     Profile.StaminaRegen, Exhausted ? "  EXHAUSTED" : ""));
-        // The moveset and the input held in the last step (PreviousCmd is
-        // that step's commands by now).
-        const ButtonSet Held = getHeldButtons(PreviousCmd);
-        const InputDirection Direction = getInputDirection(PreviousCmd, Body.isFacingRight());
-        debug::setPanel(std::format("{} moveset", Name),
-                        std::format("{}, input {}", Set->Id,
-                                    Held.isEmpty() ? std::string(getInputDirectionName(Direction))
-                                                   : formatMoveInput({.Direction = Direction, .Buttons = Held})));
+        // The moveset, the input of the last step (PreviousCmd is that
+        // step's commands by now), the move it chose and the block.
+        debug::setPanel(std::format("{} moveset", Name), describeMoveSet());
+        debug::setPanel(std::format("{} input", Name), describeInput());
+        debug::setPanel(std::format("{} move", Name), describeSelected());
+        debug::setPanel(std::format("{} block", Name), describeBlock());
         const ReactionTable& Table = Rules->Reactions;
         debug::setPanel(std::format("{} poise", Name),
                         std::format("buildup {:.2f}, poise {:.2f}: thresholds x{:.2f}", Buildup, Profile.Poise,
@@ -337,10 +357,10 @@ void Fighter::drawDebug(std::string_view Name) const {
         if (LastHit) {
             const HitOutcome& Outcome = LastHit->Outcome;
             debug::setPanel(std::format("{} last hit", Name),
-                            std::format("{} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}", LastHit->MoveId,
+                            std::format("{} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}{}", LastHit->MoveId,
                                         getBodyPartName(LastHit->Part), Outcome.Strength,
                                         getReactionLevelName(Outcome.Reaction), Outcome.Damage,
-                                        Outcome.Blocked ? " (blocked)" : ""));
+                                        Outcome.Blocked ? " (blocked)" : "", LastHit->OnShield ? " on the shield" : ""));
         } else {
             debug::setPanel(std::format("{} last hit", Name), "-");
         }
@@ -361,6 +381,63 @@ void Fighter::drawDebug(std::string_view Name) const {
         debug::setPanel(std::format("{} blend", Name), describeBlends());
         // "P1 facing" (and a pending turn) is the rig's panel line.
     }
+}
+
+std::string Fighter::describeMoveSet() const {
+    std::string Text = Set->Id;
+    if (!Set->Pair.empty()) Text += std::format(" (pair {})", joinNames(Set->Pair, " + "));
+    for (const MoveSet* Parent = Rules->Moves.findSet(Set->Inherit); Parent;
+         Parent = Rules->Moves.findSet(Parent->Inherit)) {
+        Text += " < " + Parent->Id;
+        if (Parent->Inherit.empty()) break;
+    }
+    for (const HandWeapon& Held : Weapons) {
+        Text += std::format("; {} in {}", Held.ItemName, getBodyPartName(Held.Part));
+    }
+    return Text;
+}
+
+std::string Fighter::describeInput() const {
+    const ButtonSet Held = getHeldButtons(PreviousCmd) | Presses.getButtons();
+    const InputDirection Direction = getInputDirection(PreviousCmd, Body.isFacingRight());
+    std::string Text = Held.isEmpty() ? std::string(getInputDirectionName(Direction))
+                                      : formatMoveInput({.Direction = Direction, .Buttons = Held});
+    if (WaitingForCombo) {
+        Text += std::format(" (waiting for a combination {:.2f}/{:.2f} s)", Presses.getAgeSec(),
+                            Rules->Moves.getInputRules().ComboWindowSec);
+    }
+    return Text;
+}
+
+std::string Fighter::describeSelected() const {
+    if (!Selected) return "-";
+    // The set of the line: this set or the parent it came from.
+    std::string_view From = "?";
+    for (const MoveSet* Current = Set; Current; Current = Rules->Moves.findSet(Current->Inherit)) {
+        const auto& Entries = Current->Entries;
+        if (!Entries.empty() && Selected >= Entries.data() && Selected < Entries.data() + Entries.size()) {
+            From = Current->Id;
+            break;
+        }
+        if (Current->Inherit.empty()) break;
+    }
+    std::string Text = std::format("{} -> {} ({})", formatMoveInput(Selected->Input), Selected->MoveId, From);
+    if (getMove() && StrikeWeapon) {
+        Text += std::format(", {}{}", Weapons[*StrikeWeapon].ItemName, StrikeOtherHand ? " in the other hand" : "");
+    }
+    if (ChainRequest) Text += std::format(", chain to {} asked", ChainRequest->Id);
+    return Text;
+}
+
+std::string Fighter::describeBlock() const {
+    std::string Covers;
+    for (const BodyPart Part : Block.Covers[static_cast<size_t>(Guard)]) {
+        Covers += Covers.empty() ? "" : " ";
+        Covers += getBodyPartName(Part);
+    }
+    return std::format("dmg x{:.2f}, max {}, stamina x{:.2f}; {}: {}, covers {}", Block.DamageScale,
+                       getReactionLevelName(Block.MaxLevel), Block.StaminaScale, getBlockZoneName(Guard),
+                       Block.getClip(Guard), Covers);
 }
 
 bool Fighter::isFree() const {
@@ -420,11 +497,18 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
         AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
     }
     // A press (not a held button) of a move the current one chains into asks
-    // for it; it is kept until the cancel window.
-    if (const ButtonSet Pressed = getNewlyPressed(Cmd, PreviousCmd); !Pressed.isEmpty()) {
-        const MoveDef* Next = Rules->Moves.findMove(*Set, getInputDirection(Cmd, Body.isFacingRight()), Pressed,
-                                                    getHeldButtons(Cmd));
-        if (Next && Move->canChainTo(Next->Id)) ChainRequest = Next;
+    // for it; it is kept until the cancel window. The buttons pressed within
+    // the combo window count together: a later press may turn the request
+    // into a combination.
+    if (!getNewlyPressed(Cmd, PreviousCmd).isEmpty()) {
+        const ButtonSet Recent = Presses.getButtons();
+        const MoveSetEntry* Entry = Rules->Moves.findEntry(*Set, getInputDirection(Cmd, Body.isFacingRight()),
+                                                           Recent, getHeldButtons(Cmd) | Recent);
+        const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr;
+        if (Next && Move->canChainTo(Next->Id)) {
+            ChainRequest = Next;
+            ChainEntry = Entry;
+        }
     }
     if (AttackTime >= AttackClip->ActiveEndSec) {
         RecoverySec += Dt;
@@ -433,11 +517,17 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
                               RecoverySec <= Tuning.ChainWindowSec;
         if (CanChain) {
             const MoveDef* Next = ChainRequest;
+            Selected = ChainEntry;
             startMove(*Next, Around, ChainLength + 1);
             return Next;
         }
     }
-    if (AttackClip->isFinishedAt(AttackTime)) setState(FighterState::Idle);
+    if (AttackClip->isFinishedAt(AttackTime)) {
+        // The presses of the attack were for a chain; a held button repeats
+        // the attack by itself.
+        Presses.clear();
+        setState(FighterState::Idle);
+    }
     return nullptr;
 }
 
@@ -446,6 +536,9 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         if (State != FighterState::Blocking || *Zone != Guard) StateSec = 0.0f;
         Guard = *Zone;
         PendingAttack = nullptr;
+        // The block wins over attacking: a press while blocking is dropped.
+        Presses.clear();
+        WaitingForCombo = false;
         setState(FighterState::Blocking);
         return nullptr;
     }
@@ -458,13 +551,19 @@ const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroun
         startMove(*Next, Around, 1);
         return Next;
     }
-    // Holding attack buttons repeats the attack.
-    const ButtonSet Held = getHeldButtons(Cmd);
+    // Holding attack buttons repeats the attack. A press that may still
+    // become a combination ("Light+Heavy") waits for the rest of it within
+    // the combo window; the buttons pressed in it count as held.
+    const ButtonSet Recent = Presses.getButtons();
+    const ButtonSet Held = getHeldButtons(Cmd) | Recent;
+    const InputDirection Direction = getInputDirection(Cmd, Body.isFacingRight());
+    WaitingForCombo = Presses.getAgeSec() < Rules->Moves.getInputRules().ComboWindowSec &&
+                      Rules->Moves.canGrowCombo(*Set, Direction, Recent);
     const MoveSetEntry* Entry =
-        Held.isEmpty() ? nullptr
-                       : Rules->Moves.findEntry(*Set, getInputDirection(Cmd, Body.isFacingRight()), Held, Held);
+        Held.isEmpty() || WaitingForCombo ? nullptr : Rules->Moves.findEntry(*Set, Direction, Held, Held);
+    if (Entry) Selected = Entry;
     if (const MoveDef* Next = Entry ? Rules->Moves.findMove(Entry->MoveId) : nullptr) {
-        // Crouched, a move mapped to a downward direction (the low kick)
+        // Crouched, a move mapped to a downward direction (a sword's low cut)
         // starts at once; the rest stand up first.
         if (State == FighterState::Crouching && !isDownward(Entry->Input.Direction) &&
             Rules->Tuning.CrouchStandUpSec > 0.0f) {
@@ -490,13 +589,18 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     // A strike with the legs plays with the foot in front the legs have.
     const anim::Clip& Authored = Rules->Clips.get(Next.getClip(Distance));
     if (anim::usesLegs(Authored)) LegsMirrored = shouldMirrorLegs();
-    const anim::Clip& Clip = getPlayed(Authored);
+    // A weapon move strikes with the weapon its clip's strikers hold, or
+    // with the other arm when the weapon is in the other hand.
+    StrikeWeapon.reset();
+    StrikeOtherHand = false;
+    if (Next.UsesWeapon) chooseStrikeWeapon(Authored);
+    const anim::Clip& Clip = getPlayed(Authored, StrikeOtherHand);
     // A move always starts; without enough stamina it empties it and the
     // fighter is exhausted, so the move itself is already slow.
     spendStamina(Next.Stamina);
 
     float Rate = Profile.AttackSpeedScale;
-    if (Next.UsesWeapon && Weapon) Rate *= Weapon->SpeedScale;
+    if (Next.UsesWeapon && StrikeWeapon) Rate *= Weapons[*StrikeWeapon].Props.SpeedScale;
     if (Exhausted) Rate *= Rules->Tuning.ExhaustedSpeedScale;
 
     const bool FromCrouch = State == FighterState::Crouching;
@@ -517,6 +621,10 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     RecoverySec = 0.0f;
     ChainLength = ChainPosition;
     ChainRequest = nullptr;
+    ChainEntry = nullptr;
+    // The buttons that started it are spent: they do not start another.
+    Presses.clear();
+    WaitingForCombo = false;
 }
 
 float Fighter::planWalking(const PlayerCommands& Cmd) {
@@ -535,7 +643,7 @@ float Fighter::planWalking(const PlayerCommands& Cmd) {
     if (!Crouched) CrouchWalk.settle();
     Stride.Crouched = Crouched;
     const bool AttackAllowsMove = State == FighterState::Attacking && AttackClip->AllowMove && !AttackFromCrouch;
-    const bool BlockAllowsMove = State == FighterState::Blocking && Rules->Clips.getBlock(Guard).AllowMove;
+    const bool BlockAllowsMove = State == FighterState::Blocking && getBlockClip().AllowMove;
     const bool CanMove = !PendingAttack && (State == FighterState::Idle || State == FighterState::Walking ||
                                             Crouched || BlockAllowsMove || AttackAllowsMove);
     float MoveX = CanMove ? std::clamp(Cmd.MoveX, -1.0f, 1.0f) : 0.0f;
@@ -1009,7 +1117,7 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     }
     if (TopChanged) {
         // Steps lead from the resting legs into a leg action. From one leg
-        // action into the next (the crouch into a low kick or the low block)
+        // action into the next (the crouch into the low block)
         // the legs are already the action's: the change blends as authored.
         // From the stance with the same foot in front the legs are in the
         // pose the action is authored from: no steps either.
@@ -1163,8 +1271,29 @@ void Fighter::startLegStep(const anim::Clip& Top, const anim::Pose& Target) {
     }
 }
 
-const anim::Clip& Fighter::getPlayed(const anim::Clip& Authored) const {
-    return LegsMirrored && anim::usesLegs(Authored) ? Rules->Clips.getMirrored(Authored) : Authored;
+const anim::Clip& Fighter::getPlayed(const anim::Clip& Authored, bool OtherHand) const {
+    const anim::Clip& Legs =
+        LegsMirrored && anim::usesLegs(Authored) ? Rules->Clips.getMirrored(Authored) : Authored;
+    return OtherHand ? Rules->Clips.getOtherHand(Legs) : Legs;
+}
+
+void Fighter::chooseStrikeWeapon(const anim::Clip& Authored) {
+    // A weapon its strikers hold as authored; else one the strikers of the
+    // other arm hold (the clip plays with the arms swapped); else the first.
+    for (size_t Index = 0; Index < Weapons.size(); ++Index) {
+        if (Authored.isStriker(Weapons[Index].Part)) {
+            StrikeWeapon = Index;
+            return;
+        }
+    }
+    for (size_t Index = 0; Index < Weapons.size(); ++Index) {
+        if (Authored.isStriker(anim::getMirroredArmPart(Weapons[Index].Part))) {
+            StrikeWeapon = Index;
+            StrikeOtherHand = true;
+            return;
+        }
+    }
+    if (!Weapons.empty()) StrikeWeapon = 0;
 }
 
 bool Fighter::shouldMirrorLegs() const {
@@ -1279,8 +1408,8 @@ PoseKind Fighter::getClipKind(const anim::Clip& Played) const {
     const anim::Clip& Source = Clips.getAuthored(Played);
     if (&Source == &Clips.get(clips::Crouch)) return PoseKind::Crouch;
     if (&Source == &Clips.get(clips::CrouchWalk)) return PoseKind::CrouchWalk;
-    for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
-        if (&Source == &Clips.getBlock(Zone)) return PoseKind::Block;
+    for (const std::string& Name : Block.Clips) {
+        if (&Source == &Clips.get(Name)) return PoseKind::Block;
     }
     for (const ReactionLevel Level : {ReactionLevel::Flinch, ReactionLevel::Stagger, ReactionLevel::Knockback}) {
         if (&Source == Clips.findReaction(Level)) return PoseKind::Reaction;
@@ -1301,7 +1430,7 @@ const anim::Clip* Fighter::getTopClip() const {
     switch (State) {
         case FighterState::Attacking: return AttackClip;
         case FighterState::Crouching: return &getPlayed(Rules->Clips.get(clips::Crouch));
-        case FighterState::Blocking: return &getPlayed(Rules->Clips.getBlock(Guard));
+        case FighterState::Blocking: return &getPlayed(getBlockClip());
         case FighterState::Reacting: return Rules->Clips.findReaction(Reaction);
         default: return nullptr;
     }
@@ -1367,6 +1496,24 @@ namespace {
 /// Does the clip pose a joint of the upper body (not only the legs)?
 bool hasUpperJoints(const anim::Clip& Source) {
     return (Source.Keys.front().Target.Mask & ~anim::getLegJoints()).any();
+}
+
+std::string_view getBlockZoneName(BlockZone Zone) {
+    switch (Zone) {
+        case BlockZone::High: return "High";
+        case BlockZone::Mid: return "Mid";
+        case BlockZone::Low: return "Low";
+    }
+    return "?";
+}
+
+std::string joinNames(const std::vector<std::string>& Names, std::string_view Separator) {
+    std::string Text;
+    for (const std::string& Name : Names) {
+        if (!Text.empty()) Text += Separator;
+        Text += Name;
+    }
+    return Text;
 }
 
 } // namespace

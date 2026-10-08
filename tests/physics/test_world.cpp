@@ -606,3 +606,45 @@ TEST_CASE("physics::World: an overlap query may ignore some parts of the other f
     Heads.set(static_cast<size_t>(BodyPart::Head));
     CHECK_FALSE(PhysWorld.isOverlappingOtherFighterAt(Fist, {0.0f, 0.0f}, 0.0f, 0.0f, Heads));
 }
+
+TEST_CASE("physics::World: a turned box", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    Body Plate = PhysWorld.createBody({.Position = {0.0f, 1.0f}, .Part = PartRef{0, BodyPart::ForearmL}});
+    // A tall thin plate turned a quarter turn lies flat: wide along X.
+    PhysWorld.addShape(Plate, {.Kind = ShapeKind::Box, .HalfExtents = {0.05f, 0.3f}, .Angle = 1.5707963f});
+    Body Probe = PhysWorld.createBody({.Position = {0.25f, 1.0f}, .Part = PartRef{1, BodyPart::Head}});
+    PhysWorld.addShape(Probe, {.Kind = ShapeKind::Circle, .Radius = 0.01f});
+    CHECK(PhysWorld.isOverlappingOtherFighter(Probe));
+}
+
+TEST_CASE("physics::SpringJoint: pulls two points together and mirrors", "[physics]") {
+    World PhysWorld({.Gravity = {0.0f, 0.0f}});
+    Body First = PhysWorld.createBody({.Position = {0.0f, 1.0f}});
+    PhysWorld.addShape(First, {.Kind = ShapeKind::Circle, .Radius = 0.05f, .CollisionGroup = -1});
+    First.setMass(1.0f);
+    Body Second = PhysWorld.createBody({.Position = {0.3f, 1.0f}});
+    PhysWorld.addShape(Second, {.Kind = ShapeKind::Circle, .Radius = 0.05f, .CollisionGroup = -1});
+    Second.setMass(1.0f);
+    const int JointsBefore = PhysWorld.getJointCount();
+    SpringJoint Spring = PhysWorld.createSpringJoint({.BodyA = First, .BodyB = Second,
+                                                      .LocalAnchorA = {0.05f, 0.0f}, .LocalAnchorB = {-0.05f, 0.0f},
+                                                      .Hertz = 5.0f, .DampingRatio = 1.0f, .MaxLength = 0.15f});
+    REQUIRE(Spring.isValid());
+    CHECK(PhysWorld.getJointCount() == JointsBefore + 1);
+    CHECK(Spring.getAnchorA().X == Approx(0.05f));
+    CHECK(Spring.getAnchorB().X == Approx(0.25f));
+    CHECK(Spring.getBodyA().getPosition().X == Approx(0.0f));
+    for (int Step = 0; Step < 120; ++Step) PhysWorld.step(1.0f / 60.0f);
+    // The spring pulled the anchors onto each other.
+    CHECK(Spring.getLength() < 0.02f);
+    CHECK(Spring.getBodyB().getPosition().X - Spring.getBodyA().getPosition().X == Approx(0.1f).margin(0.02f));
+
+    const SpringJoint Mirrored = PhysWorld.mirrorJoint(Spring);
+    CHECK_FALSE(Spring.isValid());
+    REQUIRE(Mirrored.isValid());
+    // The anchors are mirrored in their bodies: now they pull the bodies the
+    // other way round.
+    CHECK(Mirrored.getLength() > 0.15f);
+    for (int Step = 0; Step < 240; ++Step) PhysWorld.step(1.0f / 60.0f);
+    CHECK(Mirrored.getLength() < 0.02f);
+}

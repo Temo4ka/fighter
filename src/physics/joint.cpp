@@ -39,4 +39,22 @@ Body RevoluteJoint::getBodyA() const { return Body(b2StoreBodyId(b2Joint_GetBody
 
 Body RevoluteJoint::getBodyB() const { return Body(b2StoreBodyId(b2Joint_GetBodyB(loadJoint(Id)))); }
 
+bool SpringJoint::isValid() const { return Id != 0 && b2Joint_IsValid(loadJoint(Id)); }
+
+Vec2 SpringJoint::getAnchorA() const {
+    const b2JointId JointId = loadJoint(Id);
+    return fromBox2D(b2Body_GetWorldPoint(b2Joint_GetBodyA(JointId), b2Joint_GetLocalAnchorA(JointId)));
+}
+
+Vec2 SpringJoint::getAnchorB() const {
+    const b2JointId JointId = loadJoint(Id);
+    return fromBox2D(b2Body_GetWorldPoint(b2Joint_GetBodyB(JointId), b2Joint_GetLocalAnchorB(JointId)));
+}
+
+float SpringJoint::getLength() const { return b2DistanceJoint_GetCurrentLength(loadJoint(Id)); }
+
+Body SpringJoint::getBodyA() const { return Body(b2StoreBodyId(b2Joint_GetBodyA(loadJoint(Id)))); }
+
+Body SpringJoint::getBodyB() const { return Body(b2StoreBodyId(b2Joint_GetBodyB(loadJoint(Id)))); }
+
 } // namespace fighter::physics

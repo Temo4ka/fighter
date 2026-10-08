@@ -1,0 +1,17 @@
+{
+    "clip": "rising_punch",
+    "damage": 1.4,
+    "min_reaction": "Flinch",
+    "stamina": 13,
+    "tags": [
+        "high",
+        "punch"
+    ],
+    "ai": {
+        "range_m": [
+            0.2,
+            0.6
+        ],
+        "role": "close"
+    }
+}

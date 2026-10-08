@@ -35,6 +35,10 @@ namespace fighter::render {
 struct ItemLook {
     std::string Id;                  ///< As in data/items/*.json.
     std::vector<BodyPart> Covers;    ///< The parts that get an overlay.
+    /// Held in a hand: one picture serves either arm. Missing the picture of
+    /// an arm part, the overlay takes the other arm's (a sword drawn for the
+    /// right forearm, held in the left hand), with its origin.
+    bool Held = false;
 };
 
 struct FighterLook {

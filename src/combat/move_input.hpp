@@ -115,6 +115,12 @@ public:
     }
 
     constexpr bool operator==(const ButtonSet&) const = default;
+    /// The buttons of both sets.
+    constexpr ButtonSet operator|(ButtonSet Other) const {
+        ButtonSet Both;
+        Both.Bits = static_cast<uint8_t>(Bits | Other.Bits);
+        return Both;
+    }
 
 private:
     static constexpr uint8_t getBit(AttackButton Button) {
@@ -148,6 +154,28 @@ struct MoveInput {
     ButtonSet Buttons;
 
     constexpr bool operator==(const MoveInput&) const = default;
+};
+
+/// The attack buttons pressed lately: buttons pressed within
+/// InputRules::ComboWindowSec of each other count as pressed together
+/// ("Light+Heavy" pressed one tick apart). A button stays in the window,
+/// held or released, until it is older than the window.
+class PressWindow {
+public:
+    /// One step of \p Dt: the buttons already in the window age, those
+    /// older than \p WindowSec drop out, \p Pressed (newly pressed now)
+    /// come in at age 0.
+    void update(ButtonSet Pressed, float WindowSec, float Dt);
+    /// Empties the window (a move took its buttons).
+    void clear();
+    /// The buttons in the window.
+    ButtonSet getButtons() const;
+    /// Since the first button in the window was pressed, s; 0 if empty.
+    float getAgeSec() const;
+
+private:
+    /// Per button: since it was pressed, s; negative: not in the window.
+    std::array<float, AttackButtonCount> AgeSec{-1.0f, -1.0f, -1.0f, -1.0f};
 };
 
 /// The rules of data/input.json (docs/DATA_FORMATS.md).

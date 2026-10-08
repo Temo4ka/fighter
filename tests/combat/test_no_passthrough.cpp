@@ -29,7 +29,7 @@ namespace {
 
 /// What a scripted fighter does for a while.
 enum class Act : uint8_t {
-    Approach, Retreat, Hold, Jab, Heavy, BodyKick, LowKick, Crouch, CrouchKick, BlockHigh, BlockMid, BlockLow, Chain,
+    Approach, Retreat, Hold, Jab, Heavy, BodyKick, Crouch, CrouchKick, BlockHigh, BlockMid, BlockLow, Chain,
     Count
 };
 
@@ -74,7 +74,6 @@ public:
             case Act::Jab: Cmd.Light = Age % 20 < 2; break;
             case Act::Heavy: Cmd.Heavy = Age == 1; break;
             case Act::BodyKick: Cmd.Kick = Age == 1; break;
-            case Act::LowKick: Cmd.Down = Cmd.Kick = Age == 1; break;
             case Act::Crouch: Cmd.Down = true; break;
             case Act::CrouchKick: Cmd.Down = true; Cmd.Kick = Age == 6; break;
             case Act::BlockHigh: Cmd.Block = true; Cmd.Up = true; Cmd.MoveX = 0.0f; break;

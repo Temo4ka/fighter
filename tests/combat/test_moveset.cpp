@@ -20,16 +20,16 @@ const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 
 MoveDef makeMove(std::string Id) { return {.Id = std::move(Id), .Clip = "clip"}; }
 
-/// unarmed: Light jab, Kick body_kick, Down+Kick low_kick;
+/// unarmed: Light jab, Kick body_kick, Down+Kick sweep;
 /// sword (inherits unarmed): Heavy slash, Forward+Heavy thrust, Light+Heavy spin;
 /// sword_shield (pair sword + shield, inherits sword): Special bash.
 MoveLibrary makeLibrary() {
     std::vector<MoveDef> Moves;
-    for (const char* Id : {"jab", "body_kick", "low_kick", "slash", "thrust", "spin", "bash"}) {
+    for (const char* Id : {"jab", "body_kick", "sweep", "slash", "thrust", "spin", "bash"}) {
         Moves.push_back(makeMove(Id));
     }
     std::vector<MoveSet> Sets = {
-        parseMoveSet(R"({"moves": {"Light": "jab", "Kick": "body_kick", "Down+Kick": "low_kick"}})", "unarmed"),
+        parseMoveSet(R"({"moves": {"Light": "jab", "Kick": "body_kick", "Down+Kick": "sweep"}})", "unarmed"),
         parseMoveSet(R"({"inherit": "unarmed",
             "moves": {"Heavy": "slash", "Forward+Heavy": "thrust", "Light+Heavy": "spin"},
             "block": {"damage_scale": 0.1, "clips": {"Mid": "block_mid_sword"}}})", "sword"),
@@ -58,7 +58,7 @@ TEST_CASE("MoveSet: an input picks its move, then fallbacks, then the parent", "
     CHECK(findId(Library, "sword", "Forward+Heavy") == "thrust");
     CHECK(findId(Library, "sword", "Back+Heavy") == "slash");           // Back falls back to Neutral
     CHECK(findId(Library, "sword", "Kick") == "body_kick");             // from the parent
-    CHECK(findId(Library, "sword", "DownForward+Kick") == "low_kick");  // DownForward -> Down, in the parent
+    CHECK(findId(Library, "sword", "DownForward+Kick") == "sweep");     // DownForward -> Down, in the parent
     CHECK(findId(Library, "unarmed", "Heavy") == "-");
     CHECK(findId(Library, "unarmed", "Special") == "-");
 }
@@ -89,7 +89,10 @@ TEST_CASE("MoveSet: a pair set is chosen for exactly its pair", "[combat][movese
     CHECK(Library.selectSet("sword", "").Id == "sword");
     CHECK(Library.selectSet("", "").Id == "unarmed");
     CHECK(Library.selectSet("axe", "").Id == "unarmed");
-    CHECK(Library.selectSet("", "shield").Id == "shield");   // the other hand alone
+    CHECK(Library.selectSet("", "sword").Id == "sword");     // the other hand alone
+    // A shield in the off hand gives no strikes of its own.
+    CHECK(Library.selectSet("", "shield", false).Id == "unarmed");
+    CHECK(Library.selectSet("sword", "shield", false).Id == "sword_shield");
     CHECK(findId(Library, "sword_shield", "Special") == "bash");
     CHECK(findId(Library, "sword_shield", "Forward+Heavy") == "thrust");
 }
@@ -159,10 +162,26 @@ TEST_CASE("MoveLibrary: the sample data loads", "[combat][moveset][data]") {
     CHECK(Find(Unarmed, "Light") == "jab");
     CHECK(Find(Unarmed, "Heavy") == "heavy_punch");
     CHECK(Find(Unarmed, "Kick") == "body_kick");
-    CHECK(Find(Unarmed, "Down+Kick") == "low_kick");
+    CHECK(Find(Unarmed, "Down+Kick") == "body_kick");   // unassigned: Down falls back to Neutral
     CHECK(Find(Library.selectSet("sword", ""), "Heavy") == "sword_slash");
     CHECK(Find(Library.selectSet("hammer", ""), "Heavy") == "hammer_smash");
-    CHECK(Find(Library.selectSet("hammer", ""), "Light") == "jab");
+    CHECK(Find(Library.selectSet("hammer", ""), "Light") == "hammer_bash");   // with a weapon, Light strikes with it
+    CHECK(Find(Library.selectSet("hammer", ""), "Kick") == "body_kick");
     CHECK(Library.selectSet("sword", "shield").Id == "sword_shield");
     CHECK(Find(Library.selectSet("sword", "shield"), "Heavy") == "sword_slash");
+}
+
+TEST_CASE("MoveSet: a press waits only when a combination can still grow", "[combat][moveset]") {
+    const MoveLibrary Library = makeLibrary();
+    const MoveSet& Sword = *Library.findSet("sword");
+    const MoveSet& Unarmed = *Library.findSet("unarmed");
+    ButtonSet Both(AttackButton::Light);
+    Both.add(AttackButton::Heavy);
+    // Light and Heavy may become Light+Heavy in the sword set.
+    CHECK(Library.canGrowCombo(Sword, InputDirection::Neutral, ButtonSet(AttackButton::Light)));
+    CHECK(Library.canGrowCombo(Sword, InputDirection::Forward, ButtonSet(AttackButton::Heavy)));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, Both));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, ButtonSet(AttackButton::Kick)));
+    CHECK_FALSE(Library.canGrowCombo(Unarmed, InputDirection::Neutral, ButtonSet(AttackButton::Light)));
+    CHECK_FALSE(Library.canGrowCombo(Sword, InputDirection::Neutral, {}));
 }

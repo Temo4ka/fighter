@@ -18,7 +18,11 @@
 ///
 /// Mirroring the legs swaps the roles of the two legs (ThighL <-> ThighR,
 /// ShinL <-> ShinR, FootL <-> FootR): a kick authored with the left leg in
-/// front plays with the right one. The upper body is not mirrored.
+/// front plays with the right one. The upper body is not mirrored by it.
+///
+/// Swapping the arms does the same for the arms (UpperArmL <-> UpperArmR,
+/// ForearmL <-> ForearmR): a strike authored with the weapon in the right
+/// hand plays with the left one when the weapon is held there.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -75,5 +79,27 @@ Clip mirrorClipLegs(const Clip& Source);
 
 /// Appended to the name of a clip played with the other leg.
 inline constexpr std::string_view MirroredSuffix = " (mirrored)";
+
+/// The same part on the other arm (UpperArmL -> UpperArmR, ForearmR ->
+/// ForearmL); any other part is returned as it is.
+BodyPart getMirroredArmPart(BodyPart Part);
+
+/// Does the clip pose an arm joint or strike with an arm?
+bool usesArms(const Clip& Source);
+
+/// \p Source with the two arms swapped: the angles and the mask of each arm
+/// joint move to the same joint of the other arm.
+Pose mirrorArms(const Pose& Source);
+
+/// \p Parts with the parts of the two arms swapped (a clip's strikers).
+std::bitset<BodyPartCount> mirrorArmParts(const std::bitset<BodyPartCount>& Parts);
+
+/// \p Source played with the other arm: every key and the strikers swapped
+/// (mirrorArms, mirrorArmParts); timing, stiffness and blends unchanged. The
+/// name gets the suffix OtherHandSuffix.
+Clip mirrorClipArms(const Clip& Source);
+
+/// Appended to the name of a clip played with the other arm.
+inline constexpr std::string_view OtherHandSuffix = " (other hand)";
 
 } // namespace fighter::anim

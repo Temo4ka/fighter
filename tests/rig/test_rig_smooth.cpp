@@ -87,7 +87,7 @@ RigSetup makeSetup(const Sheet& Fighter, float OriginX, bool FacingRight, uint8_
     Setup.MotorMaxTorque = Profile.MotorMaxTorque;
     Setup.MotorGain = Profile.MotorGain;
     Setup.MoveSpeedScale = Profile.MoveSpeedScale;
-    if (const stats::WeaponProps* Weapon = Gear.findWeapon()) Setup.WeaponReachM = Weapon->ReachM;
+    if (const stats::WeaponProps* Weapon = Gear.findWeapon()) Setup.Held = {{.WeaponReachM = Weapon->ReachM}};
     return Setup;
 }
 

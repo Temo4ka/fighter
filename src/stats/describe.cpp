@@ -6,6 +6,8 @@ namespace fighter::stats {
 namespace {
 
 std::string describeWeapon(const Loadout& Gear);
+/// " (main-hand shield x1.20)" when a shield in the main hand adds poise.
+std::string describeShieldPoise(const Loadout& Gear);
 
 } // namespace
 
@@ -21,8 +23,8 @@ std::vector<ProfileLine> describeProfile(const Stats& BaseStats, const Loadout& 
                              getMeanArmor(Profile, Balance))},
         {"motors", std::format("torque {:.0f} Nm, gain {:.1f}/s", Profile.MotorMaxTorque, Profile.MotorGain)},
         {"speed", std::format("walk x{:.2f}, strike x{:.2f}", Profile.MoveSpeedScale, Profile.AttackSpeedScale)},
-        {"vitals", std::format("HP {:.0f}, poise {:.2f}, stamina {:.0f} (+{:.1f}/s)", Profile.MaxHp, Profile.Poise,
-                               Profile.MaxStamina, Profile.StaminaRegen)},
+        {"vitals", std::format("HP {:.0f}, poise {:.2f}{}, stamina {:.0f} (+{:.1f}/s)", Profile.MaxHp, Profile.Poise,
+                               describeShieldPoise(Gear), Profile.MaxStamina, Profile.StaminaRegen)},
     };
 }
 
@@ -33,6 +35,12 @@ std::string describeWeapon(const Loadout& Gear) {
     if (Weapon == nullptr) return "unarmed";
     return std::format("{} (reach +{:.2f} m, speed x{:.2f}, power x{:.2f})", Gear.getMoveSet(EquipmentSlot::MainHand),
                        Weapon->ReachM, Weapon->SpeedScale, Weapon->PowerScale);
+}
+
+std::string describeShieldPoise(const Loadout& Gear) {
+    const ShieldProps* Shield = Gear.findShield(EquipmentSlot::MainHand);
+    if (Shield == nullptr || Shield->PoiseBonus == 0.0f) return {};
+    return std::format(" (main-hand shield x{:.2f})", 1.0f + Shield->PoiseBonus);
 }
 
 } // namespace

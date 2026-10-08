@@ -56,6 +56,7 @@ struct ShapeDef {
     Vec2 Begin;                ///< Capsule: local center of the first cap, m.
     Vec2 End;                  ///< Capsule: local center of the second cap, m.
     Vec2 HalfExtents;          ///< Box: half width (local X) and half height (local Y), m.
+    float Angle = 0.0f;        ///< Box: turn about its center in the body frame, rad.
     float Radius = 0.0f;       ///< Circle and capsule radius; rounding of a box, m.
     float Density = 1.0f;      ///< kg/m^2. Body::setMass() rescales it.
     float Friction = 0.6f;
@@ -117,6 +118,7 @@ public:
 private:
     friend class World;
     friend class RevoluteJoint;
+    friend class SpringJoint;
 
     explicit Body(uint64_t Packed) : Id(Packed) {}
 

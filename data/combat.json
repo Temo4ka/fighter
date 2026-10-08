@@ -32,6 +32,7 @@
   "crouchWalkSpeedScale": 0.5,
   "crouchStandUpSec": 0.12,
   "endSettleSec": 1.2,
+  "shieldHitMargin": 0.02,
   "contactStopDepth": 0.01,
   "contactHoldSec": 0.08,
   "contactRecoveryBlendSec": 0.15,

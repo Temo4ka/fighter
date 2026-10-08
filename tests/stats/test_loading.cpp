@@ -201,6 +201,13 @@ TEST_CASE("parseItemCatalog: applies item validation", "[stats][loading]") {
     const EquipmentItem& Shield = *ShieldCatalog.findItem("shield");
     CHECK(Shield.Shield->LengthM == 0.5f);
     CHECK(Shield.Shield->AngleDeg == 0.0f);
+    CHECK(Shield.Shield->PoiseBonus == 0.0f);
+    CHECK(Parse(R"({"id": "buckler", "slot": "MainHand", "mass_kg": 2,
+        "shield": {"length_m": 0.4, "width_m": 0.4, "poise_bonus": 0.25}})").findItem("buckler")->Shield->PoiseBonus ==
+          0.25f);
+    CHECK_THROWS_WITH(Parse(R"({"id": "buckler", "slot": "MainHand", "mass_kg": 2,
+        "shield": {"length_m": 0.4, "width_m": 0.4, "poise_bonus": -0.1}})"),
+                      ContainsSubstring("shield poise_bonus -0.1 is out of [0, 2]"));
     CHECK(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3})").findItem("great")->TwoHanded);
 
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1,

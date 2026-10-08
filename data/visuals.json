@@ -29,7 +29,10 @@
     },
     "items": {
         "iron_helmet": {},
-        "short_sword": {}
+        "short_sword": {},
+        "war_hammer": {},
+        "greatsword": {},
+        "wooden_shield": {}
     },
     "effects": {
         "hit_flash": {

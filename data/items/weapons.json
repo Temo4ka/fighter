@@ -30,7 +30,7 @@
             "slot": "MainHand",
             "two_handed": true,
             "mass_kg": 3.0,
-            "moveset": "sword",
+            "moveset": "greatsword",
             "weapon": {
                 "reach_m": 0.95,
                 "speed_scale": 0.85,
@@ -45,9 +45,10 @@
             "armor": 0.3,
             "moveset": "shield",
             "shield": {
-                "length_m": 0.5,
+                "length_m": 0.35,
                 "width_m": 0.45,
-                "angle_deg": 0
+                "angle_deg": 0,
+                "poise_bonus": 0.2
             }
         }
     ]

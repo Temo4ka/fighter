@@ -55,8 +55,8 @@ struct Stats {
     int Constitution = 10;  ///< CON: mass, HP, knockback resistance.
 };
 
-/// Where an item is worn. MainHand is the right hand, OffHand the left; a
-/// two-handed item takes both.
+/// Where an item is worn. MainHand is the lead (front, L) hand, OffHand the
+/// rear (R) one; a two-handed item takes both.
 enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, MainHand, OffHand };
 
 /// Is the slot a hand (MainHand, OffHand)?
@@ -75,13 +75,18 @@ struct WeaponProps {
     std::optional<float> AngleDeg;
 };
 
-/// The shield component of an item: a plate on the forearm that holds it.
-/// The body (task M.2) makes it a physical part; what it blocks is the
-/// business of the moveset's block.
+/// The shield component of an item: a plate on the forearm that holds it, a
+/// part of that forearm for physics and hits. What it does depends on the
+/// hand (decision 2026-10-08): in the off hand it is a guard (a hit on the
+/// plate counts as blocked) and gives no strikes; in the main hand it is a
+/// weapon (its moveset's strikes, no automatic block) and adds PoiseBonus.
+/// The kind of a shield (small, medium, large) is only the size of its plate.
 struct ShieldProps {
     float LengthM = 0.0f;   ///< Along the forearm, m.
     float WidthM = 0.0f;    ///< Across it (the plate's thickness is fixed), m.
     float AngleDeg = 0.0f;  ///< To the forearm, degrees.
+    /// Held in the main hand: poise x (1 + PoiseBonus) (computeProfile()).
+    float PoiseBonus = 0.0f;
 };
 
 /// An item is the common fields plus optional components (decision
@@ -109,10 +114,10 @@ struct EquipmentItem {
     }
 };
 
-/// The forearm a hand slot holds items with: MainHand the right, OffHand the
-/// left.
+/// The forearm a hand slot holds items with: MainHand the lead (L), OffHand
+/// the rear (R).
 constexpr BodyPart getHandPart(EquipmentSlot Hand) {
-    return Hand == EquipmentSlot::OffHand ? BodyPart::ForearmL : BodyPart::ForearmR;
+    return Hand == EquipmentSlot::OffHand ? BodyPart::ForearmR : BodyPart::ForearmL;
 }
 
 struct Loadout {
@@ -126,6 +131,9 @@ struct Loadout {
     /// The moveset of the item in \p Hand; empty if none. A two-handed item
     /// gives its set to the main hand only.
     std::string_view getMoveSet(EquipmentSlot Hand) const;
+    /// The shield held in \p Hand (the item's own slot, not the second hand
+    /// of a two-handed item), or nullptr.
+    const ShieldProps* findShield(EquipmentSlot Hand) const;
 };
 
 /// Balance coefficients, loaded from data/balance.json (loadBalanceTable()).
@@ -174,7 +182,8 @@ struct BalanceTable {
 ///    from DEX; each within its corridor. The weapon's own speed scale is applied by combat per move.
 ///  - Max HP, max stamina and stamina regeneration from CON.
 ///  - Poise from CON and the mean armor of the body: armored fighters react
-///    less (it multiplies the reaction thresholds).
+///    less (it multiplies the reaction thresholds); a shield in the main
+///    hand multiplies it by 1 + its PoiseBonus.
 PhysicalProfile computeProfile(const Stats& BaseStats, const Loadout& Gear, const BalanceTable& Balance);
 
 /// The sum of the masses of all body parts, kg.

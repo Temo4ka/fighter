@@ -1,6 +1,25 @@
 {
     "inherit": "unarmed",
+    "moves": {
+        "Special": "shield_bash"
+    },
     "block": {
-        "covers": { "Mid": ["Head", "Torso", "UpperArmL", "ForearmL", "UpperArmR", "ForearmR"] }
+        "damage_scale": 0.1,
+        "stamina_scale": 0.6,
+        "clips": {
+            "High": "block_high_shield",
+            "Mid": "block_mid_shield",
+            "Low": "block_low_shield"
+        },
+        "covers": {
+            "Mid": [
+                "Head",
+                "Torso",
+                "UpperArmL",
+                "ForearmL",
+                "UpperArmR",
+                "ForearmR"
+            ]
+        }
     }
 }
