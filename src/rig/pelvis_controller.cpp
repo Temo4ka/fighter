@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace fighter::rig {
 namespace {
@@ -18,8 +19,9 @@ void PelvisController::plan(float Dt) {
     const bool Braking = std::abs(TargetVelocity) < std::abs(WalkVelocity) || TargetVelocity * WalkVelocity < 0.0f;
     const float MaxChange = (Braking ? Config.WalkDeceleration : Config.WalkAcceleration) * Dt;
     WalkVelocity += std::clamp(TargetVelocity - WalkVelocity, -MaxChange, MaxChange);
-    PlannedX = PositionX + (WalkVelocity + Knockback) * Dt;
+    PlannedX = PositionX + (WalkVelocity + Knockback) * Dt + ClipTravel;
     PlannedTravel = PlannedX - PositionX;
+    PlannedClipTravel = std::exchange(ClipTravel, 0.0f);
     SpacingShift = 0.0f;
     WallShift = 0.0f;
 
@@ -68,6 +70,9 @@ bool PelvisController::capWalkTravel(float MaxTravel, float Dt) {
 }
 
 void PelvisController::commit(float Dt) {
+    // The clip's travel makes the share of the plan the pelvis makes.
+    ClipTravelMade = PlannedClipTravel * getTravelShare(PlannedX, PlannedTravel);
+    ClipVelocity = Dt > 0.0f ? ClipTravelMade / Dt : 0.0f;
     Velocity = Dt > 0.0f ? (PlannedX - PositionX) / Dt : 0.0f;
     PositionX = PlannedX;
 }
@@ -80,6 +85,10 @@ void PelvisController::reset(float NewX) {
     Knockback = 0.0f;
     PushOut = 0.0f;
     PlannedTravel = 0.0f;
+    ClipTravel = 0.0f;
+    PlannedClipTravel = 0.0f;
+    ClipTravelMade = 0.0f;
+    ClipVelocity = 0.0f;
     SpacingShift = 0.0f;
     WallShift = 0.0f;
     Spacing = {};

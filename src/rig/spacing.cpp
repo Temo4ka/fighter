@@ -244,9 +244,10 @@ SpacingReport separateStanding(Rig& First, Rig& Second, float MaxX, const Spacin
         // A hard push does not make the next push faster than an eased one.
         const PelvisController::SpacingMotion Split = splitCorrection(*Motion, Planned, Corrected, Dt);
         // A walk held back goes on at the speed it was let go (without the
-        // knockback): it picks up again gently.
+        // knockback and the clip's travel): it picks up again gently.
         if (Split.Slowed != 0.0f) {
-            Motion->slowWalk((Corrected - Motion->getPositionX()) / Dt - Motion->getKnockback());
+            Motion->slowWalk((Corrected - Motion->getPositionX() - Motion->getPlannedClipTravel()) / Dt -
+                             Motion->getKnockback());
         }
         Motion->setSpacingMotion({.Slowed = Split.Slowed,
                                   .Pushed = Split.Pushed,

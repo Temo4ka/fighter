@@ -166,7 +166,10 @@ void Rig::setStayDown(bool Stay) {
 
 void Rig::planMotion(float Dt) {
     // A ragdoll on the floor goes where physics takes it.
-    if (CurrentPosture == Posture::KnockedDown) return;
+    if (CurrentPosture == Posture::KnockedDown) {
+        Controller.setClipTravel(0.0f);
+        return;
+    }
     // The knockback the plan moves the pelvis with (it decays in plan()).
     PlannedKnockback = Controller.getKnockback();
     Controller.plan(Dt);
@@ -1165,7 +1168,10 @@ void Rig::carryPhysicalParts(Vec2 OldVelocity, float OldSpin) {
     // The knockback that really moved the pelvis (a wall or the opponent may
     // have stopped it) is carried only by its share: without it the upper
     // body lags behind the push and shows the hit.
-    const float Realized = getRealizedShare(PlannedKnockback, Controller.getVelocity() - Controller.getWalkVelocity());
+    // The clip's travel (a lunge) is carried in full, like the walk.
+    const float Realized =
+        getRealizedShare(PlannedKnockback, Controller.getVelocity() - Controller.getWalkVelocity() -
+                                               Controller.getClipVelocity());
     Change.X -= (1.0f - Control.KnockbackTransfer) * (Realized - CarriedKnockback);
     CarriedKnockback = Realized;
 

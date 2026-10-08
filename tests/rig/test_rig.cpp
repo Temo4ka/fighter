@@ -355,6 +355,40 @@ TEST_CASE("PelvisController: the planned travel and the share of it made", "[rig
     CHECK(Controller.getTravelShare(-0.05f, -0.1f) == Approx(0.5f));
 }
 
+TEST_CASE("PelvisController: the clip's travel is planned motion", "[rig][pelvis]") {
+    PelvisController Controller(0.0f, {.WalkAcceleration = 100.0f, .KnockbackDecay = 5.0f});
+    Controller.setClipTravel(0.02f);
+    Controller.plan(0.1f);
+    CHECK(Controller.getPlannedX() == Approx(0.02f));
+    CHECK(Controller.getPlannedTravel() == Approx(0.02f));
+    CHECK(Controller.getPlannedClipTravel() == Approx(0.02f));
+    Controller.commit(0.1f);
+    CHECK(Controller.getPositionX() == Approx(0.02f));
+    CHECK(Controller.getClipTravelMade() == Approx(0.02f));
+    CHECK(Controller.getClipVelocity() == Approx(0.2f));
+    CHECK(Controller.getVelocity() == Approx(0.2f));
+    // Used once: the next step plans none.
+    Controller.plan(0.1f);
+    CHECK(Controller.getPlannedClipTravel() == 0.0f);
+    Controller.commit(0.1f);
+    CHECK(Controller.getClipTravelMade() == 0.0f);
+
+    // A correction takes it back like a walk: half of it is made.
+    Controller.setClipTravel(0.04f);
+    Controller.plan(0.1f);
+    Controller.shift(-0.02f);
+    Controller.commit(0.1f);
+    CHECK(Controller.getClipTravelMade() == Approx(0.02f));
+    // A wall stops it.
+    Controller.setClipTravel(0.04f);
+    Controller.plan(0.1f);
+    Controller.limit(-1.0f, Controller.getPositionX());
+    Controller.commit(0.1f);
+    CHECK(Controller.getClipTravelMade() == Approx(0.0f).margin(1e-6f));
+    Controller.reset(0.0f);
+    CHECK(Controller.getClipVelocity() == 0.0f);
+}
+
 TEST_CASE("PelvisController: corrections are told by their source", "[rig]") {
     PelvisController Controller(0.0f, {.WalkAcceleration = 100.0f, .KnockbackDecay = 5.0f});
     Controller.setTargetVelocity(1.0f);
