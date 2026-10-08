@@ -10,8 +10,8 @@
 /// revolute joints between them, split in two by the rig file:
 ///  - kinematic parts (the pelvis and the legs) are moved by code. The
 ///    pelvis follows the PelvisController (walking, knockback, a clip's
-///    pelvis track) at the height
-///    where the feet touch the floor; the legs are posed from the clips by
+///    pelvis track) at the height where the feet touch the floor; the legs
+///    are posed from the clips by
 ///    forward kinematics. They are solid: they push the opponent's physical
 ///    parts, but nothing pushes them.
 ///  - physical parts (torso, head, arms) are dynamic bodies driven by
