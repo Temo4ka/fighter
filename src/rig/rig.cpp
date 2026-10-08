@@ -153,7 +153,14 @@ void Rig::setTravelPose(const PerBodyPart<float>& StillAngles, float Travel) {
 }
 
 void Rig::setWristAngle(std::optional<float> Angle) {
-    WristWish = Angle;
+    for (auto& Weapon : Weapons) Weapon.Wish = Angle;
+    refreshWristTargets();
+}
+
+void Rig::setWristAngle(BodyPart Part, std::optional<float> Angle) {
+    const auto Found = std::ranges::find(Weapons, Part, &WeaponState::Part);
+    if (Found == Weapons.end()) return;
+    Found->Wish = Angle;
     refreshWristTargets();
 }
 
@@ -418,6 +425,11 @@ void Rig::getPartTransforms(std::vector<PartTransform>& Out) const {
 
 std::optional<float> Rig::getDefaultWristAngle() const {
     return Weapons.empty() ? std::nullopt : std::optional(Weapons.front().DefaultAngle);
+}
+
+std::optional<float> Rig::getDefaultWristAngle(BodyPart Part) const {
+    const auto Found = std::ranges::find(Weapons, Part, &WeaponState::Part);
+    return Found == Weapons.end() ? std::nullopt : std::optional(Found->DefaultAngle);
 }
 
 std::optional<float> Rig::getWristAngle(BodyPart Part) const {
@@ -1568,7 +1580,7 @@ void Rig::refreshTargets() {
 
 void Rig::refreshWristTargets() {
     for (auto& Weapon : Weapons) {
-        const float Angle = WristWish.value_or(Weapon.DefaultAngle) * Facing;
+        const float Angle = Weapon.Wish.value_or(Weapon.DefaultAngle) * Facing;
         Weapon.Target = std::clamp(Angle, Weapon.LowerAngle, Weapon.UpperAngle);
     }
 }
@@ -1885,7 +1897,7 @@ void Rig::fillPanel() const {
         if (!Wrists.empty()) Wrists += "; ";
         Wrists += std::format("{} {:+.0f} deg, target {:+.0f} ({}), hold {:.1f} N*m", getBodyPartName(Weapon.Part),
                               Weapon.Wrist.getAngle() * Facing / RadiansPerDegree, Weapon.Target * Facing / RadiansPerDegree,
-                              WristWish ? "pose" : "item default", Weapon.HoldTorque);
+                              Weapon.Wish ? "pose" : "item default", Weapon.HoldTorque);
     }
     debug::setPanel(Name + " wrist", Wrists.empty() ? "-" : Wrists);
 

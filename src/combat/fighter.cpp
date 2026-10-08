@@ -57,8 +57,6 @@ bool hasUpperJoints(const anim::Clip& Source);
 std::string_view getBlockZoneName(BlockZone Zone);
 /// The names with \p Separator between them.
 std::string joinNames(const std::vector<std::string>& Names, std::string_view Separator);
-/// The wrist \p Shown sets for the rig (rig::Rig::setWristAngle).
-std::optional<float> getWristWish(const anim::Pose& Shown);
 
 } // namespace
 
@@ -68,6 +66,8 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     : Body(PhysWorld, Description, Setup), Rules(&NewRules), Profile(NewProfile),
       Hp(std::clamp(StartHp.value_or(NewProfile.MaxHp), 0.0f, NewProfile.MaxHp)), Stamina(NewProfile.MaxStamina),
       DesiredFacingRight(Setup.FacingRight) {
+    MainForearm = Description.Weapon.Part;
+    OffForearm = Description.Weapon.OffPart;
     for (const stats::EquipmentSlot Hand : {stats::EquipmentSlot::MainHand, stats::EquipmentSlot::OffHand}) {
         const stats::EquipmentItem* Item = Gear.findInSlot(Hand);
         if (!Item || Item->Slot != Hand || !Item->Weapon) continue;
@@ -85,7 +85,7 @@ Fighter::Fighter(physics::World& PhysWorld, const rig::RigDef& Description, cons
     StanceName = NewRules.Moves.getStance(*Set, clips::Stance);
     Shown = getStancePose();
     Body.setTargetAngles(Shown.Angles);
-    Body.setWristAngle(getWristWish(Shown));
+    setWrists(Shown);
     Body.snapToTargets();
     const float MinSpread = NewRules.Tuning.RestMinFootSpread;
     Walk = makeLegCycle(NewRules.Clips.get(clips::Walk), Shown, Body, MinSpread);
@@ -187,7 +187,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     }
 
     Body.setTargetAngles(Shown.Angles);
-    Body.setWristAngle(getWristWish(Shown));
+    setWrists(Shown);
     if (Stride.FollowsTravel) Body.setTravelPose(ShownStill.Angles, Stride.Travel);
     // The strikers of an attack stop at the opponent by themselves; the
     // spacing keeps the rest of the body off it.
@@ -1119,10 +1119,24 @@ anim::Pose Fighter::getStancePose() const {
     // default (the item's angle, else the rig's), so that a clip that sets
     // it blends in from there.
     anim::Pose Stance = anim::sampleClip(Rules->Clips.get(StanceName), 0.0f);
-    if (const std::optional<float> Default = Body.getDefaultWristAngle(); Default && !Stance.HasWeapon) {
+    if (const std::optional<float> Default = Body.getDefaultWristAngle(MainForearm); Default && !Stance.HasWeapon) {
         Stance.setWeaponAngle(*Default);
     }
+    if (const std::optional<float> Default = Body.getDefaultWristAngle(OffForearm); Default && !Stance.HasWeaponOff) {
+        Stance.setWeaponOffAngle(*Default);
+    }
     return Stance;
+}
+
+anim::Pose Fighter::sampleTop(const anim::Clip& Top, float TimeSec) const {
+    const anim::Pose Sampled = anim::sampleClip(Top, TimeSec);
+    // A clip that strikes with the off hand only has its Weapon there.
+    return anim::getWeaponArm(Top, MainForearm) == MainForearm ? Sampled : anim::swapWrists(Sampled);
+}
+
+void Fighter::setWrists(const anim::Pose& Source) {
+    Body.setWristAngle(MainForearm, Source.HasWeapon ? std::optional(Source.WeaponAngle) : std::nullopt);
+    Body.setWristAngle(OffForearm, Source.HasWeaponOff ? std::optional(Source.WeaponOffAngle) : std::nullopt);
 }
 
 Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt) {
@@ -1148,7 +1162,7 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     const auto compose = [&](const anim::Pose& RestLegs, float CrouchWalkTime) {
         anim::Pose Upper = Base;
         anim::Pose Legs = RestLegs;
-        if (Top) anim::layerPose(Upper, anim::sampleClip(*Top, getTopClipTime()));
+        if (Top) anim::layerPose(Upper, sampleTop(*Top, getTopClipTime()));
         if (LegAction) {
             Legs = Upper;
             if (WithCrouchWalk) anim::layerPose(Legs, anim::sampleClip(CrouchWalkClip, CrouchWalkTime));
@@ -1428,17 +1442,20 @@ std::string Fighter::describeStride() const {
 
 std::string Fighter::describeUpper() const {
     const anim::Clip* Top = getTopClip();
-    // Where the wrist comes from: the clip on top, the stance, or the
-    // weapon's own default (getStancePose()).
+    // Where each wrist comes from: the clip on top, the stance, or the
+    // weapon's own default (getStancePose()); with one weapon, only "wrist".
     std::string Wrist;
-    if (Body.getDefaultWristAngle()) {
-        const auto setsWrist = [](const anim::Clip& Source) {
-            return !Source.Keys.empty() && Source.Keys.front().Target.HasWeapon;
-        };
-        const anim::Clip& Stance = Rules->Clips.get(StanceName);
-        Wrist = std::format(", wrist from {}", Top && setsWrist(*Top) ? Top->Name
-                                               : setsWrist(Stance)    ? StanceName
-                                                                      : std::string("the weapon's default"));
+    const anim::Clip& Stance = Rules->Clips.get(StanceName);
+    const anim::Pose StanceKeys = anim::sampleClip(Stance, 0.0f);
+    const anim::Pose TopKeys = Top ? sampleTop(*Top, 0.0f) : anim::Pose{};
+    for (const BodyPart Hand : {MainForearm, OffForearm}) {
+        if (!Body.getDefaultWristAngle(Hand)) continue;
+        const bool Main = Hand == MainForearm;
+        const auto setsWrist = [&](const anim::Pose& Keys) { return Main ? Keys.HasWeapon : Keys.HasWeaponOff; };
+        const std::string Name = Weapons.size() > 1 ? std::format("wrist {}", getBodyPartName(Hand)) : "wrist";
+        Wrist += std::format(", {} from {}", Name, Top && setsWrist(TopKeys) ? Top->Name
+                                                   : setsWrist(StanceKeys) ? StanceName
+                                                                           : std::string("the weapon's default"));
     }
     if (!Top || !hasUpperJoints(*Top)) return StanceName + Wrist;
     const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
@@ -1667,10 +1684,6 @@ std::string joinNames(const std::vector<std::string>& Names, std::string_view Se
         Text += Name;
     }
     return Text;
-}
-
-std::optional<float> getWristWish(const anim::Pose& Shown) {
-    return Shown.HasWeapon ? std::optional(Shown.WeaponAngle) : std::nullopt;
 }
 
 } // namespace

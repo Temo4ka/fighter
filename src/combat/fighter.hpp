@@ -298,9 +298,16 @@ private:
         anim::Pose Still;
     };
     TargetPoses buildTargetPose(const anim::Clip* Top, bool TopChanged, float Dt);
-    /// The idle stance (StanceName) at its start, its wrist filled in from
-    /// the held weapon's default when the stance leaves it out.
+    /// The idle stance (StanceName) at its start, its wrists (Weapon: the
+    /// main hand's, WeaponOff: the other's) filled in from the held weapons'
+    /// defaults when the stance leaves them out.
     anim::Pose getStancePose() const;
+    /// The pose of \p Top (as played) at \p TimeSec with its wrists in the
+    /// terms of the main hand (anim::getWeaponArm(), anim::swapWrists()).
+    anim::Pose sampleTop(const anim::Clip& Top, float TimeSec) const;
+    /// Hands the wrists of \p Source (main-hand terms) to the weapons:
+    /// Weapon to the main hand's, WeaponOff to the other's.
+    void setWrists(const anim::Pose& Source);
     /// The leg pose the legs rest in when no clip poses them, and the same
     /// without the step's travel: the walk cycle once it has played (it
     /// rests at the phase where it stopped), else the stance with RestFront
@@ -441,6 +448,9 @@ private:
         std::string ItemName;
     };
     std::vector<HandWeapon> Weapons;       ///< Main hand first.
+    /// The forearms of the main and the other hand (RigDef::Weapon).
+    BodyPart MainForearm = BodyPart::ForearmL;
+    BodyPart OffForearm = BodyPart::ForearmR;
     /// The weapon of the current weapon move (index into Weapons), if any.
     std::optional<size_t> StrikeWeapon;
     /// The current attack plays with the arms swapped: its weapon is in the

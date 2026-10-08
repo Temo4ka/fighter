@@ -70,8 +70,8 @@ private:
     void checkMoveSetFiles(const MoveLibrary& Library, const std::set<std::string>& Stubs);
     void checkStateClips();
     void checkItemsAndFighters(const std::set<std::string>& KnownSets);
-    /// The wrist angles of the loaded clips (the key "Weapon") within the
-    /// wrist limits of every rig.
+    /// The wrist angles of the loaded clips (the keys "Weapon" and
+    /// "WeaponOff") within the wrist limits of every rig.
     void checkClipWrists();
     /// Is \p Degrees outside the wrist limits of a rig? Reports it to \p File
     /// with \p What in front and returns true.
@@ -195,12 +195,18 @@ bool Checker::checkWristAngle(const std::string& File, const std::string& What, 
 void Checker::checkClipWrists() {
     for (const auto& [Name, Clip] : Clips) {
         if (!Clip) continue;
+        // One report per clip and key is enough.
+        bool Reported = false;
+        bool ReportedOff = false;
         for (const anim::Keyframe& Key : Clip->Keys) {
-            if (!Key.Target.HasWeapon) continue;
-            const std::string What = std::format("key at t = {:g} s: '{}'", Key.TimeSec, anim::WeaponKey);
-            // One report per clip is enough.
-            if (checkWristAngle(std::format("poses/{}.json", Name), What, Key.Target.WeaponAngle * DegreesPerRadian)) {
-                break;
+            const std::string File = std::format("poses/{}.json", Name);
+            if (Key.Target.HasWeapon && !Reported) {
+                const std::string What = std::format("key at t = {:g} s: '{}'", Key.TimeSec, anim::WeaponKey);
+                Reported = checkWristAngle(File, What, Key.Target.WeaponAngle * DegreesPerRadian);
+            }
+            if (Key.Target.HasWeaponOff && !ReportedOff) {
+                const std::string What = std::format("key at t = {:g} s: '{}'", Key.TimeSec, anim::WeaponOffKey);
+                ReportedOff = checkWristAngle(File, What, Key.Target.WeaponOffAngle * DegreesPerRadian);
             }
         }
     }

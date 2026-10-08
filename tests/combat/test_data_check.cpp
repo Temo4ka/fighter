@@ -197,3 +197,16 @@ TEST_CASE("checkData: wrist angles of clips and items are within the rig's wrist
     CHECK(hasProblem(Problems, "items/extra.json", "item 'bent_blade': field 'weapon.angle_deg': 170 deg"));
     CHECK(Problems.size() == 2);
 }
+
+TEST_CASE("checkData: the WeaponOff wrist of a clip is within the rig's wrist limits", "[combat][data_check]") {
+    const test::ScratchData Data("check_wrist_off");
+    Data.write("poses/odd_wrist_off.json", R"({ "duration": 0.5, "keys": [
+        { "t": 0, "pose": { "UpperArmL": 40, "Weapon": 30, "WeaponOff": -160 } },
+        { "t": 0.2, "pose": { "UpperArmL": 40, "Weapon": 30, "WeaponOff": -170 } } ] })");
+    Data.write("movesets/odd_wrist_off.json", R"({"stance": "odd_wrist_off"})");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(hasProblem(Problems, "poses/odd_wrist_off.json",
+                     "key at t = 0 s: 'WeaponOff' -160 deg is outside the wrist limits"));
+    CHECK(Problems.size() == 1);
+}

@@ -226,12 +226,14 @@ public:
     /// poses it the same way). Call after setTargetAngles(), which drops the
     /// link.
     void setTravelPose(const PerBodyPart<float>& StillAngles, float Travel);
-    /// The wrist of the held weapons (the clip key "Weapon", anim::Pose::
-    /// WeaponAngle): the weapon's angle to its forearm for a fighter facing
-    /// right, rad, clamped to the mount's wrist limits; nullopt: each
-    /// weapon's own default (the item's angle, else the mount's). Kept
-    /// until set again; setTargetAngles() does not change it.
+    /// The wrist of every held weapon (the clip keys "Weapon" and
+    /// "WeaponOff", anim::Pose): the weapon's angle to its forearm for a
+    /// fighter facing right, rad, clamped to the mount's wrist limits;
+    /// nullopt: each weapon's own default (the item's angle, else the
+    /// mount's). Kept until set again; setTargetAngles() does not change it.
     void setWristAngle(std::optional<float> Angle);
+    /// The same for the weapon \p Part holds only; nothing if it holds none.
+    void setWristAngle(BodyPart Part, std::optional<float> Angle);
     /// Requested walking speed in the world, m/s; 0 stops.
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
@@ -435,6 +437,9 @@ public:
     /// The default wrist angle of the first held weapon (setWristAngle()),
     /// unmirrored, rad; nullopt if unarmed.
     std::optional<float> getDefaultWristAngle() const;
+    /// The default wrist angle of the weapon \p Part holds, unmirrored, rad;
+    /// nullopt if it holds none.
+    std::optional<float> getDefaultWristAngle(BodyPart Part) const;
     /// The wrist of the weapon \p Part holds, unmirrored (as in a pose), rad:
     /// where it is now and where its motor drives it; nullopt if it holds
     /// none.
@@ -585,6 +590,7 @@ private:
         float Inertia = 0.0f;     ///< About the center of mass, kg*m^2.
         float Strength = 1.0f;    ///< WeaponMount::WristStrength.
         float DefaultAngle = 0.0f; ///< The item's (or the mount's) wrist angle, unmirrored, rad.
+        std::optional<float> Wish; ///< setWristAngle(), unmirrored; nullopt: DefaultAngle.
         float LowerAngle = 0.0f;  ///< Wrist limits, mirrored, rad.
         float UpperAngle = 0.0f;
         float Target = 0.0f;      ///< What the motor drives to, mirrored and clamped, rad.
@@ -762,7 +768,6 @@ private:
     float HitFactor = 1.0f;           ///< 1 without hits, drops to MinStiffness.
     int WallSide = 0;
     std::vector<WeaponState> Weapons;
-    std::optional<float> WristWish;   ///< setWristAngle(), unmirrored.
     std::vector<ShieldShape> Shields;
     std::optional<GripState> Grip;
     /// The joints (by child part) of the gripping arm: softer while it grips.
