@@ -32,8 +32,6 @@ namespace {
 constexpr float JointDrawSize = 0.05f;
 /// The rest length of a spring joint, m: Box2D needs a positive one.
 constexpr float MinSpringLength = 0.005f;
-/// Contact points looked at per shape when summing the impulse of a hit.
-constexpr int MaxContactsPerShape = 16;
 /// A body part has one or two shapes; more is never needed.
 constexpr int MaxShapesPerBody = 8;
 /// Contacts looked at per body when asking whether it touches a fighter.
@@ -70,7 +68,6 @@ struct ShapeGap {
 b2Polygon makeBox(const ShapeDef& Shape);
 int encodeFighterFriction(float Friction);
 float mixFriction(float FrictionA, int MaterialA, float FrictionB, int MaterialB);
-float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other);
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage);
 b2ShapeProxy makeLocalProxy(b2ShapeId Shape);
 ShapeGap measureGap(b2ShapeId ShapeA, b2Transform TransformA, b2ShapeId ShapeB, b2Transform TransformB);
@@ -106,7 +103,7 @@ World::World(World&& Other) noexcept
       FighterFriction(Other.FighterFriction),
       PartBodies(std::move(Other.PartBodies)),
       Hits(std::move(Other.Hits)),
-      SolvedHits(std::move(Other.SolvedHits)),
+      ReportedPairs(std::move(Other.ReportedPairs)),
       HitSpeedThreshold(Other.HitSpeedThreshold),
       TouchingPosed(std::move(Other.TouchingPosed)) {}
 
@@ -119,7 +116,7 @@ World& World::operator=(World&& Other) noexcept {
         FighterFriction = Other.FighterFriction;
         PartBodies = std::move(Other.PartBodies);
         Hits = std::move(Other.Hits);
-        SolvedHits = std::move(Other.SolvedHits);
+        ReportedPairs = std::move(Other.ReportedPairs);
         HitSpeedThreshold = Other.HitSpeedThreshold;
         TouchingPosed = std::move(Other.TouchingPosed);
     }
@@ -133,7 +130,7 @@ void World::destroy() {
     }
     PartBodies.clear();
     Hits.clear();
-    SolvedHits.clear();
+    ReportedPairs.clear();
     TouchingPosed.clear();
 }
 
@@ -237,7 +234,7 @@ void World::setStrikeMass(Body Target, float Kg) {
 void World::step(float Dt) {
     recordPartVelocities();
     Hits.clear();
-    SolvedHits.clear();
+    ReportedPairs.clear();
     // Hit events are read after every Box2D step: the next one drops them.
     for (int Pass = 0; Pass < StepPasses; ++Pass) {
         b2World_Step(loadWorld(Id), Dt / static_cast<float>(StepPasses), SubSteps);
@@ -574,6 +571,10 @@ void World::recordPartVelocities() {
 }
 
 void World::collectHits() {
+    // Box2D reports a contact once, when it begins and closes faster than
+    // its hit event threshold (HitSpeedThreshold); a contact that began in
+    // an earlier Box2D step of this simulation step and touches again is
+    // the same hit.
     const b2ContactEvents Events = b2World_GetContactEvents(loadWorld(Id));
     for (const auto& Event : std::span(Events.hitEvents, static_cast<size_t>(Events.hitCount))) {
         const auto SlotA = detail::decodePartSlot(b2Body_GetUserData(b2Shape_GetBody(Event.shapeIdA)));
@@ -584,33 +585,22 @@ void World::collectHits() {
         const PartBody& PartB = PartBodies[*SlotB];
         if (PartA.Part.Fighter == PartB.Part.Fighter) continue;
 
-        // A kinematic part is infinitely heavy for the solver: its contact
-        // impulse grows with whatever it pushes. Report the impulse of the
-        // same collision between free bodies instead (no restitution).
-        const bool HasKinematic = PartA.Handle.getType() == BodyType::Kinematic ||
-                                  PartB.Handle.getType() == BodyType::Kinematic;
-        if (HasKinematic) {
-            const float MassA = getStrikeMass(PartA);
-            const float MassB = getStrikeMass(PartB);
-            const float MassSum = MassA + MassB;
-            const float Impulse = MassSum > 0.0f ? Event.approachSpeed * MassA * MassB / MassSum : 0.0f;
-            addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed, Impulse);
-            continue;
-        }
-        // Two free bodies: the contact impulse of the whole simulation step,
-        // summed below over this Box2D step and the later ones. A contact
-        // that touches again within the step is the same hit.
         const uint64_t ShapeA = b2StoreShapeId(Event.shapeIdA);
         const uint64_t ShapeB = b2StoreShapeId(Event.shapeIdB);
-        const bool Known = std::ranges::any_of(SolvedHits, [&](const SolvedHit& Hit) {
-            return (Hit.ShapeA == ShapeA && Hit.ShapeB == ShapeB) || (Hit.ShapeA == ShapeB && Hit.ShapeB == ShapeA);
+        const bool Known = std::ranges::any_of(ReportedPairs, [&](const ShapePair& Pair) {
+            return (Pair.first == ShapeA && Pair.second == ShapeB) || (Pair.first == ShapeB && Pair.second == ShapeA);
         });
         if (Known) continue;
-        SolvedHits.push_back({.ShapeA = ShapeA, .ShapeB = ShapeB, .HitIndex = Hits.size()});
-        addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed, 0.0f);
-    }
-    for (const auto& Hit : SolvedHits) {
-        Hits[Hit.HitIndex].Impulse += sumContactImpulse(b2LoadShapeId(Hit.ShapeA), b2LoadShapeId(Hit.ShapeB));
+
+        // Box2D's closing speed is the relative velocity at the contact point
+        // along the normal before the Box2D step in which the contact began
+        // (one of StepPasses in a simulation step): for a posed part that is
+        // its velocity before the simulation step, as for posed hits; a
+        // physical limb is caught at most one Box2D step before the impact,
+        // not a whole simulation step earlier, while its motors still
+        // accelerate it.
+        ReportedPairs.emplace_back(ShapeA, ShapeB);
+        addHit(PartA, PartB, fromBox2D(Event.point), fromBox2D(Event.normal), Event.approachSpeed);
     }
 }
 
@@ -657,17 +647,12 @@ void World::collectPosedHits() {
             }
             const Vec2 Normal = Closest && Closest->Distance > 0.0f ? Closest->Normal : Deepest->Normal;
 
-            // Like a Box2D hit event: a new contact closing fast enough. Both
-            // parts are posed, so the impulse is the one of free bodies.
+            // Like a Box2D hit event: a new contact closing fast enough.
             const Vec2 Relative =
                 getVelocityBeforeStep(PartA, Deepest->Point) - getVelocityBeforeStep(PartB, Deepest->Point);
             const float Approach = dot(Relative, Normal);
             if (Approach < HitSpeedThreshold) continue;
-            const float MassA = getStrikeMass(PartA);
-            const float MassB = getStrikeMass(PartB);
-            const float MassSum = MassA + MassB;
-            addHit(PartA, PartB, Deepest->Point, Normal, Approach,
-                   MassSum > 0.0f ? Approach * MassA * MassB / MassSum : 0.0f);
+            addHit(PartA, PartB, Deepest->Point, Normal, Approach);
         }
     }
     TouchingPosed = std::move(Touching);   // built in sorted order
@@ -702,32 +687,36 @@ void World::collectTunnelHits() {
                                                          isPair(Hit.Victim, Hit.Attacker);
                                               });
             if (Reported) continue;
-            // As a posed hit: the normal from before the step, the impulse
-            // of the same collision between free bodies.
+            // As a posed hit: the normal from before the step.
             const Vec2 Relative =
                 getVelocityBeforeStep(Posed, Before.Point) - getVelocityBeforeStep(Other, Before.Point);
             const float Approach = dot(Relative, Before.Normal);
             if (Approach < HitSpeedThreshold) continue;
-            const float MassA = getStrikeMass(Posed);
-            const float MassB = getStrikeMass(Other);
-            addHit(Posed, Other, Now.Point, Before.Normal, Approach, Approach * MassA * MassB / (MassA + MassB));
+            addHit(Posed, Other, Now.Point, Before.Normal, Approach);
         }
     }
 }
 
-void World::addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed,
-                   float Impulse) {
+void World::addHit(const PartBody& PartA, const PartBody& PartB, Vec2 Point, Vec2 Normal, float ApproachSpeed) {
     // The attacker is the part that was moving towards the other one
     // faster before the step. The normal points from A to B.
     const float SpeedA = dot(getVelocityBeforeStep(PartA, Point), Normal);
     const float SpeedB = dot(getVelocityBeforeStep(PartB, Point), -Normal);
     const bool AttackerIsA = SpeedA >= SpeedB;
+    // Every hit is measured alike, whatever the parts are and however the
+    // solver resolves the contact: the impulse of a perfectly inelastic
+    // collision of two free bodies, each as heavy as its strike mass.
+    const float MassA = getStrikeMass(PartA);
+    const float MassB = getStrikeMass(PartB);
+    const float MassSum = MassA + MassB;
+    const float Reduced = MassSum > 0.0f ? MassA * MassB / MassSum : 0.0f;
     Hits.push_back({
         .Attacker = AttackerIsA ? PartA.Part : PartB.Part,
         .Victim = AttackerIsA ? PartB.Part : PartA.Part,
         .Point = Point,
         .ApproachSpeed = ApproachSpeed,
-        .Impulse = Impulse,
+        .StrikeMass = Reduced,
+        .Impulse = ApproachSpeed * Reduced,
     });
 }
 
@@ -781,8 +770,8 @@ World::Placement World::getPlacementDuringStep(const PartBody& Entry, float Frac
 }
 
 float World::getStrikeMass(const PartBody& Entry) const {
-    if (Entry.Handle.getType() == BodyType::Dynamic) return Entry.Handle.getMass();
-    return Entry.StrikeMass > 0.0f ? Entry.StrikeMass : Entry.DynamicMass;
+    if (Entry.StrikeMass > 0.0f) return Entry.StrikeMass;
+    return Entry.Handle.getType() == BodyType::Dynamic ? Entry.Handle.getMass() : Entry.DynamicMass;
 }
 
 namespace {
@@ -806,25 +795,6 @@ int encodeFighterFriction(float Friction) {
 float mixFriction(float FrictionA, int MaterialA, float FrictionB, int MaterialB) {
     if (MaterialA > 0 && MaterialB > 0) return static_cast<float>(MaterialA - 1) / FrictionIdScale;
     return std::sqrt(FrictionA * FrictionB);
-}
-
-/// Total normal impulse of the contact between two shapes during the last
-/// step, N*s; 0 if they no longer touch.
-float sumContactImpulse(b2ShapeId Shape, b2ShapeId Other) {
-    std::array<b2ContactData, MaxContactsPerShape> Contacts{};
-    const int Count = b2Shape_GetContactData(Shape, Contacts.data(), MaxContactsPerShape);
-    const uint64_t OtherId = b2StoreShapeId(Other);
-
-    float Impulse = 0.0f;
-    for (const auto& Contact : std::span(Contacts).first(static_cast<size_t>(Count))) {
-        const bool IsPair = b2StoreShapeId(Contact.shapeIdA) == OtherId || b2StoreShapeId(Contact.shapeIdB) == OtherId;
-        if (!IsPair) continue;
-        for (const auto& Point : std::span(Contact.manifold.points).first(
-                 static_cast<size_t>(Contact.manifold.pointCount))) {
-            Impulse += Point.totalNormalImpulse;
-        }
-    }
-    return Impulse;
 }
 
 std::span<b2ShapeId> getShapes(b2BodyId BodyId, std::array<b2ShapeId, MaxShapesPerBody>& Storage) {

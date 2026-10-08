@@ -218,11 +218,11 @@ void Battle::update(const PlayerCommands& LeftCmd, const PlayerCommands& RightCm
         const Vec2 Direction = (Victim.getRig().getPartPosition(Hit.Victim.Part) -
                                 Attacker.getRig().getPartPosition(Hit.Attacker.Part)).getNormalized();
         Sim->RecentHits.push_back({.Hit = Hit, .Direction = Direction});
-        debug::logEvent(std::format("{} {} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}{} (J={:.1f} N*s)",
+        debug::logEvent(std::format("{} {} -> {}: {:.2f} m/s -> {}, {:.1f} dmg{}{} (J={:.1f} N*s = {:.2f} m/s x {:.2f} kg)",
                                     PlayerNames[Hit.Attacker.Fighter], Move.Id, getBodyPartName(Hit.Victim.Part),
                                     Outcome.Strength, getReactionLevelName(Outcome.Reaction), Outcome.Damage,
                                     Outcome.Blocked ? ", blocked" : "", Landed->Jammed ? ", jammed" : "",
-                                    Hit.Impulse));
+                                    Hit.Impulse, Hit.ApproachSpeed, Hit.StrikeMass));
     }
 
     for (auto&& [Index, Player] : std::views::zip(std::views::iota(uint8_t{0}), Sim->Fighters)) {

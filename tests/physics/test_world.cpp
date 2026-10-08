@@ -221,6 +221,63 @@ TEST_CASE("physics::World: a kinematic part strikes with its strike mass", "[phy
     CHECK(Hits[0].Impulse == Approx(Hits[0].ApproachSpeed * 20.0f * 5.0f / 25.0f).epsilon(0.01));
 }
 
+TEST_CASE("physics::World: a punch and a kick with equal speed and strike masses hit equally", "[physics]") {
+    // A punch: a dynamic part flying into the target. A kick: a posed part
+    // moved into it by code. Both close at 4 m/s and strike with 3 kg into
+    // a part that is struck with 30 kg; several Box2D steps a simulation
+    // step, as in the game.
+    constexpr float Speed = 4.0f;
+    constexpr float StrikerMass = 3.0f;
+    constexpr float TargetMass = 30.0f;
+    constexpr float Dt = 1.0f / 60.0f;
+    const auto strike = [&](bool Posed) {
+        World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f, .StepPasses = 8});
+        Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, Posed ? Vec2{} : Vec2{Speed, 0.0f});
+        if (Posed) PhysWorld.setBodyType(Striker, BodyType::Kinematic);
+        PhysWorld.setStrikeMass(Striker, StrikerMass);
+        const Body Target = addBall(PhysWorld, 1, {0.5f, 1.0f}, {});
+        PhysWorld.setStrikeMass(Target, TargetMass);
+        std::vector<HitEvent> Hits;
+        for (int Step = 1; Step <= 30; ++Step) {
+            if (Posed) Striker.moveTo({Speed * Dt * static_cast<float>(Step), 1.0f}, 0.0f, Dt);
+            PhysWorld.step(Dt);
+            std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+        }
+        return Hits;
+    };
+    const std::vector<HitEvent> Punch = strike(false);
+    const std::vector<HitEvent> Kick = strike(true);
+    REQUIRE(Punch.size() == 1);
+    REQUIRE(Kick.size() == 1);
+    const float Reduced = StrikerMass * TargetMass / (StrikerMass + TargetMass);
+    CHECK(Punch[0].ApproachSpeed == Approx(Speed).epsilon(0.01));
+    CHECK(Kick[0].ApproachSpeed == Approx(Speed).epsilon(0.01));
+    CHECK(Punch[0].StrikeMass == Approx(Reduced));
+    CHECK(Kick[0].StrikeMass == Approx(Reduced));
+    CHECK(Punch[0].Impulse == Approx(Speed * Reduced).epsilon(0.01));
+    CHECK(Punch[0].Impulse == Approx(Kick[0].Impulse).epsilon(0.01));
+}
+
+TEST_CASE("physics::World: a contact pressed through a step is one hit of the closing speed", "[physics]") {
+    // A dynamic striker much heavier than the target keeps flying into it
+    // through all the Box2D steps of a simulation step (the target bounces
+    // and is caught again): one hit in the step, and its impulse is that of
+    // the collision, not what the solver pushes in the rest of the step.
+    World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f, .StepPasses = 8});
+    Body Striker = addBall(PhysWorld, 0, {0.0f, 1.0f}, {6.0f, 0.0f});
+    Striker.setMass(500.0f);
+    PhysWorld.setStrikeMass(Striker, 4.0f);
+    addBall(PhysWorld, 1, {0.5f, 1.0f}, {});
+    std::vector<HitEvent> Hits;
+    for (int Step = 0; Step < 30 && Hits.empty(); ++Step) {
+        PhysWorld.step(1.0f / 60.0f);
+        std::ranges::copy(PhysWorld.getHitEvents(), std::back_inserter(Hits));
+    }
+    REQUIRE(Hits.size() == 1);
+    CHECK(Hits[0].ApproachSpeed == Approx(6.0f).epsilon(0.01));
+    CHECK(Hits[0].Impulse == Approx(6.0f * 4.0f * 5.0f / 9.0f).epsilon(0.01));
+}
+
 TEST_CASE("physics::World: kinematic parts of different fighters hit each other", "[physics]") {
     // Box2D does not collide two kinematic bodies; the world checks them.
     World PhysWorld({.Gravity = {0.0f, 0.0f}, .HitSpeedThreshold = 1.0f});
