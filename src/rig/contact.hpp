@@ -45,6 +45,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -98,6 +99,11 @@ public:
     /// nullopt if none overlap.
     std::optional<physics::PartOverlap> findWorstOverlap(const physics::World& PhysWorld) const;
 
+    /// How deep the posed limbs of fighter \p Index (0: the first one given
+    /// to the stages) may press into the other one in this step, m: the
+    /// stop depth, none into a fighter lying on the floor (as of
+    /// beforeStep()).
+    float getStopDepth(size_t Index) const { return StopDepths[Index]; }
     /// The passes afterStep() made in the last step (2 for a step in which
     /// the second fighter moved nothing back; 0 before any).
     int getPosedPasses() const { return PosedPasses; }
