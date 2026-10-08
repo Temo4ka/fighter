@@ -188,10 +188,10 @@ SpacingReport separateStanding(Rig& First, Rig& Second, float MaxX, const Spacin
     const bool Striking = Left.isStriking() || Right.isStriking();
     const float SoftOverlap = std::max(Params.MaxSoftOverlap, LeftOver);
     // While a strike swings, the striking limb is not eased off at all: its
-    // stop at the contact (Rig::stopAtContact) needs the opponent where it
+    // stop at the contact (Rig::stopPosedLimbs) needs the opponent where it
     // is meant to be. Other overlaps during a strike (a leg set down by a
     // switch-step, a guard, a lean) are eased as ever: a posed leg that
-    // swung into the opponent is held back there (Rig::holdLimbsBack), the
+    // swung into the opponent is held back there (Rig::stopPosedLimbs), the
     // torsos and heads are kept apart by the solver.
     const auto getStrikerOverlap = [&](float Trial) {
         const auto [LeftX, RightX] = place(Trial);

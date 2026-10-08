@@ -48,14 +48,18 @@
 /// hit posed legs (physics::World), the bodies keep apart and away from the
 /// walls (rig/spacing.hpp), a knocked-down body collides with the standing
 /// fighter's legs. A posed striking limb stops where it meets the
-/// opponent's posed parts (stopAtContact), and a posed leg swung too deep
-/// into the opponent is held back (holdLimbsBack): Box2D does not collide
-/// two kinematic bodies, so a kick would go through the legs it hits.
+/// opponent's posed parts, and a posed leg swung too deep into the opponent
+/// is held back (stopPosedLimbs): Box2D does not collide two kinematic
+/// bodies, so a kick would go through the legs it hits.
+/// rig::ContactResolver (rig/contact.hpp) runs all of this between two
+/// fighters.
 ///
 /// The order of work per simulation step is explicit: set the targets, call
-/// planMotion(), let the battle correct the plan (rig::keepApart or
-/// getController()), call applyControl(), step the physics world, then
-/// report hits with applyHit() (and rig::pushApartOnHit()).
+/// planMotion(), let the battle correct the plan
+/// (rig::ContactResolver::beforeStep or getController()), call
+/// applyControl(), step the physics world, stop the posed limbs
+/// (rig::ContactResolver::afterStep), then report hits with applyHit() (and
+/// rig::ContactResolver::onStrikeLanded()).
 ///
 //===----------------------------------------------------------------------===//
 
@@ -153,7 +157,7 @@ struct PartPlacement {
     /// A striker of an attack (Rig::setStrikingParts) is in two places: where
     /// it is now, carried with the pelvis (Position, Angle), and where the
     /// clip poses it (these). It overlaps only if it overlaps in both: its
-    /// own motion into the opponent is stopped by Rig::stopAtContact, the
+    /// own motion into the opponent is stopped by Rig::stopPosedLimbs, the
     /// opponent's into it is the spacing's to prevent.
     bool Striking = false;
     Vec2 PosedPosition;
@@ -246,10 +250,11 @@ public:
     void setFacing(bool FacingRight);
     /// The posed parts that strike now (the strikers of an attack before it
     /// stopped at a contact): they stop at the opponent by themselves
-    /// (stopAtContact), so the spacing of the fighters treats them apart
+    /// (stopPosedLimbs), so the spacing of the fighters treats them apart
     /// (predictBody). \p Attacking: the strikers of the attack all through
     /// it; a lifted foot among them does not step down where it is, so the
-    /// spacing keeps no floor below it clear. Combat sets both every step;
+    /// spacing keeps no floor below it clear, and they stop at the opponent
+    /// after the step in any phase (stopPosedLimbs). Combat sets both every step;
     /// none by default.
     void setStrikingParts(const std::bitset<BodyPartCount>& Striking, const std::bitset<BodyPartCount>& Attacking) {
         StrikingParts = Striking;
@@ -309,7 +314,8 @@ public:
     /// Adds knockback that moves the pelvis by about \p Distance (m, signed
     /// along X) in total: the push-out of rig::pushApartOnHit().
     void addPush(float Distance);
-    /// Records which arena wall the fighter touches; rig::keepApart() calls
+    /// Records which arena wall the fighter touches; rig::keepApart() (the
+    /// contact stage before the physics step) calls
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
@@ -442,7 +448,8 @@ public:
     float measureGap(std::span<const PartPlacement> Own, std::span<const PartPlacement> Other) const;
     /// Are posed parts striking now (setStrikingParts())?
     bool isStriking() const { return StrikingParts.any(); }
-    /// Did stopAtContact() find a contact (and stop there) in the last step?
+    /// Did stopPosedLimbs() find a contact of the strikers (and stop there)
+    /// in the last step?
     bool isStoppedAtContact() const { return StoppedAtContact; }
     /// How far the physical parts (torso, head, arms) are from the target
     /// pose posed from where the pelvis is now (the ghost of the debug
@@ -692,11 +699,11 @@ private:
     std::bitset<BodyPartCount> GripLimb;
     std::bitset<BodyPartCount> StrikingParts;   ///< setStrikingParts().
     std::bitset<BodyPartCount> AttackingParts;  ///< setStrikingParts().
-    /// The strikers stopAtContact() last held back, and whether it did so
+    /// The strikers stopPosedLimbs() last stopped, and whether it did so
     /// in the last step; for the debug draw.
     std::bitset<BodyPartCount> StoppedParts;
     bool StoppedAtContact = false;
-    /// The limbs (topmost parts) holdLimbsBack() held back in the last step.
+    /// The limbs (topmost parts) stopPosedLimbs() held back in the last step.
     std::bitset<BodyPartCount> HeldLimbs;
     /// The last knockdown push, for the debug draw: where and how hard.
     Vec2 KnockdownPoint;

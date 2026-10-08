@@ -38,7 +38,7 @@ constexpr float WallMarkHeight = 1.8f;      ///< m.
 /// \name Collision categories of body parts
 /// The arena keeps the default category (bit 0). A knocked-down fighter
 /// collides with the posed parts of the other fighter like any other body:
-/// a posed striker stops at a body it sinks into (stopAtContact), and the
+/// a posed striker stops at a body it sinks into (stopPosedLimbs), and the
 /// standing legs push a lying body out of their way instead of passing
 /// through it. Parts of the rig's "passThrough" list ignore each other
 /// (RigDef::PassThrough): their category is PassThroughBit alone, and their
@@ -874,7 +874,7 @@ std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
                          getTravelCorrections(Controller.getTravelShare(RootX, PoseTravel)));
     // The parts that are not posed now (the torso and the head, held on the
     // pelvis) and the strikers (they stop at the opponent by themselves,
-    // stopAtContact(); the opponent must not walk into where they are) move
+    // stopPosedLimbs(); the opponent must not walk into where they are) move
     // rigidly with the pelvis.
     const PartState& Pelvis = getPart(Root);
     const Placement& PelvisGoal = Pose[static_cast<size_t>(Root)];
@@ -1666,14 +1666,9 @@ void Rig::fillPanel() const {
         Overlap = Depth;
         Deepest = Part;
     }
-    std::string Held;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        if (HeldLimbs.test(Index)) Held += std::format(", {} held back", getBodyPartName(static_cast<BodyPart>(Index)));
-    }
-    debug::setPanel(Name + " posed overlap", Overlap > 0.0f ? std::format("{} {:.3f} m{}{}", getBodyPartName(Deepest),
-                                                                          Overlap, StoppedAtContact ? ", stopped" : "",
-                                                                          Held)
-                                                            : Held.empty() ? "-" : Held.substr(2));
+    // What the posed stop did is the contact panel's ("contact posed").
+    debug::setPanel(Name + " posed overlap",
+                    Overlap > 0.0f ? std::format("{} {:.3f} m", getBodyPartName(Deepest), Overlap) : "-");
 }
 
 namespace {
