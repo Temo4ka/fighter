@@ -42,6 +42,7 @@ add_executable(fighter_tests
     combat/test_tuning.cpp
     combat/test_spacing_smooth.cpp
     combat/test_stride.cpp
+    combat/test_lunge.cpp
     render/test_camera.cpp
     render/test_pixel_view.cpp
     render/test_visuals.cpp

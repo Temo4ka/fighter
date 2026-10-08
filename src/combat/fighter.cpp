@@ -40,6 +40,14 @@ constexpr float SwingClearance = 2.0f;
 /// Knockback slower than this lets a resting foot step again, m/s.
 constexpr float CalmKnockback = 0.05f;
 
+/// A step of a clip's pelvis track that made this much less than planned
+/// was held back (the opponent, a wall), m.
+constexpr float HeldTrackM = 1e-4f;
+/// The arrows of the pelvis track: this far above the pelvis, and the
+/// "made" one this much below the "track" one, m.
+constexpr float PelvisTrackDrawLiftM = 0.12f;
+constexpr float PelvisTrackDrawGapM = 0.05f;
+
 /// Width and offset of the Block zone drawn in front of the body, m.
 constexpr float BlockBarOffsetM = 0.3f;
 constexpr float BlockBarHalfWidthM = 0.04f;
@@ -102,6 +110,7 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
     if (std::abs(Around.OpponentX - OwnX) > FacingDeadZoneM) DesiredFacingRight = Around.OpponentX > OwnX;
 
     const MoveDef* Started = nullptr;
+    Lunge.Planned = 0.0f;
     if (State == FighterState::Reacting) {
         StunLeftSec -= Dt;
         if (StunLeftSec <= 0.0f) setState(FighterState::Idle);
@@ -114,7 +123,12 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
         if (DesiredFacingRight != Body.isFacingRight()) Body.setFacing(DesiredFacingRight);
     }
 
-    // The pelvis plans its motion first: the legs step with its travel.
+    // The pelvis plans its motion first: the legs step with its travel. The
+    // pelvis track of the attack's clip is planned motion too: the spacing
+    // and the walls stop it like the walk (checkPelvisTrack()).
+    const bool FacesRight = Body.isTurnPending() ? !Body.isFacingRight() : Body.isFacingRight();
+    if (Lunge.Planned != 0.0f) Lunge.Facing = FacesRight ? 1.0f : -1.0f;
+    Body.getController().setClipTravel(Lunge.Planned * Lunge.Facing);
     Body.setMoveVelocity(planWalking(Cmd));
     Body.planMotion(Dt);
     advanceLegs(Dt);
@@ -142,6 +156,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
         LegFadeByTravel = false;
     }
     const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
+    // Over the planted rear foot of a lunge the pelvis may go down deeper,
+    // until the feet are back in the stance.
+    if (Body.getPosture() != rig::Posture::Standing) LungeLegs = false;
+    Body.setPelvisDropLimit(LungeLegs ? std::optional(Rules->Tuning.LegStep.LungePelvisDrop) : std::nullopt);
     // A leg action ends the walk where it rested: afterwards the legs rest
     // in the stance it leaves them in.
     if (Top && anim::usesLegs(*Top)) {
@@ -191,6 +209,7 @@ void Fighter::applyControl(float Dt) {
     }
     LastPlannedTravel = Body.getController().getPlannedTravel();
     Body.applyControl(Dt);
+    checkPelvisTrack();
 }
 
 bool Fighter::isHittable() const { return State != FighterState::KnockedDown && State != FighterState::KnockedOut; }
@@ -243,6 +262,8 @@ void Fighter::onPosedStop(std::optional<float> StrikeKept) {
     AttackTime = Startup ? Stopped : std::clamp(Stopped, AttackClip->ActiveBeginSec, AttackClip->ActiveEndSec);
     Contact = ContactStage::Holding;
     ContactClipSec = AttackTime;
+    // The body does not lunge on through what the strike ran into.
+    if (Lunge.Moving) stopPelvisTrack("stopped at the opponent");
     ContactHoldLeftSec = Tuning.ContactHoldSec;
     Jammed = Startup;
     if constexpr (FIGHTER_DEBUG) {
@@ -358,6 +379,8 @@ void Fighter::drawDebug(std::string_view Name) const {
         if (isJammed()) ContactText += ", jammed in the startup";
         if (Body.isStoppedAtContact()) ContactText += " (stopped this step)";
         debug::setPanel(std::format("{} contact", Name), ContactText);
+        debug::setPanel(std::format("{} lunge", Name), describePelvisTrack());
+        drawPelvisTrack();
         debug::setPanel(std::format("{} legs", Name), describeLegs());
         debug::setPanel(std::format("{} upper", Name), describeUpper());
         debug::setPanel(std::format("{} stride", Name), describeStride());
@@ -433,6 +456,13 @@ bool Fighter::isFree() const {
 void Fighter::setState(FighterState Next) {
     if (Next == State) return;
     if (State == FighterState::Attacking) {
+        // A reaction or a fall stops the lunge at once (a finished clip's
+        // track is over by now).
+        if (Lunge.Moving) {
+            stopPelvisTrack(Next == FighterState::Reacting ? "interrupted by a reaction"
+                            : Next == FighterState::Idle   ? "interrupted"
+                                                           : "interrupted by a fall");
+        }
         Move = nullptr;
         AttackFromCrouch = false;
     }
@@ -481,6 +511,8 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
     } else {
         AttackTime = anim::advanceClipTime(*AttackClip, AttackTime, Dt, AttackRate);
     }
+    // Before a chain or the end: the last step of the track still moves.
+    followPelvisTrack();
     // A press (not a held button) of a move the current one chains into asks
     // for it; it is kept until the cancel window. The buttons pressed within
     // the combo window count together: a later press may turn the request
@@ -607,6 +639,12 @@ void Fighter::startMove(const MoveDef& Next, const Surroundings& Around, int Cha
     ChainLength = ChainPosition;
     ChainRequest = nullptr;
     ChainEntry = nullptr;
+    // The pelvis track starts from where the pelvis is; a chain drops what
+    // is left of the track of the move before (it is in its recovery).
+    Lunge = PelvisTrack{.ClipName = Clip.PelvisTrack.empty() ? std::string() : Clip.Name,
+                        .StartX = Body.getController().getPositionX(),
+                        .Facing = Lunge.Facing,
+                        .Moving = !Clip.PelvisTrack.empty()};
     // The buttons that started it are spent: they do not start another.
     Presses.clear();
     WaitingForCombo = false;
@@ -983,6 +1021,14 @@ void Fighter::clearRest() {
 }
 
 void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
+    // A lunge carries the body over the planted feet: they hold their place
+    // as far as the legs reach (no slide, no step of the rig's own), and
+    // only the leading foot steps (planLungeStep()).
+    const bool Lunging = Lunge.Moving || Lunge.Planned != 0.0f;
+    if (Lunging) {
+        Body.keepFeetPlanted();
+        LungeLegs = true;
+    }
     const bool Resting = Body.getPosture() == rig::Posture::Standing && !Walk.isHeld() &&
                          (!Walk.isEngaged() || Walk.getMode() == LegCycle::Mode::Still);
     if (!Resting) {
@@ -991,7 +1037,9 @@ void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
     }
     const rig::PelvisController& Motion = Body.getController();
     const bool Calm = Motion.getWalkVelocity() == 0.0f && std::abs(Motion.getKnockback()) < CalmKnockback;
-    if (!RestStep.isActive() && Calm && !Settle) {
+    if (!RestStep.isActive() && Calm && !Settle && Lunging) {
+        planLungeStep(Body.measureLegsNow(), Body.measureLegs(Target.Moving.Angles));
+    } else if (!RestStep.isActive() && Calm && !Settle) {
         // A planted foot far from where the rest pose has it steps there.
         const LegStepTuning& Tuning = Rules->Tuning.LegStep;
         const rig::LegStance Now = Body.measureLegsNow();
@@ -1002,6 +1050,12 @@ void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
             return Wanted.getFoot(Foot).Ankle.X - Now.getFoot(Foot).Ankle.X > Tuning.MinDistance;
         });
         const bool Clear = !TowardsOpponent || OpponentGap >= Tuning.RestepClearance;
+        // The feet a lunge left are back in the stance: the pelvis no longer
+        // goes down deeper for them.
+        const bool Home = std::ranges::all_of(std::array{BodyPart::FootL, BodyPart::FootR}, [&](BodyPart Foot) {
+            return std::abs(Now.getFoot(Foot).Ankle.X - Wanted.getFoot(Foot).Ankle.X) <= Tuning.RestepDistance;
+        });
+        if (Home) LungeLegs = false;
         for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
             if (!Clear) break;
             const float Off = Now.getFoot(Foot).Ankle.X - Wanted.getFoot(Foot).Ankle.X;
@@ -1126,7 +1180,9 @@ Fighter::TargetPoses Fighter::buildTargetPose(const anim::Clip* Top, bool TopCha
     // The rig would take a planted foot held off its old pose for one left
     // behind by a push and step it back: the feet stay where the steps put
     // them.
-    if (Stepping) Body.keepFeetPlanted();
+    // A lunge in a leg action: the supporting foot holds its place as far as
+    // the leg reaches, as in updateRestStep().
+    if (Stepping || Lunge.Moving || Lunge.Planned != 0.0f) Body.keepFeetPlanted();
     return Result;
 }
 
@@ -1430,6 +1486,89 @@ float Fighter::getTopClipTime() const {
     const float Share =
         Recovery > 0.0f ? std::clamp((AttackTime - AttackClip->ActiveEndSec) / Recovery, 0.0f, 1.0f) : 1.0f;
     return ContactClipSec * (1.0f - Share);
+}
+
+void Fighter::followPelvisTrack() {
+    if (!Lunge.Moving) return;
+    const float Target = anim::samplePelvisOffset(*AttackClip, AttackTime);
+    Lunge.Planned = Target - Lunge.Followed;
+    Lunge.Followed = Target;
+    if (AttackTime >= AttackClip->PelvisTrack.back().TimeSec) Lunge.Moving = false;
+}
+
+void Fighter::checkPelvisTrack() {
+    if (Lunge.Planned == 0.0f || Body.getPosture() != rig::Posture::Standing) return;
+    const rig::PelvisController& Motion = Body.getController();
+    const float Made = Motion.getClipTravelMade() * Lunge.Facing;
+    Lunge.Made += Made;
+    // Held back: the rest of the track is lost, the body does not catch up
+    // later (nor go back by the keys that return it).
+    if (std::abs(Lunge.Planned - Made) <= HeldTrackM || !Lunge.Stopped.empty()) return;
+    stopPelvisTrack(Motion.getWallShift() != 0.0f ? "held back by a wall" : "held back by the opponent");
+}
+
+void Fighter::stopPelvisTrack(std::string_view Why) {
+    Lunge.Moving = false;
+    Lunge.Stopped = Why;
+    if constexpr (FIGHTER_DEBUG) {
+        debug::logEvent(std::format("P{} {} pelvis track {}: made {:+.2f} of {:+.2f} m so far",
+                                    Body.getFighterIndex() + 1, Lunge.ClipName, Why, Lunge.Made, Lunge.Followed));
+    }
+}
+
+bool Fighter::planLungeStep(const rig::LegStance& Now, const rig::LegStance& Wanted) {
+    if (Lunge.Planned == 0.0f) return false;
+    const LegStepTuning& Tuning = Rules->Tuning.LegStep;
+    // Along the track's travel in the stance's frame (forward is +X): the
+    // foot ahead leads, the other one trails.
+    const float Heading = Lunge.Planned > 0.0f ? 1.0f : -1.0f;
+    const bool LeftLeads = (Now.Left.Ankle.X - Now.Right.Ankle.X) * Heading > 0.0f;
+    const BodyPart Leading = LeftLeads ? BodyPart::FootL : BodyPart::FootR;
+    const BodyPart Trailing = LeftLeads ? BodyPart::FootR : BodyPart::FootL;
+    const float Behind = (Wanted.getFoot(Leading).Ankle.X - Now.getFoot(Leading).Ankle.X) * Heading;
+    if (!Now.getFoot(Leading).Planted || Behind <= Tuning.LungeStepDistance) return false;
+    // Not towards an opponent this close: the foot could come down in its
+    // legs (the rig holds it where it stands meanwhile).
+    if (Heading > 0.0f && OpponentGap < Tuning.RestepClearance) return false;
+    rig::LegStance Target = Wanted;
+    Target.getFoot(Trailing) = Now.getFoot(Trailing);
+    RestStep = LegStep::plan(Now, Target, false, false, false, Tuning.RestSec, Tuning);
+    RestStepFresh = RestStep.isActive();
+    if (!RestStepFresh) return false;
+    Body.dropLiftedFootOffsets();
+    ++Resteps;
+    LastRestep = std::format("{} {:.2f} m (lunge)", getBodyPartName(Leading), Behind);
+    if constexpr (FIGHTER_DEBUG) {
+        debug::logEvent(std::format("P{} steps {} with the lunge: {:.2f} m behind the pelvis",
+                                    Body.getFighterIndex() + 1, getBodyPartName(Leading), Behind));
+    }
+    return true;
+}
+
+std::string Fighter::describePelvisTrack() const {
+    if (Lunge.ClipName.empty()) return "-";
+    const anim::Clip* Clip = getMove() ? AttackClip : nullptr;
+    std::string Text = std::format("{}: track {:+.2f} m", Lunge.ClipName, Lunge.Followed);
+    if (Clip && Lunge.ClipName == Clip->Name) {
+        Text += std::format(" (ends {:+.2f})", Clip->PelvisTrack.back().OffsetX);
+    }
+    Text += std::format(", made {:+.2f} m", Lunge.Made);
+    if (Lunge.Moving) Text += ", moving";
+    if (!Lunge.Stopped.empty()) Text += std::format(", {}: the rest is lost", Lunge.Stopped);
+    return Text;
+}
+
+void Fighter::drawPelvisTrack() const {
+    if constexpr (FIGHTER_DEBUG) {
+        if (Lunge.ClipName.empty() || !getMove()) return;
+        // From where the pelvis began the move: the track's offset so far
+        // and, below it, how far it really took the pelvis.
+        const Vec2 Pelvis = Body.getPartPosition(BodyPart::Pelvis);
+        const Vec2 Start{Lunge.StartX, Pelvis.Y + PelvisTrackDrawLiftM};
+        debug::drawArrow(debug::Cat::Forces, Start, {Lunge.Followed * Lunge.Facing, 0.0f}, "track");
+        debug::drawArrow(debug::Cat::Forces, Start - Vec2{0.0f, PelvisTrackDrawGapM},
+                         {Lunge.Made * Lunge.Facing, 0.0f}, Lunge.Stopped.empty() ? "made" : "made, stopped");
+    }
 }
 
 void Fighter::spendStamina(float Amount) {

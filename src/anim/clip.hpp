@@ -20,6 +20,9 @@
 ///     "allowMove": true,          // optional: may the fighter walk meanwhile
 ///     "blendIn": 0.04,            // optional: fade-in time, s (see PoseTransition)
 ///     "blendOut": 0.10,           // optional: fade-out time, s
+///     "pelvisX": [                // optional: the pelvis offset, m (see below)
+///       { "t": 0.00, "x": 0.0 }, { "t": 0.20, "x": 0.25 }, { "t": 0.36, "x": 0.1 }
+///     ],
 ///     "keys": [
 ///       { "t": 0.00, "pose": { "UpperArmL": 50, "ForearmL": 120 } },
 ///       { "t": 0.10, "pose": { "UpperArmL": 88, "ForearmL": 4 } }
@@ -27,6 +30,14 @@
 ///   }
 /// \endcode
 /// Every key of a clip sets the same joints; they form the clip's mask.
+///
+/// The pelvis track ("pelvisX") moves the whole body along the floor while the
+/// clip plays (a lunge, a weight shift, a hop back): metres forward along the
+/// facing, relative to where the pelvis was when the clip started, keyed on
+/// its own times and interpolated linearly like the poses. It starts at
+/// t = 0 with x = 0 and is only for one-shot clips; after the last key the
+/// offset holds (it stays after the clip: a clip that returns keys back to
+/// 0). Mirroring the legs or swapping the hands leaves it as it is.
 ///
 /// A one-shot clip (attack, reaction) plays once and is finished at its
 /// duration. A clip with "loop": true is a cycle (walk) or, with a single key,
@@ -60,6 +71,15 @@ struct Keyframe {
     Pose Target;
 };
 
+/// A key of the pelvis track (Clip::PelvisTrack).
+struct PelvisKey {
+    float TimeSec = 0.0f;
+    float OffsetX = 0.0f;   ///< m forward along the facing, from the clip's start.
+};
+
+/// The largest pelvis offset a clip may key, m: a lunge, not a teleport.
+inline constexpr float MaxPelvisOffsetM = 1.0f;
+
 struct Clip {
     std::string Name;
     std::vector<Keyframe> Keys;   ///< Sorted by time, the first one at 0.
@@ -76,6 +96,9 @@ struct Clip {
     /// takes the time of the change from its blend table (data/combat.json).
     std::optional<float> BlendInSec;
     std::optional<float> BlendOutSec;
+    /// The pelvis track, sorted by time, the first key at 0 with offset 0;
+    /// empty: the clip does not move the pelvis.
+    std::vector<PelvisKey> PelvisTrack;
 
     bool isActiveAt(float TimeSec) const { return TimeSec >= ActiveBeginSec && TimeSec < ActiveEndSec; }
     bool isFinishedAt(float TimeSec) const { return !Loop && TimeSec >= DurationSec; }
@@ -86,6 +109,11 @@ struct Clip {
 /// wraps around (the last key blends into the first one); a one-shot clip
 /// holds its last key.
 Pose sampleClip(const Clip& Source, float TimeSec);
+
+/// The pelvis offset of the clip's track at \p TimeSec, m forward along the
+/// facing (Clip::PelvisTrack): interpolated linearly between keys, held
+/// after the last one; 0 without a track.
+float samplePelvisOffset(const Clip& Source, float TimeSec);
 
 /// Playback rate. A rate of 2 plays the clip twice as fast: it takes half the
 /// time and its active phase starts twice as early. Rates below

@@ -103,6 +103,44 @@ TEST_CASE("parseClip: broken clips are rejected", "[anim]") {
                     std::runtime_error);
 }
 
+TEST_CASE("parseClip: the pelvis track", "[anim][pelvis]") {
+    const Clip Lunge = parseClip(R"({
+        "duration": 1.0,
+        "pelvisX": [ { "t": 0.0, "x": 0.0 }, { "t": 0.4, "x": 0.2 }, { "t": 0.8, "x": 0.1 } ],
+        "keys": [ { "t": 0.0, "pose": { "Torso": 0 } } ]
+    })",
+                                 "lunge");
+    REQUIRE(Lunge.PelvisTrack.size() == 3);
+    CHECK(samplePelvisOffset(Lunge, 0.0f) == Approx(0.0f));
+    CHECK(samplePelvisOffset(Lunge, 0.2f) == Approx(0.1f));
+    CHECK(samplePelvisOffset(Lunge, 0.6f) == Approx(0.15f));
+    // After the last key the offset holds.
+    CHECK(samplePelvisOffset(Lunge, 1.0f) == Approx(0.1f));
+    // Without a track nothing moves.
+    CHECK(samplePelvisOffset(parseClip(OneShotJson, "jab"), 0.5f) == 0.0f);
+}
+
+TEST_CASE("parseClip: broken pelvis tracks are rejected", "[anim][pelvis]") {
+    const auto makeClip = [](std::string Track, bool Loop = false) {
+        return std::string(R"({ "duration": 1.0, "loop": )") + (Loop ? "true" : "false") + R"(, "pelvisX": )" +
+               Track + R"(, "keys": [ { "t": 0.0, "pose": { "Torso": 0 } } ] })";
+    };
+    CHECK_NOTHROW(parseClip(makeClip(R"([{ "t": 0, "x": 0 }, { "t": 0.5, "x": -0.3 }])"), "x"));
+    // An unknown key, a start off 0, unsorted keys, a key after the end,
+    // an offset out of range, a looping clip.
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0, "y": 1 }])"), "x"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0.1 }])"), "x"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0.1, "x": 0 }])"), "x"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0 }, { "t": 0.6, "x": 0.1 }, { "t": 0.5, "x": 0 }])"),
+                              "x"),
+                    std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0 }, { "t": 1.5, "x": 0.1 }])"), "x"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0 }, { "t": 0.5, "x": 2.0 }])"), "x"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"([{ "t": 0, "x": 0 }, { "t": 0.5, "x": 0.1 }])", true), "x"),
+                    std::runtime_error);
+    CHECK_THROWS_AS(parseClip(makeClip(R"({ "t": 0, "x": 0 })"), "x"), std::runtime_error);
+}
+
 TEST_CASE("loadClip: the clips of data/poses load", "[anim]") {
     const std::filesystem::path Poses = std::filesystem::path(FIGHTER_DATA_DIR) / "poses";
     for (const auto* Name : {"stance", "walk", "jab", "kick"}) {

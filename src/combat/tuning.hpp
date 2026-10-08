@@ -100,6 +100,15 @@ struct LegStepTuning {
     /// No re-step towards the opponent while the pelvises are closer than
     /// this: the foot could come down in its legs, m.
     float RestepClearance = 1.1f;
+    /// While the pelvis track of a clip moves the body (a lunge,
+    /// anim::Clip::PelvisTrack), the trailing foot stays planted and the
+    /// leading one steps (RestSec) once the pelvis left it further than
+    /// this from where the rest pose puts it, m.
+    float LungeStepDistance = 0.12f;
+    /// How far the pelvis may go down over the planted rear foot of a lunge
+    /// (and until the feet are back in the stance) so that the leg reaches
+    /// it, m; otherwise the rig's maxPelvisDrop.
+    float LungePelvisDrop = 0.1f;
     StanceAfterStop Stance = StanceAfterStop::Mirror;
 };
 

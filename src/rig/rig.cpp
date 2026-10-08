@@ -166,7 +166,10 @@ void Rig::setStayDown(bool Stay) {
 
 void Rig::planMotion(float Dt) {
     // A ragdoll on the floor goes where physics takes it.
-    if (CurrentPosture == Posture::KnockedDown) return;
+    if (CurrentPosture == Posture::KnockedDown) {
+        Controller.setClipTravel(0.0f);
+        return;
+    }
     // The knockback the plan moves the pelvis with (it decays in plan()).
     PlannedKnockback = Controller.getKnockback();
     Controller.plan(Dt);
@@ -967,7 +970,7 @@ float Rig::getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Le
         const float HighestHip = getAnkleInPose(Limb, Pose).Y + std::sqrt(Reach * Reach - Across * Across);
         RootDrop = std::max(RootDrop, HipPoint.Y - HighestHip);
     }
-    return std::min(RootDrop, Control.MaxPelvisDrop);
+    return std::min(RootDrop, PelvisDropLimit.value_or(Control.MaxPelvisDrop));
 }
 
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
@@ -997,8 +1000,11 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         const PartState& Foot = getPart(Limb.Foot);
         const Placement& FootPose = Pose[static_cast<size_t>(Limb.Foot)];
         // The clip plants the foot when its sole is on the floor; a foot
-        // stepping back plants when it is there.
-        const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
+        // stepping back plants when it is there. The pelvis gone down for
+        // the kept feet takes no foot down with it: a lifted one stays as
+        // high as the clip has it.
+        const bool Planted =
+            getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) + RootDrop <= Control.FootPlantHeight;
         if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
 
         if (Planted && !Limb.Locked && !Limb.Stepping) {
@@ -1009,9 +1015,9 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             Limb.KeptOffsetX = 0.0f;
             Limb.Kept = false;
         }
-        float Lift = 0.0f;
-        // A planted foot stays on the floor when the pelvis went down for it.
-        if (Limb.Locked) Lift = RootDrop;
+        // A planted foot stays on the floor when the pelvis went down for it,
+        // a lifted one at its height.
+        float Lift = RootDrop;
         if (Limb.Locked) {
             // A pull longer than the slip (a knockback, a push) drags the
             // foot, and so does one the leg cannot reach.
@@ -1030,7 +1036,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         } else {
             Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
             // A step back to the stance lifts the foot off the floor.
-            if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
+            if (Limb.Stepping) Lift += std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
         if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
             // The knee bends at most KneeExtraBend deeper than the clip's.
@@ -1183,7 +1189,10 @@ void Rig::carryPhysicalParts(Vec2 OldVelocity, float OldSpin) {
     // The knockback that really moved the pelvis (a wall or the opponent may
     // have stopped it) is carried only by its share: without it the upper
     // body lags behind the push and shows the hit.
-    const float Realized = getRealizedShare(PlannedKnockback, Controller.getVelocity() - Controller.getWalkVelocity());
+    // The clip's travel (a lunge) is carried in full, like the walk.
+    const float Realized =
+        getRealizedShare(PlannedKnockback, Controller.getVelocity() - Controller.getWalkVelocity() -
+                                               Controller.getClipVelocity());
     Change.X -= (1.0f - Control.KnockbackTransfer) * (Realized - CarriedKnockback);
     CarriedKnockback = Realized;
 
@@ -1549,6 +1558,12 @@ void Rig::drawController() const {
         const Vec2 Below = Base + Vec2{0.0f, -0.1f};
         debug::drawArrow(debug::Cat::Velocity, Below, {Knockback * ControllerScale, 0.0f},
                          std::format("kb {:+.2f}", Knockback));
+    }
+    // The part of a clip's pelvis track (a lunge) the pelvis made.
+    const float Clip = Controller.getClipVelocity();
+    if (std::abs(Clip) >= MinDrawnSpeed) {
+        const Vec2 Lower = Base + Vec2{0.0f, -0.2f};
+        debug::drawArrow(debug::Cat::Velocity, Lower, {Clip * ControllerScale, 0.0f}, std::format("clip {:+.2f}", Clip));
     }
 }
 

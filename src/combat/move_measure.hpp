@@ -35,7 +35,11 @@
 ///     the attacker's pelvis, where it stood when the move began, to a
 ///     tip during the active phase. The pelvis is chosen, not the front
 ///     foot, because it is the point the fight keeps its distances by
-///     (spacing, the AI's "ai.range_m");
+///     (spacing, the AI's "ai.range_m"); a clip that moves the pelvis (its
+///     pelvis track, a lunge) reaches further by that travel;
+///   - the pelvis travel: how far forward (and back) the pelvis went from
+///     where it stood when the move began, and where it ended (a clip's
+///     pelvis track; the offset stays after the move);
 ///   - the hit: the first StrikeLanded of the move: when, which part of the
 ///     dummy, the approach speed, impulse and strength of the contact,
 ///     damage, reaction, blocked or not.
@@ -130,6 +134,13 @@ struct MoveMeasure {
     float RecoverySec = 0.0f;
     std::vector<StrikerPath> Paths;          ///< One per striking part that was kept.
     Vec2 PelvisStart;                        ///< The attacker's pelvis when the move began.
+    /// The attacker's pelvis every step of the move, world, m.
+    std::vector<Vec2> PelvisPath;
+    /// The pelvis travel from PelvisStart along the facing, m: the farthest
+    /// forward (>= 0), the farthest back (<= 0) and at the end of the move.
+    float PelvisForwardM = 0.0f;
+    float PelvisBackM = 0.0f;
+    float PelvisEndM = 0.0f;
     bool FacingRight = true;
     /// The path with the greatest reach, or nullptr.
     const StrikerPath* findFarthestPath() const;
@@ -148,7 +159,9 @@ struct MoveMeasure {
     bool Blocked = false;
 };
 
-/// "jab: startup 0.16 s, active 0.12 s, recovery 0.25 s; reach 0.71 m (ForearmL); hit Head at 0.18 s".
+/// "startup 0.16 s, active 0.12 s, recovery 0.25 s; reach 0.71 m (ForearmL);
+/// pelvis +0.25 m, ends +0.10 m; hit Head at 0.18 s" (the pelvis only when it
+/// moved).
 std::string describeMeasure(const MoveMeasure& Result);
 
 /// The forward distance of \p Point from \p Origin for a fighter facing

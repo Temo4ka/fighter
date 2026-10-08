@@ -29,6 +29,9 @@ constexpr float ArenaMargin = 3.0f;
 constexpr float MinArenaHalfWidth = 5.0f;
 /// Marks on the drawn path: the size of the cross at the reach and the hit, m.
 constexpr float MarkSize = 0.07f;
+/// A pelvis that travelled less than this in a move did not move: the
+/// summary leaves it out, m.
+constexpr float MinPelvisTravelM = 0.005f;
 
 /// The input and moveset that start a move for a loadout.
 struct Resolved {
@@ -156,6 +159,11 @@ std::string describeMeasure(const MoveMeasure& Result) {
                                    Result.ActiveSec, Result.RecoverySec);
     if (const StrikerPath* Farthest = Result.findFarthestPath(); Farthest && Result.ActiveSec > 0.0f) {
         Text += std::format("; reach {:.2f} m ({})", Farthest->ReachM, getBodyPartName(Farthest->Part));
+    }
+    if (std::max(Result.PelvisForwardM, -Result.PelvisBackM) >= MinPelvisTravelM) {
+        Text += std::format("; pelvis {:+.2f}", Result.PelvisForwardM);
+        if (Result.PelvisBackM <= -MinPelvisTravelM) Text += std::format(" / {:+.2f}", Result.PelvisBackM);
+        Text += std::format(" m, ends {:+.2f} m", Result.PelvisEndM);
     }
     if (Result.Hit) {
         Text += std::format("; hit {} at {:.2f} s{}: {:.2f} m/s, J {:.1f} N*s, strength {:.2f}, damage {:.1f}, {}",
@@ -294,6 +302,11 @@ void MoveRun::recordTips(const FighterView& Attacker) {
         if (Part.Part == BodyPart::Pelvis) Pelvis = Part.Position;
     }
     const float TimeSec = static_cast<float>(ClockSec - StageStartSec);
+    Measure.PelvisPath.push_back(Pelvis);
+    const float Travel = getForwardDistance(Measure.PelvisStart, Pelvis, Measure.FacingRight);
+    Measure.PelvisForwardM = std::max(Measure.PelvisForwardM, Travel);
+    Measure.PelvisBackM = std::min(Measure.PelvisBackM, Travel);
+    Measure.PelvisEndM = Travel;
     for (StrikerPath& Path : Measure.Paths) {
         const PartTransform& Part = Attacker.Parts[static_cast<size_t>(Path.Part)];
         const float WeaponReach = Path.Part == stats::getHandPart(stats::EquipmentSlot::MainHand) ? Setup.WeaponReachM : 0.0f;
@@ -342,6 +355,15 @@ void drawMeasure(const StandSetup& Setup, const MoveMeasure& Result) {
             }
         }
         if (Result.Started) debug::drawCross(Cat::Trajectory, Result.PelvisStart, MarkSize);
+        // The pelvis travel of the move (a clip's pelvis track).
+        for (const auto& [From, To] : std::views::zip(Result.PelvisPath, Result.PelvisPath | std::views::drop(1))) {
+            debug::drawLine(Cat::Trajectory, From, To);
+        }
+        if (Result.Finished && !Result.PelvisPath.empty() &&
+            Result.PelvisForwardM - Result.PelvisBackM >= MinPelvisTravelM) {
+            debug::drawText(Cat::Trajectory, Result.PelvisPath.back(),
+                            std::format("pelvis {:+.2f} m, ends {:+.2f} m", Result.PelvisForwardM, Result.PelvisEndM));
+        }
         if (Result.Hit) {
             debug::drawCross(Cat::Hitbox, Result.HitPoint, MarkSize);
             debug::drawText(Cat::Hitbox, Result.HitPoint,

@@ -9,8 +9,9 @@
 /// (docs/DEVELOPMENT_PLAN.md, phase 1.5): one rigid body per body part and
 /// revolute joints between them, split in two by the rig file:
 ///  - kinematic parts (the pelvis and the legs) are moved by code. The
-///    pelvis follows the PelvisController (walking, knockback) at the height
-///    where the feet touch the floor; the legs are posed from the clips by
+///    pelvis follows the PelvisController (walking, knockback, a clip's
+///    pelvis track) at the height where the feet touch the floor; the legs
+///    are posed from the clips by
 ///    forward kinematics. They are solid: they push the opponent's physical
 ///    parts, but nothing pushes them.
 ///  - physical parts (torso, head, arms) are dynamic bodies driven by
@@ -233,6 +234,12 @@ public:
     /// the feet left off the clip do not slide or take an extra step.
     /// Lifting a foot forgets it.
     void keepFeetPlanted();
+    /// How far the pelvis may go down in this step so that the legs reach
+    /// their kept planted feet (keepFeetPlanted()), m; nullopt:
+    /// ControlParams::MaxPelvisDrop. Combat lets a lunge (a clip's pelvis
+    /// track) drop it deeper over the planted rear foot; it sets it every
+    /// step.
+    void setPelvisDropLimit(std::optional<float> MaxDrop) { PelvisDropLimit = MaxDrop; }
     /// The lifted feet go exactly where the target pose puts them: their
     /// offset from the clip (a lifted foot returns to the clip from where it
     /// stood) is dropped. Combat calls it when it starts posing the feet
@@ -689,6 +696,7 @@ private:
 
     PelvisController Controller;
     float PoseTravel = 0.0f;          ///< setTravelPose(): the travel the target angles assume, m.
+    std::optional<float> PelvisDropLimit; ///< setPelvisDropLimit().
     Posture CurrentPosture = Posture::Standing;
     float PostureSec = 0.0f;
     bool StayDown = false;

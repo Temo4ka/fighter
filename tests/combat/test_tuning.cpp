@@ -100,6 +100,10 @@ TEST_CASE("parseCombatTuning: the steps into an action that needs the legs", "[c
         "legStep": { "restepDistance": 0.07, "restSec": 0.2, "restepClearance": 0.9 } })");
     CHECK(Rest.LegStep.RestepClearance == 0.9f);
     CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "restepClearance": -1 } })"), std::runtime_error);
+    CHECK(parseCombatTuning(R"({ "legStep": { "lungeStepDistance": 0.2 } })").LegStep.LungeStepDistance == 0.2f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "lungeStepDistance": 0 } })"), std::runtime_error);
+    CHECK(parseCombatTuning(R"({ "legStep": { "lungePelvisDrop": 0.05 } })").LegStep.LungePelvisDrop == 0.05f);
+    CHECK_THROWS_AS(parseCombatTuning(R"({ "legStep": { "lungePelvisDrop": -1 } })"), std::runtime_error);
     CHECK(Rest.StopSettleSpeed == 0.4f);
     CHECK(Rest.StopSettleSec == 0.25f);
     CHECK(parseCombatTuning(R"({ "stopResumeDistance": 0.2 })").StopResumeDistance == 0.2f);

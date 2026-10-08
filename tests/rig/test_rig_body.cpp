@@ -878,6 +878,47 @@ TEST_CASE("Rig: kept feet hold their place, the knee and the pelvis give only so
     CHECK(Dragged.DeepestExtraBend <= Control.KneeExtraBend + 0.005f);
 }
 
+TEST_CASE("Rig: setPelvisDropLimit lets the pelvis go down deeper for a kept foot", "[rig][pelvis]") {
+    // A lunge: the pelvis travels away from a kept rear foot; with a deeper
+    // limit the pelvis goes down further (never beyond it) and the foot
+    // holds its place longer.
+    struct Result {
+        float FootMove = 0.0f;
+        float PelvisDrop = 0.0f;
+    };
+    const auto travel = [](std::optional<float> Limit) {
+        Solo Stage(makeSetup(0.0f, true));
+        Rig& Body = Stage.Body;
+        Stage.run(10);
+        const auto getAnkleX = [&] {
+            return Body.getPartPosition(BodyPart::Pelvis).X + Body.measureLegsNow().Right.Ankle.X;
+        };
+        const float AnkleX = getAnkleX();
+        const float PelvisY = Body.getPartPosition(BodyPart::Pelvis).Y;
+        Result Out;
+        for (int Step = 0; Step < 14; ++Step) {
+            Body.keepFeetPlanted();
+            Body.setPelvisDropLimit(Limit);
+            Body.getController().setClipTravel(0.015f);
+            Body.planMotion(Dt);
+            Body.applyControl(Dt);
+            Stage.PhysWorld.step(Dt);
+            Out.PelvisDrop = std::max(Out.PelvisDrop, PelvisY - Body.getPartPosition(BodyPart::Pelvis).Y);
+        }
+        Out.FootMove = std::abs(getAnkleX() - AnkleX);
+        return Out;
+    };
+    const ControlParams& Control = loadHumanoid().Control;
+    const Result Default = travel(std::nullopt);
+    const Result Deep = travel(0.1f);
+    INFO("default: drop " << Default.PelvisDrop << " m, foot " << Default.FootMove << " m; deep: drop "
+                          << Deep.PelvisDrop << " m, foot " << Deep.FootMove << " m");
+    CHECK(Default.PelvisDrop <= Control.MaxPelvisDrop + 1e-3f);
+    CHECK(Deep.PelvisDrop > Control.MaxPelvisDrop + 0.01f);
+    CHECK(Deep.PelvisDrop <= 0.1f + 1e-3f);
+    CHECK(Deep.FootMove < Default.FootMove);
+}
+
 TEST_CASE("Rig: dropLiftedFootOffsets puts a lifted foot where the pose has it", "[rig]") {
     Solo Stage(makeSetup(0.0f, true));
     Rig& Body = Stage.Body;

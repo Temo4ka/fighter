@@ -234,7 +234,12 @@ void Checker::checkMoveSetFiles(const MoveLibrary& Library, const std::set<std::
         const std::string File = std::format("movesets/{}.json", Set.Id);
         for (size_t Zone = 0; Zone < BlockZoneCount; ++Zone) {
             if (const auto& Name = Set.Block.Clips[Zone]) {
-                requireClip(File, std::format("block.clips.{}", ZoneNames[Zone]), *Name);
+                const anim::Clip* Clip = requireClip(File, std::format("block.clips.{}", ZoneNames[Zone]), *Name);
+                if (Clip && !Clip->PelvisTrack.empty()) {
+                    add(File, std::format("field 'block.clips.{}': '{}' has a pelvis track (pelvisX), but only "
+                                          "attacks move the pelvis",
+                                          ZoneNames[Zone], *Name));
+                }
             }
         }
     }
@@ -245,8 +250,12 @@ void Checker::checkStateClips() {
                                         clips::BlockMid, clips::BlockLow, clips::Flinch, clips::Stagger,
                                         clips::Knockback}) {
         std::string Why;
-        if (!findClip(std::string(Name), Why)) {
+        const anim::Clip* Clip = findClip(std::string(Name), Why);
+        if (!Clip) {
             add(std::format("poses/{}.json", Name), std::format("a clip the state machine plays: {}", Why));
+        } else if (!Clip->PelvisTrack.empty()) {
+            add(std::format("poses/{}.json", Name),
+                "field 'pelvisX': a clip the state machine plays has a pelvis track, but only attacks move the pelvis");
         }
     }
 }

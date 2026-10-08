@@ -10,10 +10,13 @@
 /// standing fighter is along the arena. The pelvis is a kinematic body, so
 /// this controller, not a force, decides how it moves.
 ///
-/// Its motion is the sum of two velocities:
+/// Its motion is the sum of two velocities and a travel:
 ///  - walking: approaches the requested speed with a limited acceleration;
 ///  - knockback: set by hits (impulse / mass of the fighter) and decaying
-///    exponentially.
+///    exponentially;
+///  - the clip's travel: the step of the pelvis track of the clip on top (a
+///    lunge, anim::Clip::PelvisTrack), planned like the walk, so the
+///    corrections stop it the same way (setClipTravel()).
 ///
 /// One step is plan() -> corrections by the battle (arena walls, the other
 /// fighter: limit(), shift()) -> commit(). Pure logic, no physics.
@@ -55,8 +58,12 @@ public:
         PushOut += Added;
     }
 
+    /// The clip on top moves the pelvis by \p Travel (m, signed along X) in
+    /// the next plan() (the step of its pelvis track); used once.
+    void setClipTravel(float Travel) { ClipTravel = Travel; }
+
     /// Advances the walking speed and the knockback by \p Dt and plans the
-    /// position at the end of the step.
+    /// position at the end of the step (with the clip's travel).
     void plan(float Dt);
     /// Keeps the planned position within [MinX, MaxX]; motion that pushes
     /// further out stops (a wall).
@@ -91,9 +98,17 @@ public:
     float getKnockback() const { return Knockback; }
     /// The part of the knockback that is the push-out (addPushOut()), m/s.
     float getPushOut() const { return PushOut; }
-    /// How far plan() moved the planned position in this step (walking and
-    /// knockback, before any correction), m.
+    /// How far plan() moved the planned position in this step (walking,
+    /// knockback and the clip's travel, before any correction), m.
     float getPlannedTravel() const { return PlannedTravel; }
+    /// The clip's part of the planned travel of this step, m.
+    float getPlannedClipTravel() const { return PlannedClipTravel; }
+    /// How far the clip's travel really took the pelvis in the last
+    /// committed step, m: its share of the planned travel that the pelvis
+    /// made after the corrections (getTravelShare()).
+    float getClipTravelMade() const { return ClipTravelMade; }
+    /// The same as a velocity, m/s.
+    float getClipVelocity() const { return ClipVelocity; }
     /// The share of \p Travel (m, from the current position) that ending
     /// the step at \p EndX makes, in [0, 1]: 0 at the start (or behind it),
     /// 1 at the end of the travel (or beyond it). 1 for no travel.
@@ -133,6 +148,10 @@ private:
     float Knockback = 0.0f;
     float PushOut = 0.0f;
     float PlannedTravel = 0.0f;
+    float ClipTravel = 0.0f;
+    float PlannedClipTravel = 0.0f;
+    float ClipTravelMade = 0.0f;
+    float ClipVelocity = 0.0f;
     float SpacingShift = 0.0f;
     float WallShift = 0.0f;
     SpacingMotion Spacing;
