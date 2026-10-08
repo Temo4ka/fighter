@@ -463,19 +463,25 @@ TEST_CASE("Fight: a hit may be chained into the next strike", "[combat][fight]")
 }
 
 TEST_CASE("Fight: a weapon brings its own move", "[combat][fight][data]") {
-    const auto heavyMoveOf = [](const FighterConfig& Who) {
+    const auto moveOf = [](const FighterConfig& Who, MoveButton Button) {
         BattleConfig Config = makeConfig();
         Config.Left = Who;
         Battle Fight(Config);
-        Fight.update(press(MoveButton::HeavyPunch), {}, Dt);
+        Fight.update(press(Button), {}, Dt);
         for (const BattleEvent& Event : Fight.getEvents()) {
             if (const auto* Start = std::get_if<StrikeStarted>(&Event)) return Start->MoveId;
         }
         return std::string();
     };
+    const auto heavyMoveOf = [&](const FighterConfig& Who) { return moveOf(Who, MoveButton::HeavyPunch); };
     CHECK(heavyMoveOf(FighterConfig{}) == "heavy_punch");
     CHECK(heavyMoveOf(loadFighter("rogue")) == "sword_slash");
     CHECK(heavyMoveOf(loadFighter("knight")) == "hammer_smash");
+    // With a weapon, Light strikes with it too (decision 2026-10-08).
+    const auto lightMoveOf = [&](const FighterConfig& Who) { return moveOf(Who, MoveButton::Jab); };
+    CHECK(lightMoveOf(FighterConfig{}) == "jab");
+    CHECK(lightMoveOf(loadFighter("rogue")) == "sword_cut");
+    CHECK(lightMoveOf(loadFighter("knight")) == "hammer_bash");
 }
 
 TEST_CASE("Fight: DEX speeds strikes up within the O.7 corridor", "[combat][fight][data]") {

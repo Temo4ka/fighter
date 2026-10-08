@@ -1,7 +1,7 @@
 {
     "inherit": "unarmed",
     "moves": {
-        "Up+Light": "hammer_bash",
+        "Light": "hammer_bash",
         "Heavy": "hammer_smash",
         "Forward+Heavy": "hammer_swing",
         "Down+Heavy": "hammer_sweep",

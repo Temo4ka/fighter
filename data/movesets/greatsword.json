@@ -1,7 +1,7 @@
 {
     "inherit": "unarmed",
     "moves": {
-        "Up+Light": "sword_cut",
+        "Light": "sword_cut",
         "Heavy": "greatsword_slash",
         "Forward+Heavy": "greatsword_thrust",
         "Down+Heavy": "greatsword_sweep",

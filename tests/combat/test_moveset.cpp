@@ -165,7 +165,8 @@ TEST_CASE("MoveLibrary: the sample data loads", "[combat][moveset][data]") {
     CHECK(Find(Unarmed, "Down+Kick") == "body_kick");   // unassigned: Down falls back to Neutral
     CHECK(Find(Library.selectSet("sword", ""), "Heavy") == "sword_slash");
     CHECK(Find(Library.selectSet("hammer", ""), "Heavy") == "hammer_smash");
-    CHECK(Find(Library.selectSet("hammer", ""), "Light") == "jab");
+    CHECK(Find(Library.selectSet("hammer", ""), "Light") == "hammer_bash");   // with a weapon, Light strikes with it
+    CHECK(Find(Library.selectSet("hammer", ""), "Kick") == "body_kick");
     CHECK(Library.selectSet("sword", "shield").Id == "sword_shield");
     CHECK(Find(Library.selectSet("sword", "shield"), "Heavy") == "sword_slash");
 }
