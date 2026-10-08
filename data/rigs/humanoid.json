@@ -42,7 +42,7 @@
 
   "yieldPose": { "UpperArmL": 30, "ForearmL": 145, "UpperArmR": 20, "ForearmR": 145 },
 
-  "weapon": { "part": "ForearmR", "angle": 0, "radius": 0.025 },
+  "weapon": { "part": "ForearmL", "offPart": "ForearmR", "angle": 0, "radius": 0.025, "grip": 0.1 },
 
   "control": {
     "torqueScale": 1.0,
@@ -92,6 +92,11 @@
     "jamSec": 0.3,
     "yieldStiffness": 0.3,
     "yieldSec": 0.25,
-    "yieldReturnClearance": 0.05
+    "yieldReturnClearance": 0.05,
+
+    "gripHertz": 6.0,
+    "gripDampingRatio": 0.7,
+    "gripMaxStretch": 0.12,
+    "gripArmStiffness": 0.4
   }
 }

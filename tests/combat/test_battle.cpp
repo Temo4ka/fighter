@@ -356,12 +356,9 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     ScratchData Data("knockdown");
     Data.write("reactions.json", makeReactionsJson(makeKnockdownKicks()));
     Battle Fight(Data.makeConfig());
-    // One kick, then nothing: the dummy falls, lies and gets up. A low kick:
-    // it sweeps the legs, so the body falls at once. (The body kick lands
-    // on the pelvis, close to the center of mass, which hardly turns the
-    // body: it sinks to its knees first and lies after about 1.1 s.)
+    // One body kick, then nothing: the dummy falls, lies and gets up.
     const int Ticks = 6 * TicksPerSecond;
-    const AttackLog Log = attackDummy(Fight, MoveButton::LowKick, Ticks, Ticks, KickRange);
+    const AttackLog Log = attackDummy(Fight, MoveButton::BodyKick, Ticks, Ticks, KickRange);
 
     REQUIRE(Log.FirstHitTick.has_value());
     REQUIRE(Log.DownTick.has_value());
@@ -382,7 +379,7 @@ TEST_CASE("Battle: a strong kick knocks the fighter down and it gets up", "[comb
     bool GotUp = false;
     for (int Tick = 0; Tick < Ticks && !(UpTick && GotUp); ++Tick) {
         const bool InRange = getRight(Again).Position.X - getLeft(Again).Position.X <= KickRange;
-        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .Down = InRange && !HitTick, .Kick = InRange && !HitTick}, {}, Dt);
+        Again.update({.MoveX = HitTick || InRange ? 0.0f : 1.0f, .Kick = InRange && !HitTick}, {}, Dt);
         if (!HitTick && !getHits(Again).empty()) HitTick = Tick;
         if (!UpTick && HitTick && Tick > *HitTick + TicksPerSecond && isUpright(getRight(Again))) UpTick = Tick;
         GotUp = GotUp || std::ranges::any_of(Again.getEvents(), [](const BattleEvent& Event) {

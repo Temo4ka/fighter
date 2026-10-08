@@ -1,0 +1,19 @@
+{
+    "clip": "sword_spin",
+    "uses_weapon": true,
+    "damage": 1.6,
+    "min_reaction": "Stagger",
+    "stamina": 20,
+    "tags": [
+        "mid",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.7,
+            1.2
+        ],
+        "role": "heavy",
+        "weight": 0.5
+    }
+}

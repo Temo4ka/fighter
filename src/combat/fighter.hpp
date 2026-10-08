@@ -18,7 +18,7 @@
 ///       Block wins over attacking, attacking over crouching, crouching
 ///       over walking. Crouched, the fighter walks slowly with bent knees
 ///       (the crouch_walk clip) and may strike with a move mapped to a
-///       downward direction (Down+Kick: the low kick) or
+///       downward direction (Down+Heavy of a sword: its low cut) or
 ///       block low; any other strike stands it up first (Idle for
 ///       CombatTuning::CrouchStandUpSec), then starts. Blocking, it can only
 ///       step back, slowly.
@@ -112,13 +112,15 @@ struct HitRecord {
     std::string MoveId;
     BodyPart Part = BodyPart::Torso;
     HitOutcome Outcome;
+    bool OnShield = false;   ///< It landed on the shield the fighter holds.
 };
 
 class Fighter {
 public:
     /// \p Rules must outlive the fighter. \p StartHp: see
-    /// FighterConfig::StartHp. \p Gear gives the weapon (main hand) and the
-    /// moveset (the items in both hands, MoveLibrary::selectSet()).
+    /// FighterConfig::StartHp. \p Gear gives the weapons of both hands (on
+    /// the forearms of \p Description's weapon mount) and the moveset and
+    /// its block (the items in both hands, MoveLibrary::selectSet()).
     Fighter(physics::World& PhysWorld, const rig::RigDef& Description, const BattleRules& Rules,
             const stats::PhysicalProfile& NewProfile, const stats::Loadout& Gear, const rig::RigSetup& Setup,
             std::optional<float> StartHp);
@@ -197,6 +199,12 @@ public:
     /// Is \p Part a striking part of an attack in its striking phase that
     /// has not landed yet? Only such contacts are hits; the rest are bumps.
     bool isStrikingWith(BodyPart Part) const;
+    /// The block of the fighter's moveset (with its parents and the general
+    /// rules of reactions.json).
+    const BlockRules& getBlock() const { return Block; }
+    /// The clip of the guard the fighter holds (or would hold) now: its
+    /// block's clip for Guard.
+    const anim::Clip& getBlockClip() const;
     /// Back against the arena wall behind it (O.11): cannot retreat.
     bool isAgainstWall() const;
     /// Where the opponent is; the fighter turns that way when it is free to.
@@ -283,7 +291,12 @@ private:
     void startLegStep(const anim::Clip& Top, const anim::Pose& Target);
     /// \p Authored as this fighter plays it now: mirrored (left leg for
     /// right) when it poses the legs and LegsMirrored is set.
-    const anim::Clip& getPlayed(const anim::Clip& Authored) const;
+    /// With \p OtherHand, also with the arms swapped (a weapon in the other
+    /// hand, ClipLibrary::getOtherHand()).
+    const anim::Clip& getPlayed(const anim::Clip& Authored, bool OtherHand = false) const;
+    /// Chooses StrikeWeapon and StrikeOtherHand for a weapon move of the clip
+    /// \p Authored.
+    void chooseStrikeWeapon(const anim::Clip& Authored);
     /// Should a leg action that starts now play mirrored: the right foot is
     /// in front and the tuning says "mirror"?
     bool shouldMirrorLegs() const;
@@ -334,6 +347,18 @@ private:
     /// or re-step going on.
     void updateRestStep(TargetPoses& Target, float Dt);
     /// @}
+    /// \name The panel lines of the moveset
+    /// @{
+    /// "sword_shield (pair sword + shield) < sword < unarmed; Short sword in
+    /// ForearmR".
+    std::string describeMoveSet() const;
+    /// "Forward+Light+Heavy (waiting for a combination 0.02/0.05 s)".
+    std::string describeInput() const;
+    /// "Forward+Heavy -> sword_slash (sword), Short sword in the other hand".
+    std::string describeSelected() const;
+    /// "dmg x0.05, max Touch, stamina x0.60; Mid: block_mid, covers Head Torso".
+    std::string describeBlock() const;
+    /// @}
     std::string describeLegs() const;
     /// "step 0.12 of 0.48 m", "settle around FootL, pelvis 0.08 m to go",
     /// "rest; re-steps 2, last FootR 0.07 m".
@@ -367,8 +392,20 @@ private:
     rig::Rig Body;
     const BattleRules* Rules = nullptr;
     stats::PhysicalProfile Profile;
-    std::optional<stats::WeaponProps> Weapon;
+    /// A weapon in a hand: the forearm that holds it (RigDef::Weapon).
+    struct HandWeapon {
+        BodyPart Part = BodyPart::ForearmR;
+        stats::WeaponProps Props;
+        std::string ItemName;
+    };
+    std::vector<HandWeapon> Weapons;       ///< Main hand first.
+    /// The weapon of the current weapon move (index into Weapons), if any.
+    std::optional<size_t> StrikeWeapon;
+    /// The current attack plays with the arms swapped: its weapon is in the
+    /// other hand than the clip was authored for.
+    bool StrikeOtherHand = false;
     const MoveSet* Set = nullptr;          ///< From the weapon: which input starts which move, and the block.
+    BlockRules Block;                      ///< The block of Set, with its parents and reactions.json.
     float Hp = 0.0f;
     float Stamina = 0.0f;
     bool Exhausted = false;
@@ -465,7 +502,7 @@ private:
     };
     std::optional<StrideAnchor> Anchor;
     std::string LastRestep;                ///< The last one, for the debug panel.
-    bool AttackFromCrouch = false;         ///< The attack (a low kick) started crouched: the crouch stays below it.
+    bool AttackFromCrouch = false;         ///< The attack (a downward move) started crouched: the crouch stays below it.
     const MoveDef* PendingAttack = nullptr; ///< Pressed while crouched: starts once the fighter stood up.
     float StandUpLeftSec = 0.0f;
 
@@ -485,6 +522,13 @@ private:
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.
     int ChainLength = 0;                   ///< Strikes in the current chain, this one included.
     const MoveDef* ChainRequest = nullptr;
+    const MoveSetEntry* ChainEntry = nullptr;   ///< The line of Set that asked for ChainRequest.
+    /// The buttons pressed within the combo window (InputRules::ComboWindowSec).
+    PressWindow Presses;
+    /// A press waits for the rest of a combination in the combo window.
+    bool WaitingForCombo = false;
+    /// The line of Set that chose the last move started (for the panel).
+    const MoveSetEntry* Selected = nullptr;
 
     ReactionLevel Reaction = ReactionLevel::None;   ///< While Reacting.
     float StunLeftSec = 0.0f;

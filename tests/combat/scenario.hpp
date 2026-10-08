@@ -41,25 +41,23 @@
 
 namespace fighter::combat::test {
 
-/// The four strikes of the "unarmed" moveset, as the tests press them.
-enum class MoveButton : uint8_t { Jab, HeavyPunch, BodyKick, LowKick, Count };
+/// The three basic strikes of the "unarmed" moveset, as the tests press them.
+enum class MoveButton : uint8_t { Jab, HeavyPunch, BodyKick, Count };
 
 inline constexpr size_t MoveButtonCount = static_cast<size_t>(MoveButton::Count);
 
 constexpr std::string_view getMoveButtonName(MoveButton Button) {
-    constexpr std::array<std::string_view, MoveButtonCount> Names = {"Jab", "HeavyPunch", "BodyKick", "LowKick"};
+    constexpr std::array<std::string_view, MoveButtonCount> Names = {"Jab", "HeavyPunch", "BodyKick"};
     return Names[static_cast<size_t>(Button)];
 }
 
-/// Holds the input of \p Button in \p Cmd if \p Held: Light, Heavy, Kick,
-/// or Down+Kick for the low kick.
+/// Holds the input of \p Button in \p Cmd if \p Held: Light, Heavy or Kick.
 constexpr void pressMove(PlayerCommands& Cmd, MoveButton Button, bool Held = true) {
     if (!Held) return;
     switch (Button) {
         case MoveButton::Jab: Cmd.Light = true; break;
         case MoveButton::HeavyPunch: Cmd.Heavy = true; break;
         case MoveButton::BodyKick: Cmd.Kick = true; break;
-        case MoveButton::LowKick: Cmd.Down = Cmd.Kick = true; break;
         case MoveButton::Count: break;
     }
 }
@@ -212,7 +210,7 @@ inline std::string makeReactionsJson(const ReactionSpec& Spec) {
 }
 
 /// Thresholds so low that a clean kick knocks the fighter down: a body kick
-/// (0.5-0.6 m/s on the pelvis) and a low kick (0.1-0.25 m/s on a shin).
+/// (0.5-0.6 m/s on the pelvis, less on a thigh).
 inline ReactionSpec makeKnockdownKicks() { return {.MinStrength = {0.01f, 0.02f, 0.04f, 0.06f, 0.08f}}; }
 
 /// Thresholds so high that nothing knocks the fighter down.

@@ -1,0 +1,18 @@
+{
+    "clip": "hammer_upswing",
+    "uses_weapon": true,
+    "damage": 1.6,
+    "min_reaction": "Stagger",
+    "stamina": 19,
+    "tags": [
+        "high",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.3,
+            0.8
+        ],
+        "role": "anti_close"
+    }
+}

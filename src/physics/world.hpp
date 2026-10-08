@@ -25,7 +25,7 @@
 /// Box2D does not collide two kinematic bodies at all, so the world checks
 /// the kinematic parts of different fighters against each other itself
 /// after every step: a posed leg that starts touching the opponent's posed
-/// leg or pelvis fast enough is a hit like any other (a low kick). Nothing
+/// leg or pelvis fast enough is a hit like any other (a kick to the legs). Nothing
 /// pushes back: both bodies are moved by code. A fast limb moves far in one
 /// step, so the normal of such a hit is taken from where the two parts were
 /// closest before the step, when they were still apart. Nothing stops a posed
@@ -95,6 +95,7 @@ public:
     Body createBody(const BodyDef& Def);
     void addShape(Body Target, const ShapeDef& Shape);
     RevoluteJoint createRevoluteJoint(const RevoluteJointDef& Def);
+    SpringJoint createSpringJoint(const SpringJointDef& Def);
     /// @}
 
     /// Switches a body between kinematic and dynamic. Set the mass of a body
@@ -186,6 +187,9 @@ public:
     /// limits swapped and negated; the motor keeps its settings. Returns the
     /// new joint; \p Joint becomes invalid.
     RevoluteJoint mirrorJoint(RevoluteJoint Joint);
+    /// The same for a spring joint: the local anchors mirrored, the spring
+    /// and the limit kept.
+    SpringJoint mirrorJoint(SpringJoint Joint);
     /// @}
 
     /// Hits between body parts of different fighters during the last step,

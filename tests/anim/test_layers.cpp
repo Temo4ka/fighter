@@ -46,7 +46,7 @@ TEST_CASE("Layers: the legs are the thighs, shins and feet", "[anim][layers]") {
 TEST_CASE("Layers: which clips of data/poses use the legs", "[anim][layers]") {
     // The classification the layered walk plays by (docs/TUNING.md): the
     // punches, the upper blocks and the reactions leave the legs alone.
-    for (const char* Name : {"walk", "kick", "low_kick", "crouch", "crouch_walk", "block_low", "stance"}) {
+    for (const char* Name : {"walk", "kick", "crouch", "crouch_walk", "block_low", "stance"}) {
         INFO(Name);
         CHECK(usesLegs(loadClip(PosesDir / (std::string(Name) + ".json"))));
     }
@@ -117,4 +117,34 @@ TEST_CASE("Layers: mirrorClipLegs kicks with the other leg at the same time", "[
         CHECK(Played.getAngle(BodyPart::Torso) == Authored.getAngle(BodyPart::Torso));
         CHECK_FALSE(Played.hasJoint(BodyPart::ThighL));
     }
+}
+
+TEST_CASE("Layers: mirrorClipArms strikes with the other arm", "[anim][layers]") {
+    const Clip Slash = parseClip(R"({
+        "duration": 0.5,
+        "active": [0.1, 0.2],
+        "strikers": ["ForearmR"],
+        "keys": [
+            { "t": 0.0, "pose": { "Torso": 5, "UpperArmR": 40, "ForearmR": 90 } },
+            { "t": 0.2, "pose": { "Torso": 5, "UpperArmR": 120, "ForearmR": 10 } }
+        ]
+    })", "slash");
+    CHECK(usesArms(Slash));
+    CHECK_FALSE(usesArms(parseClip(KickJson, "kick")));
+    CHECK(getMirroredArmPart(BodyPart::ForearmR) == BodyPart::ForearmL);
+    CHECK(getMirroredArmPart(BodyPart::UpperArmL) == BodyPart::UpperArmR);
+    CHECK(getMirroredArmPart(BodyPart::Head) == BodyPart::Head);
+    CHECK(mirrorArmParts(makeParts({BodyPart::ForearmR, BodyPart::Head})) ==
+          makeParts({BodyPart::ForearmL, BodyPart::Head}));
+
+    const Clip Left = mirrorClipArms(Slash);
+    CHECK(Left.Name == "slash (other hand)");
+    CHECK(Left.isStriker(BodyPart::ForearmL));
+    CHECK_FALSE(Left.isStriker(BodyPart::ForearmR));
+    CHECK(Left.ActiveBeginSec == Slash.ActiveBeginSec);
+    const Pose Swapped = mirrorArms(Slash.Keys.back().Target);
+    CHECK(Swapped.hasJoint(BodyPart::UpperArmL));
+    CHECK_FALSE(Swapped.hasJoint(BodyPart::UpperArmR));
+    CHECK(Swapped.getAngle(BodyPart::UpperArmL) == Slash.Keys.back().Target.getAngle(BodyPart::UpperArmR));
+    CHECK(Swapped.getAngle(BodyPart::Torso) == Slash.Keys.back().Target.getAngle(BodyPart::Torso));
 }

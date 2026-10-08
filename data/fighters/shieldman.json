@@ -1,0 +1,14 @@
+{
+    "name": "Shieldman",
+    "stats": {
+        "strength": 12,
+        "dexterity": 10,
+        "constitution": 12
+    },
+    "items": [
+        "iron_helmet",
+        "chainmail",
+        "short_sword",
+        "wooden_shield"
+    ]
+}

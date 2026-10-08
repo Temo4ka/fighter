@@ -1,0 +1,19 @@
+{
+    "clip": "hammer_slam",
+    "uses_weapon": true,
+    "damage": 2.2,
+    "min_reaction": "Knockback",
+    "stamina": 28,
+    "tags": [
+        "high",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.6,
+            1.0
+        ],
+        "role": "heavy",
+        "weight": 0.4
+    }
+}

@@ -16,8 +16,10 @@
 ///              max(1 - buildup x threshold_drop, 0.2) <= strength,
 ///              not weaker than the move's min_reaction (clean hits only)
 ///
-/// A hit in the zone the victim blocks deals damage x block.damage_scale and
-/// its level is capped at block.max_level.
+/// A blocked hit deals damage x block.damage_scale and its level is capped
+/// at block.max_level. The block is the victim's moveset's (BlockRules,
+/// task M.2); the table's "block" is its root (getDefaultBlock()). Whether a
+/// guard stops a hit: isBlockedBy().
 ///
 /// Pure logic; the fighter applies the outcome (HP, stun, buildup, stamina).
 /// The file is internal to the combat module.
@@ -34,6 +36,7 @@
 
 #include "combat/commands.hpp"
 #include "combat/events.hpp"
+#include "combat/moveset.hpp"
 #include "core/body.hpp"
 
 namespace fighter::combat {
@@ -73,6 +76,12 @@ struct HitInput {
     float Poise = 1.0f;                ///< The victim's PhysicalProfile::Poise.
     float Buildup = 0.0f;              ///< The victim's buildup before this hit.
     std::optional<BlockZone> Guard;    ///< The zone the victim blocks, if it blocks.
+    /// The victim's block (its moveset's); nullptr: the table's alone
+    /// (getDefaultBlock()).
+    const BlockRules* Block = nullptr;
+    /// The hit landed on the plate of a shield the victim holds in the off
+    /// hand (a guarding shield): blocked in any guard.
+    bool OnShield = false;
     float MoveDamage = 1.0f;           ///< MoveDef::Damage.
     float PowerScale = 1.0f;           ///< WeaponProps::PowerScale for a weapon move, else 1.
     ReactionLevel MinReaction = ReactionLevel::None;   ///< MoveDef::MinReaction.
@@ -90,6 +99,18 @@ struct HitOutcome {
 /// Does a block of \p Zone cover \p Part? High: the head; Mid: the torso and
 /// the arms; Low: the pelvis and the legs (decision O.2).
 bool isCoveredBy(BlockZone Zone, BodyPart Part);
+
+/// The block rules of the table alone: its damage scale and max level, a
+/// stamina scale of 1, the clips block_high/mid/low and the zones of
+/// decision O.2 (isCoveredBy()). The root every moveset's block inherits
+/// from (MoveLibrary::getBlock()).
+BlockRules getDefaultBlock(const ReactionTable& Table);
+
+/// Does \p Block guarding \p Guard stop a hit on \p Part? Physics decides
+/// (decision 2026-10-08): the part the strike touched must be one the guard
+/// covers; the move's height tag plays no part. A hit on the plate of a
+/// guarding shield (\p OnShield) is stopped by any guard.
+bool isBlockedBy(const BlockRules& Block, BlockZone Guard, BodyPart Part, bool OnShield = false);
 
 /// How much the thresholds are scaled for a victim with \p Poise and
 /// \p Buildup: poise x max(1 - buildup x threshold_drop, MinThresholdScale).

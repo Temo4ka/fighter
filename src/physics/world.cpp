@@ -30,6 +30,8 @@ namespace {
 
 /// Debug draw size of a joint (the circle around the hinge), m.
 constexpr float JointDrawSize = 0.05f;
+/// The rest length of a spring joint, m: Box2D needs a positive one.
+constexpr float MinSpringLength = 0.005f;
 /// Contact points looked at per shape when summing the impulse of a hit.
 constexpr int MaxContactsPerShape = 16;
 /// A body part has one or two shapes; more is never needed.
@@ -511,6 +513,44 @@ RevoluteJoint World::mirrorJoint(RevoluteJoint Joint) {
     return RevoluteJoint(b2StoreJointId(b2CreateRevoluteJoint(loadWorld(Id), &Def)));
 }
 
+SpringJoint World::createSpringJoint(const SpringJointDef& Def) {
+    b2DistanceJointDef JointDef = b2DefaultDistanceJointDef();
+    JointDef.bodyIdA = loadBody(Def.BodyA.Id);
+    JointDef.bodyIdB = loadBody(Def.BodyB.Id);
+    JointDef.localAnchorA = toBox2D(Def.LocalAnchorA);
+    JointDef.localAnchorB = toBox2D(Def.LocalAnchorB);
+    // The shortest rest length Box2D takes (it must be positive): the spring
+    // pulls the anchors onto each other.
+    JointDef.length = MinSpringLength;
+    JointDef.enableSpring = Def.Hertz > 0.0f;
+    JointDef.hertz = Def.Hertz;
+    JointDef.dampingRatio = Def.DampingRatio;
+    JointDef.enableLimit = Def.MaxLength > 0.0f;
+    JointDef.minLength = 0.0f;
+    JointDef.maxLength = Def.MaxLength > 0.0f ? Def.MaxLength : std::numeric_limits<float>::max();
+    return SpringJoint(b2StoreJointId(b2CreateDistanceJoint(loadWorld(Id), &JointDef)));
+}
+
+SpringJoint World::mirrorJoint(SpringJoint Joint) {
+    const b2JointId Old = loadJoint(Joint.Id);
+    b2DistanceJointDef Def = b2DefaultDistanceJointDef();
+    Def.bodyIdA = b2Joint_GetBodyA(Old);
+    Def.bodyIdB = b2Joint_GetBodyB(Old);
+    const b2Vec2 AnchorA = b2Joint_GetLocalAnchorA(Old);
+    const b2Vec2 AnchorB = b2Joint_GetLocalAnchorB(Old);
+    Def.localAnchorA = {-AnchorA.x, AnchorA.y};
+    Def.localAnchorB = {-AnchorB.x, AnchorB.y};
+    Def.length = b2DistanceJoint_GetLength(Old);
+    Def.enableSpring = b2DistanceJoint_IsSpringEnabled(Old);
+    Def.hertz = b2DistanceJoint_GetSpringHertz(Old);
+    Def.dampingRatio = b2DistanceJoint_GetSpringDampingRatio(Old);
+    Def.enableLimit = b2DistanceJoint_IsLimitEnabled(Old);
+    Def.minLength = b2DistanceJoint_GetMinLength(Old);
+    Def.maxLength = b2DistanceJoint_GetMaxLength(Old);
+    b2DestroyJoint(Old);
+    return SpringJoint(b2StoreJointId(b2CreateDistanceJoint(loadWorld(Id), &Def)));
+}
+
 void World::drawDebug() const {
     if constexpr (FIGHTER_DEBUG) detail::drawWorldDebug(loadWorld(Id));
 }
@@ -752,7 +792,7 @@ b2Polygon makeBox(const ShapeDef& Shape) {
     // outer size equal to HalfExtents.
     const float Rounding = Shape.Radius;
     return b2MakeOffsetRoundedBox(Shape.HalfExtents.X - Rounding, Shape.HalfExtents.Y - Rounding,
-                                  toBox2D(Shape.Center), b2Rot_identity, Rounding);
+                                  toBox2D(Shape.Center), b2MakeRot(Shape.Angle), Rounding);
 }
 
 /// The material id of a fighter's body part that carries the friction

@@ -26,6 +26,7 @@ add_executable(fighter_tests
     combat/test_no_passthrough.cpp
     combat/test_clip_library.cpp
     combat/test_fight.cpp
+    combat/test_hands.cpp
     combat/test_commands.cpp
     combat/test_leg_cycle.cpp
     combat/test_leg_step.cpp

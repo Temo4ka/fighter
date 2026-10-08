@@ -10,6 +10,9 @@ namespace fighter::render {
 namespace {
 
 std::string joinNames(const std::vector<BodyPart>& Parts);
+/// The same part of the other arm (ForearmL <-> ForearmR, UpperArmL <->
+/// UpperArmR); any other part as it is.
+BodyPart getOtherArmPart(BodyPart Part);
 const SkinDef* findSkin(const Visuals& Vis, const FighterLook& Look);
 void resolveItem(const Visuals& Vis, const SkinDef* Skin, const ItemLook& Item, const TextureLoader& Load,
                  FighterSprites& Out);
@@ -20,7 +23,14 @@ FighterLook makeFighterLook(const combat::FighterConfig& Config, std::string Ski
     FighterLook Look;
     Look.Name = Config.Name.empty() ? std::string(FallbackName) : Config.Name;
     Look.Skin = std::move(Skin);
-    for (const auto& Item : Config.Loadout.Items) Look.Items.push_back({Item.Id, Item.Covers});
+    for (const auto& Item : Config.Loadout.Items) {
+        // A held item is drawn on the forearm that holds it; a two-handed
+        // one, which weighs on both, only on the main hand's.
+        const bool Held = stats::isHandSlot(Item.Slot);
+        Look.Items.push_back({.Id = Item.Id,
+                              .Covers = Held ? std::vector{stats::getHandPart(Item.Slot)} : Item.Covers,
+                              .Held = Held});
+    }
     return Look;
 }
 
@@ -97,10 +107,17 @@ void resolveItem(const Visuals& Vis, const SkinDef* Skin, const ItemLook& Item, 
     std::vector<BodyPart> Missing;
     for (const BodyPart Part : Item.Covers) {
         SpriteRef Ref;
+        // A held item's picture for the other arm serves this one too.
+        BodyPart Pictured = Part;
         Ref.Texture = Load(getPicturePath(Dir, Part), Smooth);
+        if (!Ref.Texture && Item.Held && getOtherArmPart(Part) != Part) {
+            Pictured = getOtherArmPart(Part);
+            Ref.Texture = Load(getPicturePath(Dir, Pictured), Smooth);
+        }
         Ref.MetersPerPixel = 1.0f / PixelsPerMeter;
         if (Def) {
-            if (const auto Origin = Def->Origins.find(Part); Origin != Def->Origins.end()) Ref.Origin = Origin->second;
+            const auto Origin = Def->Origins.find(Def->Origins.contains(Part) ? Part : Pictured);
+            if (Origin != Def->Origins.end()) Ref.Origin = Origin->second;
         }
         if (!Ref.Texture) {
             Missing.push_back(Part);
@@ -110,6 +127,16 @@ void resolveItem(const Visuals& Vis, const SkinDef* Skin, const ItemLook& Item, 
     }
     Out.MissingFiles += Missing.size();
     if (!Missing.empty()) log::warnOnce("item {}: no pictures for {} in {}, not drawn", Item.Id, joinNames(Missing), Dir);
+}
+
+BodyPart getOtherArmPart(BodyPart Part) {
+    switch (Part) {
+        case BodyPart::UpperArmL: return BodyPart::UpperArmR;
+        case BodyPart::UpperArmR: return BodyPart::UpperArmL;
+        case BodyPart::ForearmL: return BodyPart::ForearmR;
+        case BodyPart::ForearmR: return BodyPart::ForearmL;
+        default: return Part;
+    }
 }
 
 } // namespace

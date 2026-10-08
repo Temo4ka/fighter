@@ -19,10 +19,25 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<c
         Library.add(PosesDir, Move.Clip);
         if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip);
     }
-    for (const auto& [Name, Clip] : Library.Clips) {
-        if (anim::usesLegs(Clip)) Library.Mirrored.emplace(Name, anim::mirrorClipLegs(Clip));
-    }
+    for (const auto& Entry : Library.Clips) Library.addCopies(Entry.first);
     return Library;
+}
+
+ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveLibrary& Library) {
+    ClipLibrary Clips = load(PosesDir, Library.getMoves());
+    for (const MoveSet& Set : Library.getSets()) {
+        for (const std::optional<std::string>& Name : Set.Block.Clips) {
+            if (!Name || Clips.Clips.contains(*Name)) continue;
+            try {
+                Clips.add(PosesDir, *Name);
+            } catch (const std::exception& Error) {
+                throw std::runtime_error(std::format("movesets/{}.json: block clip '{}': {}", Set.Id, *Name,
+                                                     Error.what()));
+            }
+            Clips.addCopies(*Name);
+        }
+    }
+    return Clips;
 }
 
 const anim::Clip& ClipLibrary::get(std::string_view Name) const {
@@ -61,14 +76,48 @@ const anim::Clip& ClipLibrary::getMirrored(const anim::Clip& Source) const {
     return Found == Mirrored.end() ? Source : Found->second;
 }
 
-const anim::Clip& ClipLibrary::getAuthored(const anim::Clip& Source) const {
+const anim::Clip& ClipLibrary::getOtherHand(const anim::Clip& Source) const {
+    const auto Authored = Clips.find(Source.Name);
+    if (Authored != Clips.end() && &Authored->second == &Source) {
+        const auto Found = OtherHand.find(Source.Name);
+        return Found == OtherHand.end() ? Source : Found->second;
+    }
     for (const auto& [Name, Copy] : Mirrored) {
-        if (&Copy == &Source) return Clips.find(Name)->second;
+        if (&Copy != &Source) continue;
+        const auto Found = MirroredOtherHand.find(Name);
+        return Found == MirroredOtherHand.end() ? Source : Found->second;
+    }
+    return Source;
+}
+
+const anim::Clip& ClipLibrary::getAuthored(const anim::Clip& Source) const {
+    for (const auto* Copies : {&Mirrored, &OtherHand, &MirroredOtherHand}) {
+        for (const auto& [Name, Copy] : *Copies) {
+            if (&Copy == &Source) return Clips.find(Name)->second;
+        }
     }
     return Source;
 }
 
 bool ClipLibrary::isMirrored(const anim::Clip& Source) const { return &getAuthored(Source) != &Source; }
+
+bool ClipLibrary::isOtherHand(const anim::Clip& Source) const {
+    for (const auto* Copies : {&OtherHand, &MirroredOtherHand}) {
+        for (const auto& Entry : *Copies) {
+            if (&Entry.second == &Source) return true;
+        }
+    }
+    return false;
+}
+
+void ClipLibrary::addCopies(const std::string& Name) {
+    const anim::Clip& Authored = Clips.find(Name)->second;
+    const bool Legs = anim::usesLegs(Authored);
+    if (Legs) Mirrored.emplace(Name, anim::mirrorClipLegs(Authored));
+    if (!anim::usesArms(Authored)) return;
+    OtherHand.emplace(Name, anim::mirrorClipArms(Authored));
+    if (Legs) MirroredOtherHand.emplace(Name, anim::mirrorClipArms(Mirrored.find(Name)->second));
+}
 
 void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Name) {
     if (Clips.contains(Name)) return;

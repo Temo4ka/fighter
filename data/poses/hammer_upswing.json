@@ -1,0 +1,19 @@
+{
+  "loop": false,
+  "duration": 1.0,
+  "active": [0.4, 0.58],
+  "strikers": ["ForearmR"],
+  "stiffness": 1.8,
+  "allowMove": false,
+  "blendIn": 0.05,
+  "blendOut": 0.12,
+  "keys": [
+    { "t": 0.00, "pose": { "Torso": -8, "UpperArmR": 25, "ForearmR": 135 } },
+    { "t": 0.24, "pose": { "Torso": 12, "UpperArmR": -30, "ForearmR": 90 } },
+    { "t": 0.40, "pose": { "Torso": -18, "UpperArmR": 140, "ForearmR": 20 } },
+    { "t": 0.50, "pose": { "Torso": -22, "UpperArmR": 165, "ForearmR": 10 } },
+    { "t": 0.60, "pose": { "Torso": -22, "UpperArmR": 165, "ForearmR": 10 } },
+    { "t": 0.80, "pose": { "Torso": -14, "UpperArmR": 60, "ForearmR": 100 } },
+    { "t": 0.98, "pose": { "Torso": -8, "UpperArmR": 25, "ForearmR": 135 } }
+  ]
+}

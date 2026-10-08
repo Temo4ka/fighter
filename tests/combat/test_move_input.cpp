@@ -75,3 +75,35 @@ TEST_CASE("InputRules: data/input.json equals the defaults", "[combat][input][da
     CHECK(Loaded.ComboWindowSec == Defaults.ComboWindowSec);
     CHECK(Loaded.Fallbacks == Defaults.Fallbacks);
 }
+
+TEST_CASE("PressWindow: presses within the window count together", "[combat][input]") {
+    constexpr float Window = 0.05f;
+    constexpr float Tick = 1.0f / 60.0f;
+    PressWindow Presses;
+    CHECK(Presses.getButtons().isEmpty());
+    CHECK(Presses.getAgeSec() == 0.0f);
+
+    Presses.update(ButtonSet(AttackButton::Light), Window, Tick);
+    CHECK(Presses.getButtons() == ButtonSet(AttackButton::Light));
+    Presses.update({}, Window, Tick);
+    Presses.update(ButtonSet(AttackButton::Heavy), Window, Tick);
+    ButtonSet Both(AttackButton::Light);
+    Both.add(AttackButton::Heavy);
+    CHECK(Presses.getButtons() == Both);
+    CHECK(Presses.getAgeSec() > 1.5f * Tick);
+
+    // Light is older than the window two ticks later; Heavy is not yet.
+    Presses.update({}, Window, Tick);
+    Presses.update({}, Window, Tick);
+    CHECK(Presses.getButtons() == ButtonSet(AttackButton::Heavy));
+    Presses.clear();
+    CHECK(Presses.getButtons().isEmpty());
+
+    // A window of 0 keeps only the presses of this step.
+    Presses.update(ButtonSet(AttackButton::Kick), 0.0f, Tick);
+    CHECK(Presses.getButtons() == ButtonSet(AttackButton::Kick));
+    Presses.update({}, 0.0f, Tick);
+    CHECK(Presses.getButtons().isEmpty());
+
+    CHECK((ButtonSet(AttackButton::Light) | ButtonSet(AttackButton::Heavy)) == Both);
+}

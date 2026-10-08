@@ -184,19 +184,39 @@ struct ControlParams {
     /// guard does not come back and jam again while the opponent is close.
     float YieldReturnClearance = 0.05f;
     /// @}
+
+    /// \name Two-handed grip: the other hand on the handle
+    /// @{
+    /// A spring pulls the gripping fist onto the handle (WeaponMount::Grip):
+    /// its stiffness, Hz, and damping ratio (1 is critical).
+    float GripHertz = 6.0f;
+    float GripDampingRatio = 0.7f;
+    /// The fist never gets further from the handle than this, m.
+    float GripMaxStretch = 0.12f;
+    /// Multiplies the motor stiffness of the gripping arm, so that the
+    /// spring leads it rather than the clip's pose of that arm (0..1).
+    float GripArmStiffness = 0.4f;
+    /// @}
 };
 
-/// How the weapon of the loadout is attached to the body (the "weapon"
-/// object of a rig file). Its reach comes from the loadout
-/// (stats::WeaponProps::ReachM, RigSetup::WeaponReachM).
+/// How the items held in the hands are attached to the body (the "weapon"
+/// object of a rig file). Their shapes come from the loadout (RigSetup::Held);
+/// what an item leaves out comes from here.
 struct WeaponMount {
-    /// The capsule part that holds it; the weapon starts at the part's far
-    /// end ("to", the fist) and is a part of it for physics and hits.
+    /// The capsule part that holds the items of the main hand; a weapon
+    /// starts at the part's far end ("to", the fist) and is a part of it for
+    /// physics and hits.
     BodyPart Part = BodyPart::ForearmR;
+    /// The capsule part that holds the items of the other hand ("offPart");
+    /// by default the other forearm.
+    BodyPart OffPart = BodyPart::ForearmL;
     /// Direction relative to the part's axis (from "from" to "to"), rad;
     /// 0 continues the forearm.
     float Angle = 0.0f;
     float Radius = 0.025f;             ///< Thickness, m.
+    /// A two-handed weapon: how far along it from the holding fist the other
+    /// hand grips it ("grip"), m.
+    float Grip = 0.1f;
 };
 
 struct RigDef {

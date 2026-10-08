@@ -1,6 +1,18 @@
 {
     "inherit": "unarmed",
     "moves": {
-        "Heavy": "sword_slash"
+        "Light": "sword_cut",
+        "Heavy": "sword_slash",
+        "Forward+Heavy": "sword_thrust",
+        "Down+Heavy": "sword_low_cut",
+        "Up+Heavy": "sword_rising",
+        "Special": "sword_spin"
+    },
+    "block": {
+        "clips": {
+            "High": "block_high_sword",
+            "Mid": "block_mid_sword",
+            "Low": "block_low_sword"
+        }
     }
 }

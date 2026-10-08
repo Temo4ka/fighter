@@ -1,0 +1,18 @@
+{
+    "clip": "greatsword_sweep",
+    "uses_weapon": true,
+    "damage": 1.5,
+    "min_reaction": "Flinch",
+    "stamina": 19,
+    "tags": [
+        "low",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.9,
+            1.5
+        ],
+        "role": "low"
+    }
+}

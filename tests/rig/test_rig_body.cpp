@@ -308,7 +308,7 @@ TEST_CASE("Rig: the weapon extends the forearm that holds it", "[rig]") {
     Reaching[static_cast<size_t>(BodyPart::UpperArmR)] = 1.57f;
     Reaching[static_cast<size_t>(BodyPart::ForearmR)] = 0.0f;
     RigSetup Armed = makeSetup(0.0f, true);
-    Armed.WeaponReachM = 0.5f;
+    Armed.Held = {{.Part = BodyPart::ForearmR, .WeaponReachM = 0.5f}};
     Solo Bare(makeSetup(0.0f, true), Reaching);
     Solo Sword(Armed, Reaching);
     Bare.run(60);
@@ -586,7 +586,7 @@ TEST_CASE("pushApartOnHit: against the wall the attacker takes all of the push",
 }
 
 TEST_CASE("Rig: a posed leg hits the opponent's posed legs and pelvis", "[rig]") {
-    // A low kick: the left fighter swings its front leg into the right
+    // A kick at the legs: the left fighter swings its front leg into the right
     // one's front shin. Both legs are kinematic; the world reports the hit.
     Duel Low(-0.45f, 0.45f);
     Low.run(10);
@@ -1078,4 +1078,91 @@ TEST_CASE("keepApart: a push apart grows by pushAcceleration and stops at the co
     CHECK(Fastest <= Close.Spacing.PushMaxSpeed + 1e-3f);
     CHECK(getPelvisX(Close.Right) - getPelvisX(Close.Left) == Approx(MinGap).margin(1e-3f));
     CHECK(Close.Right.getController().getSpacingMotion().Pushed == Approx(0.0f).margin(1e-3f));
+}
+
+TEST_CASE("Rig: a weapon in the left hand extends the left forearm", "[rig][hands]") {
+    // The left arm straight forward.
+    PerBodyPart<float> Reaching = loadStance();
+    Reaching[static_cast<size_t>(BodyPart::UpperArmL)] = 1.57f;
+    Reaching[static_cast<size_t>(BodyPart::ForearmL)] = 0.0f;
+    RigSetup Armed = makeSetup(0.0f, true);
+    Armed.Held = {{.Part = BodyPart::ForearmL, .WeaponReachM = 0.5f, .WeaponRadiusM = 0.04f}};
+    Solo Bare(makeSetup(0.0f, true), Reaching);
+    Solo Sword(Armed, Reaching);
+    Bare.run(60);
+    Sword.run(60);
+    CHECK(Sword.Body.getWeaponReach() == 0.5f);
+    CHECK(Sword.Body.getWeaponReach(BodyPart::ForearmL) == 0.5f);
+    CHECK(Sword.Body.getWeaponReach(BodyPart::ForearmR) == 0.0f);
+    CHECK(Sword.Body.getExtentX().Max == Approx(Bare.Body.getExtentX().Max + 0.5f).margin(0.03f));
+
+    // Turned 90 degrees to the forearm, the blade points down: no reach forward.
+    RigSetup Down = makeSetup(0.0f, true);
+    Down.Held = {{.Part = BodyPart::ForearmL, .WeaponReachM = 0.5f, .WeaponAngleDeg = -90.0f}};
+    Solo Turned(Down, Reaching);
+    Turned.run(60);
+    CHECK(Turned.Body.getExtentX().Max < Bare.Body.getExtentX().Max + 0.1f);
+}
+
+TEST_CASE("Rig: a shield is a plate on the forearm that holds it", "[rig][hands]") {
+    RigSetup Setup = makeSetup(0.0f, true);
+    Setup.Held = {{.Part = BodyPart::ForearmL, .ShieldLengthM = 0.5f, .ShieldWidthM = 0.4f, .ShieldGuards = true}};
+    Solo Bare(makeSetup(0.0f, true));
+    Solo Shielded(Setup);
+    Bare.run(30);
+    Shielded.run(30);
+    CHECK(Shielded.Body.hasShield(BodyPart::ForearmL));
+    CHECK_FALSE(Shielded.Body.hasShield(BodyPart::ForearmR));
+    CHECK_FALSE(Bare.Body.isOnShield(Bare.Body.getPartPosition(BodyPart::ForearmL)));
+    CHECK(Shielded.Body.getWeaponReach() == 0.0f);
+    // The plate covers the forearm and reaches about half its width past it.
+    const Vec2 Forearm = Shielded.Body.getPartPosition(BodyPart::ForearmL);
+    CHECK(Shielded.Body.isOnShield(Forearm));
+    CHECK_FALSE(Shielded.Body.isOnShield(Forearm + Vec2{0.5f, 0.0f}));
+    CHECK(Shielded.Body.isOnShield(Forearm + Vec2{0.5f, 0.0f}, 0.5f));
+    const float Wider = Shielded.Body.getExtentX().Max - Bare.Body.getExtentX().Max;
+    CHECK(Wider > 0.05f);
+    CHECK(Shielded.Body.getTotalMass() == Approx(Bare.Body.getTotalMass()));
+
+    // Turned around, the plate is still on the forearm.
+    Shielded.Body.setFacing(false);
+    Shielded.run(30);
+    REQUIRE_FALSE(Shielded.Body.isFacingRight());
+    CHECK(Shielded.Body.isOnShield(Shielded.Body.getPartPosition(BodyPart::ForearmL)));
+}
+
+TEST_CASE("Rig: a shield that does not guard is only a part of the forearm", "[rig][hands]") {
+    // A shield in the main hand (decision 2026-10-08): the same plate, but a
+    // hit on it is not "on the shield".
+    RigSetup Setup = makeSetup(0.0f, true);
+    Setup.Held = {{.Part = BodyPart::ForearmR, .ShieldLengthM = 0.5f, .ShieldWidthM = 0.4f}};
+    Solo Bare(makeSetup(0.0f, true));
+    Solo Shielded(Setup);
+    Bare.run(30);
+    Shielded.run(30);
+    CHECK(Shielded.Body.hasShield(BodyPart::ForearmR));
+    CHECK_FALSE(Shielded.Body.isOnShield(Shielded.Body.getPartPosition(BodyPart::ForearmR)));
+    CHECK(Shielded.Body.getExtentX().Max - Bare.Body.getExtentX().Max > 0.05f);
+}
+
+TEST_CASE("Rig: the other hand grips a two-handed weapon", "[rig][hands]") {
+    RigSetup Setup = makeSetup(0.0f, true);
+    Setup.Held = {{.Part = BodyPart::ForearmR, .WeaponReachM = 0.9f}};
+    RigSetup Gripping = Setup;
+    Gripping.GripPart = BodyPart::ForearmL;
+    Solo Loose(Setup);
+    Solo Held(Gripping);
+    const ControlParams& Control = Held.Body.getControl();
+    CHECK_FALSE(Loose.Body.getGripPart().has_value());
+    CHECK(Loose.Body.getGripGap() == 0.0f);
+    REQUIRE(Held.Body.getGripPart() == BodyPart::ForearmL);
+    Loose.run(60);
+    Held.run(60);
+    // The spring keeps the left fist on the handle, within its stretch.
+    CHECK(Held.Body.getGripGap() <= Control.GripMaxStretch + 0.01f);
+    // ...also after turning around.
+    Held.Body.setFacing(false);
+    Held.run(60);
+    REQUIRE_FALSE(Held.Body.isFacingRight());
+    CHECK(Held.Body.getGripGap() <= Control.GripMaxStretch + 0.01f);
 }

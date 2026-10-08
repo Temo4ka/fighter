@@ -1,0 +1,17 @@
+{
+    "clip": "push_kick",
+    "damage": 1.0,
+    "min_reaction": "Flinch",
+    "stamina": 11,
+    "tags": [
+        "mid",
+        "kick"
+    ],
+    "ai": {
+        "range_m": [
+            0.0,
+            0.7
+        ],
+        "role": "anti_close"
+    }
+}

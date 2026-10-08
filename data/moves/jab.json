@@ -5,10 +5,24 @@
     "stamina": 5,
     "close_clip": "jab_close",
     "close_range_m": 0.6,
-    "chain_to": ["jab", "heavy_punch", "sword_slash", "hammer_smash"],
-    "tags": ["high", "punch"],
+    "chain_to": [
+        "jab",
+        "cross",
+        "heavy_punch",
+        "sword_slash",
+        "sword_cut",
+        "hammer_smash",
+        "hammer_bash"
+    ],
+    "tags": [
+        "high",
+        "punch"
+    ],
     "ai": {
-        "range_m": [0.6, 0.9],
+        "range_m": [
+            0.6,
+            0.9
+        ],
         "role": "poke"
     }
 }

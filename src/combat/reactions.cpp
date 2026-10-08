@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "combat/clip_library.hpp"
 #include "core/text_file.hpp"
 
 namespace fighter::combat {
@@ -57,6 +58,26 @@ ReactionLevel chooseReactionLevel(const ReactionTable& Table, float Strength, fl
     return Reached;
 }
 
+BlockRules getDefaultBlock(const ReactionTable& Table) {
+    BlockRules Block;
+    Block.DamageScale = Table.BlockDamageScale;
+    Block.MaxLevel = Table.BlockMaxLevel;
+    Block.StaminaScale = 1.0f;
+    Block.Clips = {std::string(clips::BlockHigh), std::string(clips::BlockMid), std::string(clips::BlockLow)};
+    for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
+        auto& Parts = Block.Covers[static_cast<size_t>(Zone)];
+        for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+            const auto Part = static_cast<BodyPart>(Index);
+            if (isCoveredBy(Zone, Part)) Parts.push_back(Part);
+        }
+    }
+    return Block;
+}
+
+bool isBlockedBy(const BlockRules& Block, BlockZone Guard, BodyPart Part, bool OnShield) {
+    return OnShield || Block.covers(Guard, Part);
+}
+
 HitOutcome resolveHit(const ReactionTable& Table, const HitInput& Hit) {
     HitOutcome Outcome;
     const float Location = Table.Location[static_cast<size_t>(Hit.Part)];
@@ -67,11 +88,13 @@ HitOutcome resolveHit(const ReactionTable& Table, const HitInput& Hit) {
     Outcome.Reaction =
         chooseReactionLevel(Table, Outcome.Strength, getThresholdScale(Table, Hit.Poise, Hit.Buildup));
 
-    Outcome.Blocked = Hit.Guard && isCoveredBy(*Hit.Guard, Hit.Part);
+    const BlockRules Fallback = Hit.Block ? BlockRules{} : getDefaultBlock(Table);
+    const BlockRules& Block = Hit.Block ? *Hit.Block : Fallback;
+    Outcome.Blocked = Hit.Guard && isBlockedBy(Block, *Hit.Guard, Hit.Part, Hit.OnShield);
     if (Outcome.Blocked) {
-        Outcome.Damage *= Table.BlockDamageScale;
-        Outcome.Reaction = std::min(Outcome.Reaction, Table.BlockMaxLevel);
-        Outcome.BlockStamina = Outcome.Strength * Table.BlockStaminaPerStrength;
+        Outcome.Damage *= Block.DamageScale;
+        Outcome.Reaction = std::min(Outcome.Reaction, Block.MaxLevel);
+        Outcome.BlockStamina = Outcome.Strength * Table.BlockStaminaPerStrength * Block.StaminaScale;
     } else {
         Outcome.Reaction = std::max(Outcome.Reaction, Hit.MinReaction);
         Outcome.BuildupAdded = Outcome.Strength * Table.BuildupPerStrength;
