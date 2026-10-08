@@ -359,6 +359,11 @@ public:
     float getStiffness() const;
     /// Mass of the whole fighter (the profile's), kg.
     float getTotalMass() const { return TotalMass; }
+    /// The mass \p Part strikes and is struck with (physics::World's strike
+    /// mass), kg: the limb from the part up to the top of its group, or the
+    /// whole group for the top (the pelvis with the legs, the torso with the
+    /// head and arms). See setStrikeMasses().
+    float getStrikeMass(BodyPart Part) const { return StrikeMasses[static_cast<size_t>(Part)]; }
     /// Walking speed forwards with the profile's scale, m/s.
     float getWalkSpeed() const { return Control.WalkSpeed * MoveSpeedScale; }
     /// The pelvis travel the walk clip's legs are posed for per second, m/s:
@@ -672,6 +677,7 @@ private:
     float MotorGain = 0.0f;
     float MoveSpeedScale = 1.0f;
     float TotalMass = 0.0f;
+    PerBodyPart<float> StrikeMasses{};   ///< setStrikeMasses().
 
     PerBodyPart<PartState> Parts{};
     std::vector<JointState> Joints;   ///< Parents before children.

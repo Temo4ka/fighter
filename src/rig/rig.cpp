@@ -716,22 +716,40 @@ void Rig::createGrip(physics::World& PhysWorld, const RigSetup& Setup) {
 }
 
 void Rig::setStrikeMasses(physics::World& PhysWorld) {
-    // A posed limb strikes with everything between the touching part and
-    // the root: a foot kicks with the whole leg. The root is the whole
-    // posed body: a kick into the pelvis meets both legs standing on the
-    // floor, not a free block of 10 kg.
-    PerBodyPart<float> LimbMass{};
-    float PosedMass = getPart(Root).Mass;
+    // The body is two groups of parts: the posed one (the root, the pelvis,
+    // and the legs) and the physical one (the torso, which hangs on the
+    // pelvis, with the head and the arms). A part that is not the top of its
+    // group strikes, and is struck, with everything between it and the top:
+    // a foot kicks with the whole leg, a fist punches with the whole arm, a
+    // weapon with the arm that holds it (its mass is the forearm's), a
+    // two-handed one with both arms. The top of a group is the whole group:
+    // a kick into the pelvis meets both legs standing on the floor, a punch
+    // into the torso meets the torso with the head and arms it carries. The
+    // groups are those of the standing body: the masses do not change when a
+    // knocked-down body goes limp.
+    PerBodyPart<BodyPart> Top{};
+    PerBodyPart<float> Chain{};
+    PerBodyPart<float> GroupMass{};
+    Top[static_cast<size_t>(Root)] = Root;
+    GroupMass[static_cast<size_t>(Root)] = getPart(Root).Mass;
+    // Parents come before children.
     for (const auto& Joint : Joints) {
         const PartState& Child = getPart(Joint.Child);
-        if (!Child.Kinematic) continue;
-        const float Above = Joint.Parent == Root ? 0.0f : LimbMass[static_cast<size_t>(Joint.Parent)];
-        float& Limb = LimbMass[static_cast<size_t>(Joint.Child)];
-        Limb = Child.Mass + Above;
-        PhysWorld.setStrikeMass(Child.Handle, Limb);
-        PosedMass += Child.Mass;
+        const auto ChildIndex = static_cast<size_t>(Joint.Child);
+        const auto ParentIndex = static_cast<size_t>(Joint.Parent);
+        const bool StartsGroup = Child.Kinematic != getPart(Joint.Parent).Kinematic;
+        Top[ChildIndex] = StartsGroup ? Joint.Child : Top[ParentIndex];
+        const bool ParentIsTop = Top[ParentIndex] == Joint.Parent;
+        Chain[ChildIndex] = Child.Mass + (StartsGroup || ParentIsTop ? 0.0f : Chain[ParentIndex]);
+        GroupMass[static_cast<size_t>(Top[ChildIndex])] += Child.Mass;
     }
-    PhysWorld.setStrikeMass(getPart(Root).Handle, PosedMass);
+    if (Grip) Chain[static_cast<size_t>(Grip->Holder)] += Chain[static_cast<size_t>(Grip->Hand)];
+    for (auto&& [Index, Part] : std::views::zip(std::views::iota(size_t{0}), Parts)) {
+        const bool IsTop = Top[Index] == static_cast<BodyPart>(Index);
+        const float Mass = IsTop ? GroupMass[Index] : Chain[Index];
+        PhysWorld.setStrikeMass(Part.Handle, Mass);
+        StrikeMasses[Index] = Mass;
+    }
 }
 
 const Rig::JointState* Rig::findJoint(BodyPart Child) const {

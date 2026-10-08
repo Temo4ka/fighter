@@ -37,7 +37,8 @@
 ///     foot, because it is the point the fight keeps its distances by
 ///     (spacing, the AI's "ai.range_m");
 ///   - the hit: the first StrikeLanded of the move: when, which part of the
-///     dummy, damage, reaction, blocked or not.
+///     dummy, the approach speed, impulse and strength of the contact,
+///     damage, reaction, blocked or not.
 ///
 /// The file is internal to the combat module.
 ///
@@ -139,6 +140,9 @@ struct MoveMeasure {
     float HitTimeSec = 0.0f;
     BodyPart HitPart = BodyPart::Torso;      ///< The dummy's part that was hit.
     Vec2 HitPoint;                           ///< Where, world, m.
+    float ApproachSpeed = 0.0f;              ///< Of the contact, m/s (HitEvent::ApproachSpeed).
+    float Impulse = 0.0f;                    ///< Of the contact, N*s (HitEvent::Impulse).
+    float Strength = 0.0f;                   ///< StrikeLanded::Strength, m/s.
     float Damage = 0.0f;
     ReactionLevel Reaction = ReactionLevel::None;
     bool Blocked = false;
