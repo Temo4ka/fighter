@@ -89,11 +89,39 @@ unsigned getImageSizePixels(float Meters, float PixelsPerMeter);
 sf::Image drawPart(const PartGeometry& Geometry, Variant Kind, float PixelsPerMeter = 0.0f);
 
 /// Draws the overlay of \p Item for one of the parts it covers: the same
-/// pose, density and centre rule as the part itself. A weapon's blade
-/// extends past the fist by its reach; the picture is then symmetric about
-/// the forearm centre (the upper half stays empty), so no anchor is needed.
+/// pose, density and centre rule as the part itself. Throws
+/// std::invalid_argument for a weapon, which is a body of its own
+/// (drawWeapon()).
 sf::Image drawItemOverlay(const stats::EquipmentItem& Item, const PartGeometry& Geometry, Variant Kind,
                           float PixelsPerMeter = 0.0f);
+
+/// The capsule of a held weapon as the rig builds it (rig::Rig, the weapon
+/// body): from the center of the fist along the forearm's axis, so that its
+/// surface ends the reach beyond the fist's surface. In the picture's frame
+/// the capsule is centered (rig::Rig::getWeaponTransforms puts the picture
+/// center there) and runs from the fist (up, +Y) to the tip (down, -Y).
+struct WeaponGeometry {
+    float Segment = 0.0f;       ///< Between the centers of the capsule's caps, m.
+    float Radius = 0.0f;        ///< Of the capsule: half the weapon's width, m.
+    float HolderRadius = 0.0f;  ///< Of the holding forearm (the fist), m.
+    float Reach = 0.0f;         ///< Beyond the fist's surface, m.
+
+    /// The capsule with its caps (PartTransform::Size.Y), m.
+    float getLength() const { return Segment + 2.0f * Radius; }
+    /// Where the fist's surface is in the picture's frame (Y), m.
+    float getFistY() const { return Segment * 0.5f - HolderRadius; }
+};
+
+/// The weapon geometry of \p Weapon held by the main hand of \p Rig: its
+/// width_m, else the mount's width (RigDef::Weapon).
+WeaponGeometry computeWeaponGeometry(const stats::WeaponProps& Weapon, const rig::RigDef& Rig);
+
+/// Draws the picture of a held weapon (Weapon.png of the item): the blade or
+/// head along -Y from the hilt in the fist to the tip, as wide as the weapon,
+/// centered on its capsule (the hilt behind the fist is inside the picture,
+/// which is padded symmetrically). Needs \p Item.Weapon.
+sf::Image drawWeapon(const stats::EquipmentItem& Item, const WeaponGeometry& Geometry, Variant Kind,
+                     float PixelsPerMeter = 0.0f);
 
 struct GenerateOptions {
     std::filesystem::path DataDir;   ///< Holds rigs/, items/ and visuals.json.

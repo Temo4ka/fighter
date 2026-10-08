@@ -202,37 +202,45 @@ TEST_CASE("drawPart: near parts are lighter than far parts", "[placeholder]") {
     CHECK(getBrightness(BodyPart::ThighL) > getBrightness(BodyPart::ThighR));
 }
 
-TEST_CASE("drawItemOverlay: a sword extends past the fist by its reach", "[placeholder]") {
+TEST_CASE("drawWeapon: a sword is its own picture, centered on its capsule, as wide as the weapon", "[placeholder]") {
     const auto Rig = loadHumanoid();
     const auto Catalog = stats::loadItemCatalog(DataDir / "items");
     const auto* Sword = Catalog.findItem("short_sword");
     REQUIRE(Sword != nullptr);
     REQUIRE(Sword->Weapon.has_value());
 
-    const auto Geometry = computePartGeometry(Rig.getPart(BodyPart::ForearmR));
+    // The capsule of the rig's weapon body: its surface ends the reach
+    // beyond the fist's surface, its radius is half the width.
+    const WeaponGeometry Geometry = computeWeaponGeometry(*Sword->Weapon, Rig);
+    const float Width = Sword->Weapon->WidthM.value_or(Rig.Weapon.Width);
+    CHECK(Geometry.Radius == Approx(Width * 0.5f));
+    CHECK(Geometry.Segment + Geometry.Radius == Approx(Geometry.HolderRadius + Sword->Weapon->ReachM));
+    CHECK_THROWS_AS(drawItemOverlay(*Sword, computePartGeometry(Rig.getPart(BodyPart::ForearmR)), Variant::Pixel),
+                    std::invalid_argument);
+
     for (const Variant Kind : {Variant::Pixel, Variant::Smooth}) {
         INFO(getVariantName(Kind));
         const float Ppm = getDefaultPixelsPerMeter(Kind);
-        const sf::Image Overlay = drawItemOverlay(*Sword, Geometry, Kind);
-        const sf::Image Forearm = drawPart(Geometry, Kind);
-        const auto Size = Overlay.getSize();
-
-        // Centred on the forearm centre: the picture is symmetric in height and
-        // taller than the forearm by twice the reach.
-        const float ExpectedHeight = Geometry.getImageSize().Y + 2.0f * (Sword->Weapon->ReachM + 0.012f);
-        CHECK(Size.y == getImageSizePixels(ExpectedHeight, Ppm));
-        CHECK(Size.y > Forearm.getSize().y);
-
-        // A pixel on the blade axis, 80% of the reach below the fist edge, is
-        // drawn, and it lies below the end of the forearm picture itself.
-        const float FistY = Geometry.ShapeSize.Y * 0.5f;
-        const float BladeY = FistY + 0.8f * Sword->Weapon->ReachM;
-        const auto Row = static_cast<unsigned>(static_cast<float>(Size.y) * 0.5f + BladeY * Ppm);
-        CHECK(Overlay.getPixel({Size.x / 2, Row}).a > 0);
-        CHECK(BladeY > Geometry.getImageSize().Y * 0.5f);
-        // The upper half has the hilt only, nothing above the pommel.
-        CHECK(Overlay.getPixel({Size.x / 2, 0}).a == 0);
+        const sf::Image Picture = drawWeapon(*Sword, Geometry, Kind);
+        const auto Size = Picture.getSize();
+        // At least the capsule's length, symmetric about its center.
+        CHECK(static_cast<float>(Size.y) >= Geometry.getLength() * Ppm);
+        const auto rowAt = [&](float Y) { return static_cast<unsigned>(static_cast<float>(Size.y) * 0.5f - Y * Ppm); };
+        // The blade on its axis halfway to the tip, nothing beyond the tip.
+        const float TipY = Geometry.getFistY() - Sword->Weapon->ReachM;
+        CHECK(Picture.getPixel({Size.x / 2, rowAt(TipY * 0.5f + Geometry.getFistY() * 0.5f)}).a > 0);
+        CHECK(Picture.getPixel({Size.x / 2, rowAt(TipY - 0.008f)}).a == 0);
     }
+
+    // The blade is the weapon's width: drawn just inside it, not outside.
+    constexpr float FinePpm = 256.0f;
+    const sf::Image Fine = drawWeapon(*Sword, Geometry, Variant::Smooth, FinePpm);
+    const auto Size = Fine.getSize();
+    const auto Row = static_cast<unsigned>(static_cast<float>(Size.y) * 0.5f -
+                                           (Geometry.getFistY() - Sword->Weapon->ReachM * 0.5f) * FinePpm);
+    const auto columnAt = [&](float X) { return static_cast<unsigned>(static_cast<float>(Size.x) * 0.5f + X * FinePpm); };
+    CHECK(Fine.getPixel({columnAt(Width * 0.5f - 0.004f), Row}).a > 0);
+    CHECK(Fine.getPixel({columnAt(Width * 0.5f + 0.004f), Row}).a == 0);
 }
 
 TEST_CASE("drawItemOverlay: a helmet covers the top of the head", "[placeholder]") {
@@ -279,17 +287,18 @@ TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json
     Options.OutDir = Out;
     const auto Files = generatePlaceholders(Options);
 
-    // 13 parts, a helmet on the head and four hand items (sword, hammer,
-    // greatsword, shield) on either forearm (an item held in a hand may be in
-    // either), two variants.
-    CHECK(Files.size() == 2 * (BodyPartCount + 1 + 4 * 2));
+    // 13 parts, a helmet on the head, the shield on either forearm (an item
+    // held in a hand may be in either) and one picture of each of the three
+    // weapons (sword, hammer, greatsword), two variants.
+    CHECK(Files.size() == 2 * (BodyPartCount + 1 + 2 + 3));
     for (const auto* Dir : {"pixel", "smooth"}) {
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Name = std::string(getBodyPartName(static_cast<BodyPart>(Index))) + ".png";
             CHECK(std::filesystem::exists(Out / Dir / "humanoid" / Name));
         }
         CHECK(std::filesystem::exists(Out / Dir / "items" / "iron_helmet" / "Head.png"));
-        CHECK(std::filesystem::exists(Out / Dir / "items" / "short_sword" / "ForearmR.png"));
+        CHECK(std::filesystem::exists(Out / Dir / "items" / "short_sword" / "Weapon.png"));
+        CHECK_FALSE(std::filesystem::exists(Out / Dir / "items" / "short_sword" / "ForearmR.png"));
         CHECK(std::filesystem::exists(Out / Dir / "items" / "wooden_shield" / "ForearmL.png"));
     }
 
