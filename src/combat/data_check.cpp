@@ -17,6 +17,7 @@
 #include "combat/move_input.hpp"
 #include "combat/moves.hpp"
 #include "combat/reactions.hpp"
+#include "combat/stand_config.hpp"
 #include "combat/tuning.hpp"
 #include "core/text_file.hpp"
 #include "rig/rig_def.hpp"
@@ -155,6 +156,7 @@ const anim::Clip* Checker::requireClip(const std::string& File, const std::strin
 void Checker::checkSingletons() {
     guard(DataDir / "balance.json", [&] { stats::loadBalanceTable(DataDir / "balance.json"); });
     guard(DataDir / "combat.json", [&] { loadCombatTuning(DataDir / "combat.json"); });
+    guard(DataDir / "stand.json", [&] { loadStandConfig(DataDir / "stand.json"); });
     guard(DataDir / "reactions.json", [&] { loadReactionTable(DataDir / "reactions.json"); });
 }
 

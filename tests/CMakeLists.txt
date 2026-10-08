@@ -26,6 +26,8 @@ add_executable(fighter_tests
     combat/test_no_passthrough.cpp
     combat/test_clip_library.cpp
     combat/test_data_check.cpp
+    combat/test_move_measure.cpp
+    combat/test_stand_config.cpp
     combat/test_fight.cpp
     combat/test_hands.cpp
     combat/test_commands.cpp

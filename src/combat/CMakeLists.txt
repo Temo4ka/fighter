@@ -8,9 +8,11 @@ fighter_add_module(combat
         leg_cycle.cpp
         leg_step.cpp
         move_input.cpp
+        move_measure.cpp
         moves.cpp
         moveset.cpp
         reactions.cpp
+        stand_config.cpp
         snapshot.cpp
         tuning.cpp
     PUBLIC_DEPS

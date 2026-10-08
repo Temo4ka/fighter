@@ -30,10 +30,10 @@ using debug::PrimitiveKind;
 // Category keys: 1...9, 0, '-' in the order of debug::Cat.
 constexpr std::array<Scan, debug::CatCount> CategoryKeys = {
     Scan::Num1, Scan::Num2, Scan::Num3, Scan::Num4, Scan::Num5, Scan::Num6,
-    Scan::Num7, Scan::Num8, Scan::Num9, Scan::Num0, Scan::Hyphen,
+    Scan::Num7, Scan::Num8, Scan::Num9, Scan::Num0, Scan::Hyphen, Scan::Equal,
 };
 constexpr std::array<const char*, debug::CatCount> CategoryKeyNames = {
-    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-",
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=",
 };
 
 constexpr unsigned FontSize = 13;
