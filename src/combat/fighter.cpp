@@ -1428,9 +1428,21 @@ std::string Fighter::describeStride() const {
 
 std::string Fighter::describeUpper() const {
     const anim::Clip* Top = getTopClip();
-    if (!Top || !hasUpperJoints(*Top)) return StanceName;
+    // Where the wrist comes from: the clip on top, the stance, or the
+    // weapon's own default (getStancePose()).
+    std::string Wrist;
+    if (Body.getDefaultWristAngle()) {
+        const auto setsWrist = [](const anim::Clip& Source) {
+            return !Source.Keys.empty() && Source.Keys.front().Target.HasWeapon;
+        };
+        const anim::Clip& Stance = Rules->Clips.get(StanceName);
+        Wrist = std::format(", wrist from {}", Top && setsWrist(*Top) ? Top->Name
+                                               : setsWrist(Stance)    ? StanceName
+                                                                      : std::string("the weapon's default"));
+    }
+    if (!Top || !hasUpperJoints(*Top)) return StanceName + Wrist;
     const float Rate = State == FighterState::Attacking ? AttackRate : 1.0f;
-    return anim::describePlayback(*Top, getTopClipTime(), Rate, Fade);
+    return anim::describePlayback(*Top, getTopClipTime(), Rate, Fade) + Wrist;
 }
 
 void Fighter::beginTopFade(const anim::Clip* Top) {

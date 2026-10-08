@@ -1885,7 +1885,7 @@ void Rig::fillPanel() const {
         if (!Wrists.empty()) Wrists += "; ";
         Wrists += std::format("{} {:+.0f} deg, target {:+.0f} ({}), hold {:.1f} N*m", getBodyPartName(Weapon.Part),
                               Weapon.Wrist.getAngle() * Facing / RadiansPerDegree, Weapon.Target * Facing / RadiansPerDegree,
-                              WristWish ? "clip" : "default", Weapon.HoldTorque);
+                              WristWish ? "pose" : "item default", Weapon.HoldTorque);
     }
     debug::setPanel(Name + " wrist", Wrists.empty() ? "-" : Wrists);
 
