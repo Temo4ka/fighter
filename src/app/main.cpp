@@ -1,8 +1,10 @@
 #include <cstdlib>
 #include <exception>
+#include <iostream>
 #include <string_view>
 
 #include "app/app.hpp"
+#include "app/check_data.hpp"
 #include "core/log.hpp"
 
 // Command line arguments:
@@ -18,6 +20,7 @@
 //   --keys <list>               menu keys, one per frame, e.g. enter,down,esc (screenshots)
 //   --round <sec>               round time (reach the results screen quickly)
 //   --log <file>                duplicate the log to a file
+//   --check-data                check every file of data/, print the problems, exit 0 if none
 //
 // Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
 // --frames, --screenshot) the app starts in the main menu; with one of them it
@@ -34,6 +37,7 @@ int main(int Argc, char** Argv) {
 
     bool BattleFlag = false;
     bool MenuFlag = false;
+    bool CheckData = false;
     for (int ArgIndex = 1; ArgIndex < Argc; ++ArgIndex) {
         const std::string_view Arg = Argv[ArgIndex];
         const bool HasValue = ArgIndex + 1 < Argc;
@@ -43,6 +47,10 @@ int main(int Argc, char** Argv) {
         }
         if (Arg == "--round" && HasValue) {
             Opts.RoundSec = std::atof(Argv[++ArgIndex]);
+            continue;
+        }
+        if (Arg == "--check-data") {
+            CheckData = true;
             continue;
         }
         if (Arg == "--menu") {
@@ -73,6 +81,8 @@ int main(int Argc, char** Argv) {
             log::warn("unknown argument: {}", Arg);
         }
     }
+
+    if (CheckData) return app::runDataCheck(Opts.Root, std::cout);
 
     Opts.Menu = MenuFlag || !BattleFlag;
 
