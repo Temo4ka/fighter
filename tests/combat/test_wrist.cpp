@@ -6,6 +6,7 @@
 #include <fstream>
 #include <numbers>
 #include <optional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -73,22 +74,41 @@ std::string insertAfterEach(std::string Text, const std::string& After, const st
     return Text;
 }
 
+/// Drops the wrists the shipped data proposes from \p Data: the keys Weapon
+/// and WeaponOff of every clip and the items' angle_deg. The tests below set
+/// the wrists they check themselves.
+void stripWrists(const ScratchData& Data) {
+    const std::regex Key(R"re("Weapon(Off)?": *-?[0-9.]+, *)re");
+    for (const auto& Entry : std::filesystem::directory_iterator(Data.getDir() / "poses")) {
+        const std::filesystem::path Clip = std::filesystem::path("poses") / Entry.path().filename();
+        Data.write(Clip, std::regex_replace(readText(Entry.path()), Key, ""));
+    }
+    const std::regex Angle(R"re(,\s*"angle_deg": *-?[0-9.]+)re");
+    const std::filesystem::path Items = "items/weapons.json";
+    Data.write(Items, std::regex_replace(readText(Data.getDir() / Items), Angle, ""));
+}
+
 } // namespace
 
 TEST_CASE("Wrist: missing in a clip, the stance's, else the item's, else the rig's default", "[combat][wrist][data]") {
-    // The shipped data: no stance sets it and the sword has no angle.
-    CHECK(getIdleWrist(makeConfig()) == Approx(0.0f).margin(0.05f));
+    // No stance sets it and the sword has no angle.
+    ScratchData Bare("wrist_bare");
+    stripWrists(Bare);
+    CHECK(getIdleWrist(Bare.makeConfig()) == Approx(0.0f).margin(0.05f));
 
     ScratchData RigDefault("wrist_rig");
+    stripWrists(RigDefault);
     RigDefault.replace("rigs/humanoid.json", R"("angle": 0, "width")", R"("angle": 20, "width")");
     CHECK(getIdleWrist(RigDefault.makeConfig()) == Approx(20.0f * RadiansPerDegree).margin(0.05f));
 
     ScratchData ItemDefault("wrist_item");
+    stripWrists(ItemDefault);
     ItemDefault.replace("rigs/humanoid.json", R"("angle": 0, "width")", R"("angle": 20, "width")");
     ItemDefault.replace("items/weapons.json", R"("reach_m": 0.55,)", R"("reach_m": 0.55, "angle_deg": 40,)");
     CHECK(getIdleWrist(ItemDefault.makeConfig()) == Approx(40.0f * RadiansPerDegree).margin(0.05f));
 
     ScratchData StanceKey("wrist_stance");
+    stripWrists(StanceKey);
     StanceKey.replace("items/weapons.json", R"("reach_m": 0.55,)", R"("reach_m": 0.55, "angle_deg": 40,)");
     StanceKey.replace("poses/stance_sword.json", R"("Pelvis": 0,)", R"("Pelvis": 0, "Weapon": -30,)");
     CHECK(getIdleWrist(StanceKey.makeConfig()) == Approx(-30.0f * RadiansPerDegree).margin(0.05f));
@@ -96,10 +116,11 @@ TEST_CASE("Wrist: missing in a clip, the stance's, else the item's, else the rig
 
 TEST_CASE("Wrist: the weapon follows the Weapon key of the move's clip", "[combat][wrist][data]") {
     ScratchData Data("wrist_clip");
+    stripWrists(Data);
     const std::filesystem::path Clip = "poses/sword_slash.json";
-    Data.write(Clip, insertAfterEach(readText(DataDir / Clip), R"("pose": { )", R"("Weapon": 60, )"));
+    Data.write(Clip, insertAfterEach(readText(Data.getDir() / Clip), R"("pose": { )", R"("Weapon": 60, )"));
     BattleConfig Config = Data.makeConfig();
-    Config.Left = makeSwordsman();
+    Config.Left = makeSwordsman(Data.getDir());
     Battle Fight(Config);
     run(Fight, {}, {}, TicksPerSecond / 2);
     const float Idle = getWrist(getLeft(Fight), BodyPart::ForearmL);
@@ -145,11 +166,12 @@ TEST_CASE("Wrist: a sword hit is the forearm's, with the arm and the sword behin
 
 TEST_CASE("Wrist: a sword fight with a moving wrist is deterministic", "[combat][wrist][dod]") {
     ScratchData Data("wrist_determinism");
+    stripWrists(Data);
     const std::filesystem::path Clip = "poses/sword_cut.json";
-    Data.write(Clip, insertAfterEach(readText(DataDir / Clip), R"("pose": { )", R"("Weapon": 25, )"));
+    Data.write(Clip, insertAfterEach(readText(Data.getDir() / Clip), R"("pose": { )", R"("Weapon": 25, )"));
     BattleConfig Config = Data.makeConfig();
-    Config.Left = makeSwordsman();
-    Config.Right = makeSwordsman();
+    Config.Left = makeSwordsman(Data.getDir());
+    Config.Right = makeSwordsman(Data.getDir());
     Battle First(Config);
     Battle Second(Config);
     size_t Hits = 0;
