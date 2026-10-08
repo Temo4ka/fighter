@@ -76,7 +76,7 @@ public:
     /// The most passes of afterStep() (a pass: one fighter's limbs).
     static constexpr int MaxPosedPasses = 8;
 
-    ContactResolver() = default;
+    ContactResolver() : ContactResolver(ContactParams{}) {}
     explicit ContactResolver(const ContactParams& Settings)
         : Params(Settings), StopDepths{Settings.StopDepth, Settings.StopDepth} {}
 
