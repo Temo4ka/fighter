@@ -152,3 +152,53 @@ TEST_CASE("loadClip: the clips of data/poses load", "[anim]") {
     const Clip Stance = loadClip(Poses / "stance.json");
     CHECK(Stance.Keys.front().Target.Mask.count() == BodyPartCount);
 }
+
+TEST_CASE("parseClip: the Weapon key is the wrist, interpolated like a joint", "[anim]") {
+    const Clip Parsed = parseClip(R"({
+        "duration": 1.0,
+        "keys": [
+            { "t": 0.0, "pose": { "ForearmL": 0, "Weapon": 0 } },
+            { "t": 0.5, "pose": { "ForearmL": 90, "Weapon": 80 } }
+        ]
+    })", "wrist");
+    const Pose Half = sampleClip(Parsed, 0.25f);
+    REQUIRE(Half.HasWeapon);
+    CHECK(Half.WeaponAngle == Approx(40.0f * RadiansPerDegree));
+    // The wrist is no body part's joint.
+    CHECK(Half.Mask.count() == 1);
+    CHECK_FALSE(sampleClip(parseClip(OneShotJson, "plain"), 0.25f).HasWeapon);
+}
+
+TEST_CASE("parseClip: every key sets the wrist or none does", "[anim]") {
+    CHECK_THROWS_AS(parseClip(R"({
+        "duration": 1.0,
+        "keys": [
+            { "t": 0.0, "pose": { "ForearmL": 0, "Weapon": 0 } },
+            { "t": 0.5, "pose": { "ForearmL": 90 } }
+        ]
+    })", "uneven"), std::runtime_error);
+    CHECK_THROWS_AS(parseClip(R"({
+        "duration": 1.0,
+        "keys": [ { "t": 0.0, "pose": { "Weapon": 200 } } ]
+    })", "too_far"), std::runtime_error);
+}
+
+TEST_CASE("layerPose and blendPoses: the wrist of the top pose wins, blends from below", "[anim]") {
+    Pose Base;
+    Base.setWeaponAngle(1.0f);
+    Pose Top;
+    layerPose(Base, Top);
+    CHECK(Base.WeaponAngle == Approx(1.0f));
+    Top.setWeaponAngle(0.2f);
+    layerPose(Base, Top);
+    CHECK(Base.WeaponAngle == Approx(0.2f));
+
+    Pose From;
+    From.setWeaponAngle(0.0f);
+    Pose To;
+    To.setWeaponAngle(1.0f);
+    CHECK(blendPoses(From, To, 0.25f).WeaponAngle == Approx(0.25f));
+    // Only one of the poses sets it: that one's value.
+    CHECK(blendPoses(Pose{}, To, 0.25f).WeaponAngle == Approx(1.0f));
+    CHECK(blendPoses(From, Pose{}, 0.25f).HasWeapon);
+}

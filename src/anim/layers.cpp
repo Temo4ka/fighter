@@ -49,6 +49,7 @@ Pose selectJoints(const Pose& Source, const std::bitset<BodyPartCount>& Joints) 
 Pose joinLayers(const Pose& Upper, const Pose& Legs) {
     Pose Result = selectJoints(Upper, ~getLegJoints());
     layerPose(Result, selectJoints(Legs, getLegJoints()));
+    if (Upper.HasWeapon) Result.setWeaponAngle(Upper.WeaponAngle);
     return Result;
 }
 
