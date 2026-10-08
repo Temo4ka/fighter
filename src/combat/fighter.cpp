@@ -156,6 +156,10 @@ const MoveDef* Fighter::control(const PlayerCommands& Cmd, const Surroundings& A
         LegFadeByTravel = false;
     }
     const TargetPoses Target = buildTargetPose(Top, TopChanged, Dt);
+    // Over the planted rear foot of a lunge the pelvis may go down deeper,
+    // until the feet are back in the stance.
+    if (Body.getPosture() != rig::Posture::Standing) LungeLegs = false;
+    Body.setPelvisDropLimit(LungeLegs ? std::optional(Rules->Tuning.LegStep.LungePelvisDrop) : std::nullopt);
     // A leg action ends the walk where it rested: afterwards the legs rest
     // in the stance it leaves them in.
     if (Top && anim::usesLegs(*Top)) {
@@ -1021,7 +1025,10 @@ void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
     // as far as the legs reach (no slide, no step of the rig's own), and
     // only the leading foot steps (planLungeStep()).
     const bool Lunging = Lunge.Moving || Lunge.Planned != 0.0f;
-    if (Lunging) Body.keepFeetPlanted();
+    if (Lunging) {
+        Body.keepFeetPlanted();
+        LungeLegs = true;
+    }
     const bool Resting = Body.getPosture() == rig::Posture::Standing && !Walk.isHeld() &&
                          (!Walk.isEngaged() || Walk.getMode() == LegCycle::Mode::Still);
     if (!Resting) {
@@ -1043,6 +1050,12 @@ void Fighter::updateRestStep(TargetPoses& Target, float Dt) {
             return Wanted.getFoot(Foot).Ankle.X - Now.getFoot(Foot).Ankle.X > Tuning.MinDistance;
         });
         const bool Clear = !TowardsOpponent || OpponentGap >= Tuning.RestepClearance;
+        // The feet a lunge left are back in the stance: the pelvis no longer
+        // goes down deeper for them.
+        const bool Home = std::ranges::all_of(std::array{BodyPart::FootL, BodyPart::FootR}, [&](BodyPart Foot) {
+            return std::abs(Now.getFoot(Foot).Ankle.X - Wanted.getFoot(Foot).Ankle.X) <= Tuning.RestepDistance;
+        });
+        if (Home) LungeLegs = false;
         for (const BodyPart Foot : {BodyPart::FootL, BodyPart::FootR}) {
             if (!Clear) break;
             const float Off = Now.getFoot(Foot).Ankle.X - Wanted.getFoot(Foot).Ankle.X;

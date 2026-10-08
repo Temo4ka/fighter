@@ -550,6 +550,9 @@ private:
     float ContactClipSec = 0.0f;           ///< The clip time the strike stopped at the opponent.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
     PelvisTrack Lunge;                     ///< The pelvis track of the attack's clip.
+    /// A lunge left the feet off the stance: the pelvis may go down
+    /// LegStepTuning::LungePelvisDrop until they are back.
+    bool LungeLegs = false;
     bool AttackLanded = false;
     bool AttackHitClean = false;
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.

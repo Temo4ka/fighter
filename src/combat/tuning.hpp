@@ -105,6 +105,10 @@ struct LegStepTuning {
     /// leading one steps (RestSec) once the pelvis left it further than
     /// this from where the rest pose puts it, m.
     float LungeStepDistance = 0.12f;
+    /// How far the pelvis may go down over the planted rear foot of a lunge
+    /// (and until the feet are back in the stance) so that the leg reaches
+    /// it, m; otherwise the rig's maxPelvisDrop.
+    float LungePelvisDrop = 0.1f;
     StanceAfterStop Stance = StanceAfterStop::Mirror;
 };
 

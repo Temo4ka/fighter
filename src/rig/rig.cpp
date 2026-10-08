@@ -952,7 +952,7 @@ float Rig::getReachDrop(const PerBodyPart<Placement>& Pose, const std::vector<Le
         const float HighestHip = getAnkleInPose(Limb, Pose).Y + std::sqrt(Reach * Reach - Across * Across);
         RootDrop = std::max(RootDrop, HipPoint.Y - HighestHip);
     }
-    return std::min(RootDrop, Control.MaxPelvisDrop);
+    return std::min(RootDrop, PelvisDropLimit.value_or(Control.MaxPelvisDrop));
 }
 
 PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vector<Leg>& Limbs, float Dt,
@@ -982,8 +982,11 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         const PartState& Foot = getPart(Limb.Foot);
         const Placement& FootPose = Pose[static_cast<size_t>(Limb.Foot)];
         // The clip plants the foot when its sole is on the floor; a foot
-        // stepping back plants when it is there.
-        const bool Planted = getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) <= Control.FootPlantHeight;
+        // stepping back plants when it is there. The pelvis gone down for
+        // the kept feet takes no foot down with it: a lifted one stays as
+        // high as the clip has it.
+        const bool Planted =
+            getLowestPoint(Foot.Shape, FootPose.Position, FootPose.Angle) + RootDrop <= Control.FootPlantHeight;
         if (Limb.Stepping && std::abs(Limb.OffsetX) < StepDoneDistance) Limb.Stepping = false;
 
         if (Planted && !Limb.Locked && !Limb.Stepping) {
@@ -994,9 +997,9 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             Limb.KeptOffsetX = 0.0f;
             Limb.Kept = false;
         }
-        float Lift = 0.0f;
-        // A planted foot stays on the floor when the pelvis went down for it.
-        if (Limb.Locked) Lift = RootDrop;
+        // A planted foot stays on the floor when the pelvis went down for it,
+        // a lifted one at its height.
+        float Lift = RootDrop;
         if (Limb.Locked) {
             // A pull longer than the slip (a knockback, a push) drags the
             // foot, and so does one the leg cannot reach.
@@ -1015,7 +1018,7 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
         } else {
             Limb.OffsetX *= std::exp(-Control.FootLockRelease * Dt);
             // A step back to the stance lifts the foot off the floor.
-            if (Limb.Stepping) Lift = std::abs(Limb.OffsetX) * Control.FootStepLift;
+            if (Limb.Stepping) Lift += std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
         if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
             // The knee bends at most KneeExtraBend deeper than the clip's.
