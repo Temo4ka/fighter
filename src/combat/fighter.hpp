@@ -234,7 +234,7 @@ private:
     /// (stopAtContact()), m.
     float getStopDepth() const;
     /// The strikers' part of stopAtContact().
-    void stopStrikeAtContact();
+    void stopStrikeAtContact(std::optional<float> Kept);
     /// What a posed strike stopped at the opponent does (stopAtContact).
     enum class ContactStage : uint8_t {
         None,        ///< Not stopped in this attack.

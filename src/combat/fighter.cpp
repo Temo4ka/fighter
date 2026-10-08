@@ -229,17 +229,15 @@ void Fighter::onStrikeLanded(bool Clean) {
 void Fighter::stopAtContact() {
     // In any phase: nothing passes through the opponent. A contact in the
     // startup jams the attack. The posed limbs are held back too.
-    if (getMove()) stopStrikeAtContact();
-    Body.holdLimbsBack(getStopDepth());
+    stopStrikeAtContact(Body.stopPosedLimbs(getStopDepth(), true).StrikeKept);
 }
 
-void Fighter::holdLimbsBack() { Body.holdLimbsBack(getStopDepth()); }
+void Fighter::holdLimbsBack() { Body.stopPosedLimbs(getStopDepth(), false); }
 
-void Fighter::stopStrikeAtContact() {
+void Fighter::stopStrikeAtContact(std::optional<float> Kept) {
+    if (!getMove()) return;
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
-    const std::optional<float> Kept =
-        Body.stopAtContact(AttackClip->Strikers, getStopDepth());
     if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
 
     // The first stop: the clip goes back to the time of the contact (clip

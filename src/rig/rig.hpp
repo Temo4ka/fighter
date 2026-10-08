@@ -160,6 +160,16 @@ struct PartPlacement {
     float PosedAngle = 0.0f;
 };
 
+/// What Rig::stopPosedLimbs() did in one pass.
+struct PosedStop {
+    /// The strikers ran into the opponent: the share of their motion of the
+    /// step they kept (1: a touch that needed no stop); nullopt: no contact,
+    /// no strikers, or not asked.
+    std::optional<float> StrikeKept;
+    /// The limbs (their topmost parts) held back for going too deep.
+    std::bitset<BodyPartCount> HeldLimbs;
+};
+
 /// Where a foot stands, as for a fighter facing right, relative to the
 /// floor point under the pelvis: X forward, Y up from the floor.
 struct FootPlacement {
@@ -303,29 +313,24 @@ public:
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
     /// the wall faces at +-WallX.
     void updateWallContact(float MinX, float MaxX, float WallX);
-    /// Call after the physics step. Did the posed parts of \p Strikers run
-    /// into the opponent (its posed parts, or a part the solver could not
-    /// push away) by their own motion, relative to the pelvis? If one sank
-    /// deeper than \p MaxDepth (m) during the step, the posed limbs of the
-    /// strikers go back along that relative motion to where the strikers
-    /// were MaxDepth deep (the leg stays at the contact and on its hip); the
-    /// pelvis and the other limbs keep the step's motion. See
-    /// physics::World::findPosedStop. Returns the share of the step's motion
-    /// kept (1 for a contact that needed no stop), or nullopt if there is no
-    /// contact. Parts that are not posed now are ignored.
-    std::optional<float> stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth);
-
-    /// Call after the physics step and stopAtContact(). A posed limb (a leg)
-    /// whose own motion in the step, relative to the pelvis, took it deeper
-    /// than \p MaxDepth (m) into the opponent goes back along that motion to
-    /// MaxDepth deep (it stays on its hip; the pelvis keeps its motion).
-    /// Nothing in physics stops a posed limb, and the spacing of the
-    /// fighters (rig/spacing.hpp) can push the bodies apart only so fast: a
-    /// foot swung through the opponent's in one step, or the thigh of a kick
-    /// rising into a guard the solver cannot push away, stops there instead.
-    /// Touching is fine; the strikers stopAtContact() already stopped are no
-    /// deeper than that.
-    void holdLimbsBack(float MaxDepth);
+    /// Call after the physics step (rig::ContactResolver does): the posed
+    /// limbs go back along their own motion of the step, relative to the
+    /// pelvis, to the opponent (the pelvis and the other limbs keep the
+    /// step's motion; see physics::World::findPosedStop). Nothing in physics
+    /// stops a posed limb, and the spacing (rig/spacing.hpp) moves whole
+    /// bodies only so fast.
+    ///  - With \p StopStrikers (the first pass of a step), the strikers of
+    ///    the attack (setStrikingParts(), Attacking, in any phase) stop as
+    ///    soon as they run into the opponent (its posed parts, or a part the
+    ///    solver could not push away): their limbs go back together to where
+    ///    the strikers were \p MaxDepth (m) deep. PosedStop::StrikeKept tells
+    ///    the share of the motion they kept, for the clip.
+    ///  - Every posed limb (a leg, the strikers' too) whose own motion took
+    ///    it deeper than MaxDepth goes back to MaxDepth deep (a foot swung
+    ///    through the opponent's in one step, the thigh of a kick rising into
+    ///    a guard). Touching is fine.
+    /// Parts that are not posed now are ignored; nothing while knocked down.
+    PosedStop stopPosedLimbs(float MaxDepth, bool StopStrikers);
 
     /// \name State
     /// @{
@@ -613,6 +618,12 @@ private:
     /// along their motion of the last step relative to the pelvis
     /// (physics::World::rewindBody).
     void rewindLimb(BodyPart Top, float Fraction);
+    /// The strikers' part of stopPosedLimbs(): the share kept, or nullopt
+    /// without a contact.
+    std::optional<float> stopStrikers(float MaxDepth);
+    /// The limbs' part of stopPosedLimbs(): the limbs (topmost parts) held
+    /// back.
+    std::bitset<BodyPartCount> holdLimbsBack(float MaxDepth);
     /// How far a planted foot is from where it should stand still.
     static float getRestepDistance(const Leg& Limb);
     /// Gives the physical parts the change of the pelvis motion of this

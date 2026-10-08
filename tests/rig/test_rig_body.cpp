@@ -724,7 +724,7 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
     Strikers.set(static_cast<size_t>(BodyPart::FootL));
     const auto kick = [&](bool Stop) {
         Duel Kick(-0.5f, 0.5f);
-        // The spacing of the bodies leaves the strikers to stopAtContact().
+        // The spacing of the bodies leaves the strikers to stopPosedLimbs().
         Kick.Left.setStrikingParts(Strikers, Strikers);
         PerBodyPart<float> Pose = loadStance();
         const float StartThigh = Pose[static_cast<size_t>(BodyPart::ThighL)];
@@ -736,7 +736,7 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
             Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
             Kick.Left.setTargetAngles(Pose);
             Kick.run(1);
-            const bool Stopped = Stop && Kick.Left.stopAtContact(Strikers, Depth).has_value();
+            const bool Stopped = Stop && Kick.Left.stopPosedLimbs(Depth, true).StrikeKept.has_value();
             Stops += Stopped ? 1 : 0;
             CHECK(Kick.Left.isStoppedAtContact() == Stopped);
             for (const auto Part : {BodyPart::ShinL, BodyPart::FootL}) {
@@ -924,10 +924,10 @@ TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
+TEST_CASE("Rig: stopPosedLimbs holds back a leg swung into the opponent", "[rig]") {
     // The left fighter swings its front leg into the right one's legs in
     // big steps; the spacing is too slow to keep them apart. The leg is no
-    // striker: holdLimbsBack holds it at the opponent.
+    // striker: stopPosedLimbs holds it at the opponent.
     constexpr float Depth = 0.01f;
     const auto swing = [&](bool Hold) {
         Duel Swing(-0.5f, 0.5f);
@@ -941,7 +941,7 @@ TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
         float Deepest = 0.0f;
         for (int Step = 0; Step < 20; ++Step) {
             Swing.run(1);
-            if (Hold) Swing.Left.holdLimbsBack(Depth);
+            if (Hold) Swing.Left.stopPosedLimbs(Depth, false);
             for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}) {
                 Deepest = std::max(Deepest, Swing.Left.getPosedPenetration(Part));
             }

@@ -263,9 +263,21 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
                                                              : 0;
 }
 
-std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
-    StoppedAtContact = false;
-    if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
+PosedStop Rig::stopPosedLimbs(float MaxDepth, bool StopStrikers) {
+    PosedStop Result;
+    if (StopStrikers) {
+        StoppedAtContact = false;
+        HeldLimbs.reset();
+    }
+    if (CurrentPosture == Posture::KnockedDown) return Result;
+    if (StopStrikers) Result.StrikeKept = stopStrikers(MaxDepth);
+    Result.HeldLimbs = holdLimbsBack(MaxDepth);
+    HeldLimbs |= Result.HeldLimbs;
+    return Result;
+}
+
+std::optional<float> Rig::stopStrikers(float MaxDepth) {
+    const std::bitset<BodyPartCount>& Strikers = AttackingParts;
     std::vector<physics::Body> Posed;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
@@ -291,9 +303,8 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
     return Fraction;
 }
 
-void Rig::holdLimbsBack(float MaxDepth) {
-    HeldLimbs.reset();
-    if (CurrentPosture == Posture::KnockedDown) return;
+std::bitset<BodyPartCount> Rig::holdLimbsBack(float MaxDepth) {
+    std::bitset<BodyPartCount> Held;
     const physics::Body Pelvis = getPart(Root).Handle;
     for (const auto& Joint : Joints) {
         const auto Top = static_cast<size_t>(Joint.Child);
@@ -308,8 +319,9 @@ void Rig::holdLimbsBack(float MaxDepth) {
         const std::optional<float> Fraction = Physics->findPosedStop(Limb, MaxDepth, Pelvis);
         if (!Fraction || *Fraction >= 1.0f) continue;
         rewindLimb(Joint.Child, *Fraction);
-        HeldLimbs.set(Top);
+        Held.set(Top);
     }
+    return Held;
 }
 
 void Rig::pushBody(float Delta) {
