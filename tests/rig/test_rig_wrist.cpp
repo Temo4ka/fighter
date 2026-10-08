@@ -181,3 +181,61 @@ TEST_CASE("Rig: weapon transforms run from the fist to the tip along -Y", "[rig]
     // As wide as the mount's weapon.
     CHECK(Blade.Size.X == Approx(loadHumanoid().Weapon.Width));
 }
+
+TEST_CASE("Rig: a weapon in each hand makes two weapon bodies on two wrists", "[rig][wrist]") {
+    physics::World Bare;
+    const Rig Unarmed(Bare, loadHumanoid(), makeSetup(true));
+    HeldItem Off = makeSword(-10.0f);
+    Off.Part = BodyPart::ForearmR;
+    physics::World Armed;
+    const Rig Duelist(Armed, loadHumanoid(), makeSetup(true, {makeSword(30.0f), Off}));
+    CHECK(Armed.getBodyCount() == Bare.getBodyCount() + 2);
+    CHECK(Armed.getJointCount() == Bare.getJointCount() + 2);
+    CHECK(Duelist.getTotalMass() == Approx(Unarmed.getTotalMass() + 2.0f * SwordMassKg));
+    // Each weapon has its own default; the first is the main hand's.
+    CHECK(*Duelist.getDefaultWristAngle(BodyPart::ForearmL) == Approx(30.0f * RadiansPerDegree));
+    CHECK(*Duelist.getDefaultWristAngle(BodyPart::ForearmR) == Approx(-10.0f * RadiansPerDegree));
+    CHECK(*Duelist.getDefaultWristAngle() == Approx(30.0f * RadiansPerDegree));
+    CHECK_FALSE(Unarmed.getDefaultWristAngle(BodyPart::ForearmL));
+    std::vector<PartTransform> Weapons;
+    Duelist.getWeaponTransforms(Weapons);
+    REQUIRE(Weapons.size() == 2);
+    CHECK(Weapons[0].Part == BodyPart::ForearmL);
+    CHECK(Weapons[1].Part == BodyPart::ForearmR);
+    CHECK_FALSE(Duelist.getGripPart());
+}
+
+TEST_CASE("Rig: each wrist follows its own target, else its own item's default", "[rig][wrist]") {
+    HeldItem Off = makeSword(-10.0f);
+    Off.Part = BodyPart::ForearmR;
+    for (const bool FacingRight : {true, false}) {
+        CAPTURE(FacingRight);
+        Stage Scene(makeSetup(FacingRight, {makeSword(30.0f), Off}));
+        Rig& Body = Scene.Body;
+        Scene.run(60);
+        CHECK(*Body.getWristAngle(BodyPart::ForearmL) == Approx(30.0f * RadiansPerDegree).margin(0.05f));
+        CHECK(*Body.getWristAngle(BodyPart::ForearmR) == Approx(-10.0f * RadiansPerDegree).margin(0.05f));
+
+        // One hand's wrist: the other keeps its own.
+        Body.setWristAngle(BodyPart::ForearmR, 0.8f);
+        Scene.run(60);
+        CHECK(*Body.getWristAngle(BodyPart::ForearmR) == Approx(0.8f).margin(0.05f));
+        CHECK(*Body.getWristAngle(BodyPart::ForearmL) == Approx(30.0f * RadiansPerDegree).margin(0.05f));
+        Body.setWristAngle(BodyPart::ForearmL, -0.5f);
+        Scene.run(60);
+        CHECK(*Body.getWristAngle(BodyPart::ForearmL) == Approx(-0.5f).margin(0.05f));
+        CHECK(*Body.getWristAngle(BodyPart::ForearmR) == Approx(0.8f).margin(0.05f));
+
+        // Cleared one by one: back to that weapon's default.
+        Body.setWristAngle(BodyPart::ForearmR, std::nullopt);
+        CHECK(*Body.getWristTarget(BodyPart::ForearmR) == Approx(-10.0f * RadiansPerDegree));
+        CHECK(*Body.getWristTarget(BodyPart::ForearmL) == Approx(-0.5f));
+        // Both at once, as with one weapon.
+        Body.setWristAngle(0.2f);
+        CHECK(*Body.getWristTarget(BodyPart::ForearmL) == Approx(0.2f));
+        CHECK(*Body.getWristTarget(BodyPart::ForearmR) == Approx(0.2f));
+        // A hand without a weapon: nothing.
+        Body.setWristAngle(BodyPart::Head, 1.0f);
+        CHECK_FALSE(Body.getWristTarget(BodyPart::Head));
+    }
+}
