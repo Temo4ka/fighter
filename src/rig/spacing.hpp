@@ -6,12 +6,14 @@
 ///
 /// \file
 /// This file declares the spacing of two fighters (task 2.1): how close their
-/// bodies may get to each other and to the arena walls.
+/// bodies may get to each other and to the arena walls. These are stages of
+/// rig::ContactResolver (rig/contact.hpp), the one entry the battle uses.
 ///
 /// The pelvises are kinematic, and Box2D never collides two kinematic
 /// bodies, so this code is their "collision". Every step, after both rigs
-/// planned their motion (Rig::planMotion) and before Rig::applyControl,
-/// the battle calls keepApart():
+/// planned their motion (Rig::planMotion: walking, knockback, whatever moves
+/// the pelvis by plan) and before Rig::applyControl, the resolver calls
+/// keepApart():
 ///  - each pelvis stays BodyHalfWidth away from the walls; a fighter at a
 ///    wall touches it (Rig::getWallSide, Rig::isAgainstWall), and knockback
 ///    into the wall stops there;
@@ -34,21 +36,23 @@
 ///    whole body, planted feet included (Rig::pushBody). The arms are left
 ///    out (the solver keeps them apart, and a stuck one yields). The
 ///    striking parts of an attack overlap only where they are and where the
-///    clip takes them alike: their own motion into the opponent stops there
-///    (Rig::stopAtContact), the opponent's into them is kept off here. What
-///    the spacing cannot keep apart in time (a leg swung through the
-///    opponent's in one step) Rig::holdLimbsBack stops;
+///    clip takes them alike: their own motion into the opponent stops after
+///    the step (Rig::stopPosedLimbs), the opponent's into them is kept off
+///    here. What the spacing cannot keep apart in time (a leg swung through
+///    the opponent's in one step) Rig::stopPosedLimbs holds back too;
 ///  - a standing fighter keeps its pelvis BodyHalfWidth + lyingClearance
 ///    (rig file) away from the body of a fighter lying on the floor, so its
 ///    legs do not walk through it.
 ///
-/// When a strike lands, the battle calls pushApartOnHit(): a hit at close
+/// When a strike lands, the resolver calls pushApartOnHit(): a hit at close
 /// range pushes the fighters apart to the rig's closeRange, so that arms
 /// and torsos do not stay pressed into each other.
 ///
 //===----------------------------------------------------------------------===//
 
 #pragma once
+
+#include <array>
 
 #include "rig/rig.hpp"
 
@@ -77,11 +81,31 @@ struct SpacingParams {
     float MaxSoftOverlap = 0.008f;
 };
 
+/// What keepApart() did in a step, for the panel (ContactResolver).
+struct SpacingReport {
+    /// Both stood: the standing pair was spaced (the rest below is theirs).
+    bool Standing = false;
+    /// How deep the predicted bodies overlapped with the plans, m.
+    float Overlap = 0.0f;
+    /// The shift apart they needed, the part of it that took back the
+    /// approach of the step, and the push beyond that, m.
+    float Needed = 0.0f;
+    float Slowed = 0.0f;
+    float Pushed = 0.0f;
+    float PushSpeed = 0.0f;   ///< Pushed / Dt, m/s.
+    bool Hard = false;        ///< Pushed apart at once (too deep, or a striker in).
+    bool Eased = false;       ///< The push was held to its eased speed.
+    /// One fighter lay: how far the standing one (by its index in the call,
+    /// First 0) stepped off the body under it, m (signed along X).
+    std::array<float, 2> OffLying{};
+};
+
 /// Corrects the planned pelvis motion of both fighters for the walls and
 /// for each other (see the file comment) and updates their wall contact.
 /// Call once per step after Rig::planMotion of both and before
-/// Rig::applyControl. The fighters may stand in either order.
-void keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt);
+/// Rig::applyControl (ContactResolver::beforeStep does). The fighters may
+/// stand in either order.
+SpacingReport keepApart(Rig& First, Rig& Second, const SpacingParams& Params, float Dt);
 
 /// A strike of \p Attacker landed on \p Victim. If their pelvises are closer
 /// than the victim's ControlParams::CloseRange and both stand, both get a

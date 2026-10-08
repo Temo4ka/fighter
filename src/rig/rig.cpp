@@ -38,7 +38,7 @@ constexpr float WallMarkHeight = 1.8f;      ///< m.
 /// \name Collision categories of body parts
 /// The arena keeps the default category (bit 0). A knocked-down fighter
 /// collides with the posed parts of the other fighter like any other body:
-/// a posed striker stops at a body it sinks into (stopAtContact), and the
+/// a posed striker stops at a body it sinks into (stopPosedLimbs), and the
 /// standing legs push a lying body out of their way instead of passing
 /// through it. Parts of the rig's "passThrough" list ignore each other
 /// (RigDef::PassThrough): their category is PassThroughBit alone, and their
@@ -263,9 +263,21 @@ void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
                                                              : 0;
 }
 
-std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strikers, float MaxDepth) {
-    StoppedAtContact = false;
-    if (CurrentPosture == Posture::KnockedDown) return std::nullopt;
+PosedStop Rig::stopPosedLimbs(float MaxDepth, bool StopStrikers) {
+    PosedStop Result;
+    if (StopStrikers) {
+        StoppedAtContact = false;
+        HeldLimbs.reset();
+    }
+    if (CurrentPosture == Posture::KnockedDown) return Result;
+    if (StopStrikers) Result.StrikeKept = stopStrikers(MaxDepth);
+    Result.HeldLimbs = holdLimbsBack(MaxDepth);
+    HeldLimbs |= Result.HeldLimbs;
+    return Result;
+}
+
+std::optional<float> Rig::stopStrikers(float MaxDepth) {
+    const std::bitset<BodyPartCount>& Strikers = AttackingParts;
     std::vector<physics::Body> Posed;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
         if (Strikers.test(Index) && isKinematic(static_cast<BodyPart>(Index))) Posed.push_back(Parts[Index].Handle);
@@ -291,9 +303,8 @@ std::optional<float> Rig::stopAtContact(const std::bitset<BodyPartCount>& Strike
     return Fraction;
 }
 
-void Rig::holdLimbsBack(float MaxDepth) {
-    HeldLimbs.reset();
-    if (CurrentPosture == Posture::KnockedDown) return;
+std::bitset<BodyPartCount> Rig::holdLimbsBack(float MaxDepth) {
+    std::bitset<BodyPartCount> Held;
     const physics::Body Pelvis = getPart(Root).Handle;
     for (const auto& Joint : Joints) {
         const auto Top = static_cast<size_t>(Joint.Child);
@@ -308,8 +319,9 @@ void Rig::holdLimbsBack(float MaxDepth) {
         const std::optional<float> Fraction = Physics->findPosedStop(Limb, MaxDepth, Pelvis);
         if (!Fraction || *Fraction >= 1.0f) continue;
         rewindLimb(Joint.Child, *Fraction);
-        HeldLimbs.set(Top);
+        Held.set(Top);
     }
+    return Held;
 }
 
 void Rig::pushBody(float Delta) {
@@ -880,7 +892,7 @@ std::vector<PartPlacement> Rig::predictBody(float RootX, float Dt) const {
                          getTravelCorrections(Controller.getTravelShare(RootX, PoseTravel)));
     // The parts that are not posed now (the torso and the head, held on the
     // pelvis) and the strikers (they stop at the opponent by themselves,
-    // stopAtContact(); the opponent must not walk into where they are) move
+    // stopPosedLimbs(); the opponent must not walk into where they are) move
     // rigidly with the pelvis.
     const PartState& Pelvis = getPart(Root);
     const Placement& PelvisGoal = Pose[static_cast<size_t>(Root)];
@@ -1672,14 +1684,9 @@ void Rig::fillPanel() const {
         Overlap = Depth;
         Deepest = Part;
     }
-    std::string Held;
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        if (HeldLimbs.test(Index)) Held += std::format(", {} held back", getBodyPartName(static_cast<BodyPart>(Index)));
-    }
-    debug::setPanel(Name + " posed overlap", Overlap > 0.0f ? std::format("{} {:.3f} m{}{}", getBodyPartName(Deepest),
-                                                                          Overlap, StoppedAtContact ? ", stopped" : "",
-                                                                          Held)
-                                                            : Held.empty() ? "-" : Held.substr(2));
+    // What the posed stop did is the contact panel's ("contact posed").
+    debug::setPanel(Name + " posed overlap",
+                    Overlap > 0.0f ? std::format("{} {:.3f} m", getBodyPartName(Deepest), Overlap) : "-");
 }
 
 namespace {

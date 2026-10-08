@@ -239,7 +239,12 @@ TEST_CASE("Spacing: the panel tells what moves each fighter", "[combat][spacing]
     CHECK(SawPushed);
     CHECK(SawWall);
     CHECK(SawHeld);
-    CHECK(getLine("spacing").find("needs") != std::string::npos);
+    // One line per contact stage (rig::ContactResolver).
+    CHECK(getLine("contact spacing").find("needs") != std::string::npos);
+    CHECK(getLine("contact walls").find("P2 right wall") != std::string::npos);
+    CHECK(getLine("contact posed").find("passes") != std::string::npos);
+    CHECK_FALSE(getLine("contact push-out").empty());
+    CHECK_FALSE(getLine("overlap").empty());
 #else
     SUCCEED("no panel in the release build");
 #endif

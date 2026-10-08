@@ -28,7 +28,7 @@
 ///       A posed striker (a kick) that meets the opponent's posed parts
 ///       (legs, pelvis) stops there: the clip holds that pose for
 ///       CombatTuning::ContactHoldSec, then recovers, blending from the
-///       contact pose (stopAtContact).
+///       contact pose (onPosedStop).
 ///   Reacting -- a hit of level Flinch or stronger: no control for the
 ///       level's stun_sec; a new hit only raises the level.
 ///   KnockedDown, GettingUp -- the rig's ragdoll and getting up; no control.
@@ -145,28 +145,24 @@ public:
     /// The current attack landed; it hits only once, later contacts are
     /// bumps. \p Clean: not blocked and not jammed, so it may be chained.
     void onStrikeLanded(bool Clean);
-    /// Call after the physics step: a posed striking limb of an attack that
-    /// ran into the opponent (its posed parts, or a part the solver could
-    /// not push away) goes back to the contact (rig::Rig::stopAtContact), in
-    /// any phase of the attack. The first stop of an attack holds the clip
-    /// at the contact pose for CombatTuning::ContactHoldSec; then the
-    /// recovery plays, blending from the contact pose over
-    /// CombatTuning::ContactRecoveryBlendSec. The hit itself is the physics
-    /// world's, as for any strike. A first stop in the startup jams the
-    /// attack (isJammed): the leg did hit, so that contact is a strike too,
-    /// with its real speed, but not a clean one (no min_reaction, no chain).
-    /// The other posed limbs (the legs) are held back at the opponent too,
-    /// attacking or not (rig::Rig::holdLimbsBack).
-    void stopAtContact();
-    /// After stopAtContact() of both fighters: the posed limbs that are
-    /// still too deep in the opponent (its limbs stopped too, maybe back
-    /// into these) go back once more (rig::Rig::holdLimbsBack).
-    void holdLimbsBack();
+    /// Call after the posed limbs went back to the contact
+    /// (rig::ContactResolver::afterStep) with what the strikers of the
+    /// attack did (rig::PosedStop::StrikeKept: the share of the step's
+    /// motion they kept; nullopt: no contact). A posed strike stops at the
+    /// opponent in any phase of the attack; its first stop takes the clip
+    /// back to the time of the contact and holds the contact pose for
+    /// CombatTuning::ContactHoldSec; then the recovery plays, blending from
+    /// the contact pose over CombatTuning::ContactRecoveryBlendSec. The hit
+    /// itself is the physics world's, as for any strike. A first stop in the
+    /// startup jams the attack (isJammed): the leg did hit, so that contact
+    /// is a strike too, with its real speed, but not a clean one (no
+    /// min_reaction, no chain).
+    void onPosedStop(std::optional<float> StrikeKept);
     /// Did the current attack run into the opponent in its startup
-    /// (stopAtContact)?
+    /// (onPosedStop)?
     bool isJammed() const { return getMove() && Jammed; }
     /// Is the attack holding the pose of a posed strike stopped at the
-    /// opponent (stopAtContact)?
+    /// opponent (onPosedStop)?
     bool isHoldingContact() const { return getMove() && Contact == ContactStage::Holding; }
     /// True once after the stamina ran out (for the Exhausted event).
     bool takeExhaustedNotice();
@@ -230,12 +226,7 @@ public:
     void drawDebug(std::string_view Name) const;
 
 private:
-    /// How deep a posed limb may press into the opponent before it stops
-    /// (stopAtContact()), m.
-    float getStopDepth() const;
-    /// The strikers' part of stopAtContact().
-    void stopStrikeAtContact();
-    /// What a posed strike stopped at the opponent does (stopAtContact).
+    /// What a posed strike stopped at the opponent does (onPosedStop).
     enum class ContactStage : uint8_t {
         None,        ///< Not stopped in this attack.
         Holding,     ///< The clip holds the contact pose.

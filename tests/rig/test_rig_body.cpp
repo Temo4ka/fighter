@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <iterator>
 #include <numbers>
+#include <optional>
 #include <ranges>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "physics/world.hpp"
 #include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
+#include "rig/contact.hpp"
 #include "rig/spacing.hpp"
 #include "stats/stats.hpp"
 
@@ -26,7 +28,8 @@ using Catch::Approx;
 
 // The body of task 2.1 without a battle: feet, crouch, turning around,
 // knockdown direction, staying down, the weapon, limbs stuck in the
-// opponent, walls and the spacing of two fighters (rig/spacing.hpp).
+// opponent, walls, the spacing of two fighters (rig/spacing.hpp) and the
+// contact stages around the physics step (rig/contact.hpp).
 
 namespace {
 
@@ -129,11 +132,19 @@ struct Duel {
         }
     }
 
+    /// The contact stages of a battle with these spacing parameters.
+    ContactResolver makeContacts(float StopDepth = 0.01f) const {
+        return ContactResolver({.Spacing = Spacing, .StopDepth = StopDepth});
+    }
+
+    /// Steps with the contact stage before the physics step (the spacing),
+    /// not the one after it.
     void run(int Steps) {
+        ContactResolver Contacts = makeContacts();
         for (int Step = 0; Step < Steps; ++Step) {
             Left.planMotion(Dt);
             Right.planMotion(Dt);
-            keepApart(Left, Right, Spacing, Dt);
+            Contacts.beforeStep(Left, Right, Dt);
             Left.applyControl(Dt);
             Right.applyControl(Dt);
             PhysWorld.step(Dt);
@@ -724,7 +735,7 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
     Strikers.set(static_cast<size_t>(BodyPart::FootL));
     const auto kick = [&](bool Stop) {
         Duel Kick(-0.5f, 0.5f);
-        // The spacing of the bodies leaves the strikers to stopAtContact().
+        // The spacing of the bodies leaves the strikers to stopPosedLimbs().
         Kick.Left.setStrikingParts(Strikers, Strikers);
         PerBodyPart<float> Pose = loadStance();
         const float StartThigh = Pose[static_cast<size_t>(BodyPart::ThighL)];
@@ -736,7 +747,7 @@ TEST_CASE("Rig: a posed kick stops at the opponent's posed legs", "[rig]") {
             Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
             Kick.Left.setTargetAngles(Pose);
             Kick.run(1);
-            const bool Stopped = Stop && Kick.Left.stopAtContact(Strikers, Depth).has_value();
+            const bool Stopped = Stop && Kick.Left.stopPosedLimbs(Depth, true).StrikeKept.has_value();
             Stops += Stopped ? 1 : 0;
             CHECK(Kick.Left.isStoppedAtContact() == Stopped);
             for (const auto Part : {BodyPart::ShinL, BodyPart::FootL}) {
@@ -924,10 +935,10 @@ TEST_CASE("Rig: reachFoot bends a leg to put its ankle at a point", "[rig]") {
     }
 }
 
-TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
+TEST_CASE("Rig: stopPosedLimbs holds back a leg swung into the opponent", "[rig]") {
     // The left fighter swings its front leg into the right one's legs in
     // big steps; the spacing is too slow to keep them apart. The leg is no
-    // striker: holdLimbsBack holds it at the opponent.
+    // striker: stopPosedLimbs holds it at the opponent.
     constexpr float Depth = 0.01f;
     const auto swing = [&](bool Hold) {
         Duel Swing(-0.5f, 0.5f);
@@ -941,7 +952,7 @@ TEST_CASE("Rig: holdLimbsBack stops a leg swung into the opponent", "[rig]") {
         float Deepest = 0.0f;
         for (int Step = 0; Step < 20; ++Step) {
             Swing.run(1);
-            if (Hold) Swing.Left.holdLimbsBack(Depth);
+            if (Hold) Swing.Left.stopPosedLimbs(Depth, false);
             for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}) {
                 Deepest = std::max(Deepest, Swing.Left.getPosedPenetration(Part));
             }
@@ -1165,4 +1176,140 @@ TEST_CASE("Rig: the other hand grips a two-handed weapon", "[rig][hands]") {
     Held.run(60);
     REQUIRE_FALSE(Held.Body.isFacingRight());
     CHECK(Held.Body.getGripGap() <= Control.GripMaxStretch + 0.01f);
+}
+
+TEST_CASE("ContactResolver: both fighters' legs swung into each other stop at the contact", "[rig][contact]") {
+    // Both swing their front legs into each other in big steps; the spacing
+    // is too slow to keep them apart. Without the stage after the step the
+    // legs go through each other; with it neither goes deeper than the stop
+    // depth, though each one's stop moves its leg back from where the other
+    // one's stop saw it.
+    constexpr float Depth = 0.01f;
+    const auto swing = [&](bool Stop) {
+        Duel Swing(-0.45f, 0.45f);
+        Swing.Spacing.PosedSeparationSpeed = 1e-3f;
+        Swing.Spacing.SeparationSpeed = 1e-3f;
+        Swing.run(5);
+        ContactResolver Contacts = Swing.makeContacts(Depth);
+        PerBodyPart<float> Pose = loadStance();
+        Pose[static_cast<size_t>(BodyPart::ThighL)] = 1.6f;
+        Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
+        Swing.Left.setTargetAngles(Pose);
+        Swing.Right.setTargetAngles(Pose);
+        float Deepest = 0.0f;
+        std::bitset<BodyPartCount> Held;
+        bool Again = false;
+        for (int Step = 0; Step < 20; ++Step) {
+            Swing.Left.planMotion(Dt);
+            Swing.Right.planMotion(Dt);
+            Contacts.beforeStep(Swing.Left, Swing.Right, Dt);
+            Swing.Left.applyControl(Dt);
+            Swing.Right.applyControl(Dt);
+            Swing.PhysWorld.step(Dt);
+            if (Stop) {
+                const std::array<PosedStop, 2> Stops = Contacts.afterStep(Swing.Left, Swing.Right);
+                // No attack: no strikers to report.
+                CHECK_FALSE(Stops[0].StrikeKept.has_value());
+                CHECK_FALSE(Stops[1].StrikeKept.has_value());
+                Held |= Stops[0].HeldLimbs | Stops[1].HeldLimbs;
+                CHECK(Contacts.getPosedPasses() >= 2);
+                Again = Again || Contacts.getPosedPasses() > 2;
+                CHECK(Contacts.getPosedPasses() <= ContactResolver::MaxPosedPasses);
+            }
+            for (const Rig* Body : {&Swing.Left, &Swing.Right}) {
+                for (const auto Part : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL}) {
+                    Deepest = std::max(Deepest, Body->getPosedPenetration(Part));
+                }
+            }
+        }
+        if (Stop) {
+            CHECK(Held.test(static_cast<size_t>(BodyPart::ThighL)));
+            // The second one held a leg back after the first one stopped: the
+            // first one went again.
+            CHECK(Again);
+        }
+        return Deepest;
+    };
+    CHECK(swing(false) > 3.0f * Depth);
+    CHECK(swing(true) <= Depth + 1e-3f);
+}
+
+TEST_CASE("ContactResolver: the strikers of an attack stop at a touch and tell the share kept", "[rig][contact]") {
+    constexpr float Depth = 0.01f;
+    std::bitset<BodyPartCount> Strikers;
+    Strikers.set(static_cast<size_t>(BodyPart::ShinL));
+    Strikers.set(static_cast<size_t>(BodyPart::FootL));
+    Duel Kick(-0.5f, 0.5f);
+    Kick.Left.setStrikingParts(Strikers, Strikers);
+    ContactResolver Contacts = Kick.makeContacts(Depth);
+    PerBodyPart<float> Pose = loadStance();
+    const float StartThigh = Pose[static_cast<size_t>(BodyPart::ThighL)];
+    std::optional<float> FirstKept;
+    for (int Step = 1; Step <= 30 && !FirstKept; ++Step) {
+        const float Progress = std::min(1.0f, static_cast<float>(Step) / 15.0f);
+        Pose[static_cast<size_t>(BodyPart::ThighL)] = StartThigh + (1.6f - StartThigh) * Progress;
+        Pose[static_cast<size_t>(BodyPart::ShinL)] = -0.1f;
+        Kick.Left.setTargetAngles(Pose);
+        Kick.Left.planMotion(Dt);
+        Kick.Right.planMotion(Dt);
+        Contacts.beforeStep(Kick.Left, Kick.Right, Dt);
+        Kick.Left.applyControl(Dt);
+        Kick.Right.applyControl(Dt);
+        Kick.PhysWorld.step(Dt);
+        const std::array<PosedStop, 2> Stops = Contacts.afterStep(Kick.Left, Kick.Right);
+        CHECK_FALSE(Stops[1].StrikeKept.has_value());
+        FirstKept = Stops[0].StrikeKept;
+        CHECK(Kick.Left.isStoppedAtContact() == FirstKept.has_value());
+    }
+    REQUIRE(FirstKept.has_value());
+    CHECK(*FirstKept >= 0.0f);
+    CHECK(*FirstKept <= 1.0f);
+    for (const auto Part : {BodyPart::ShinL, BodyPart::FootL}) {
+        CHECK(Kick.Left.getPosedPenetration(Part) <= Depth + 1e-3f);
+    }
+}
+
+TEST_CASE("ContactResolver: posed limbs only touch a fighter lying on the floor", "[rig][contact]") {
+    Duel Fallen(-1.0f, 0.2f);
+    ContactResolver Contacts = Fallen.makeContacts(0.01f);
+    Fallen.Left.planMotion(Dt);
+    Fallen.Right.planMotion(Dt);
+    Contacts.beforeStep(Fallen.Left, Fallen.Right, Dt);
+    CHECK(Contacts.getStopDepth(0) == 0.01f);
+    CHECK(Contacts.getStopDepth(1) == 0.01f);
+    Fallen.Right.applyHit(100.0f, {1.0f, 0.0f}, Fallen.Right.getPartPosition(BodyPart::Head), true);
+    REQUIRE(Fallen.Right.getPosture() == Posture::KnockedDown);
+    Fallen.Left.planMotion(Dt);
+    Fallen.Right.planMotion(Dt);
+    Contacts.beforeStep(Fallen.Left, Fallen.Right, Dt);
+    CHECK(Contacts.getStopDepth(0) == 0.0f);
+    CHECK(Contacts.getStopDepth(1) == 0.01f);
+}
+
+TEST_CASE("ContactResolver: a hit at close range pushes apart, an overlap is judged by its pair", "[rig][contact]") {
+    Duel Close(-0.26f, 0.26f, 2.0f);
+    Close.pose(loadNarrowStance());
+    Close.run(5);
+    ContactResolver Contacts({.Spacing = Close.Spacing, .ArmOverlapTolerance = 0.03f, .OverlapTolerance = 0.01f});
+    const float Deficit = Close.Right.getControl().CloseRange - (getPelvisX(Close.Right) - getPelvisX(Close.Left));
+    REQUIRE(Deficit > 0.1f);
+    CHECK(Contacts.onStrikeLanded(Close.Left, Close.Right) == Approx(Deficit));
+    CHECK(Close.Right.getController().getPushOut() > 0.0f);
+
+    const physics::PartOverlap Arms{.First = {0, BodyPart::ForearmL}, .Second = {1, BodyPart::UpperArmR}};
+    const physics::PartOverlap ArmOnLeg{.First = {0, BodyPart::ForearmL}, .Second = {1, BodyPart::ShinR}};
+    CHECK(Contacts.getOverlapTolerance(Arms) == 0.03f);
+    CHECK(Contacts.getOverlapTolerance(ArmOnLeg) == 0.01f);
+    // Spawned inside each other: the worst overlap is the one furthest
+    // beyond its tolerance.
+    Duel Inside(-0.1f, 0.1f);
+    const std::optional<physics::PartOverlap> Worst = Contacts.findWorstOverlap(Inside.PhysWorld);
+    REQUIRE(Worst.has_value());
+    for (const auto& Overlap : Inside.PhysWorld.findOverlaps()) {
+        CHECK(Overlap.Depth - Contacts.getOverlapTolerance(Overlap) <=
+              Worst->Depth - Contacts.getOverlapTolerance(*Worst));
+    }
+    // Far apart nothing overlaps.
+    Duel Apart(-1.5f, 1.5f);
+    CHECK_FALSE(Contacts.findWorstOverlap(Apart.PhysWorld).has_value());
 }

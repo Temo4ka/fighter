@@ -226,27 +226,20 @@ void Fighter::onStrikeLanded(bool Clean) {
     AttackHitClean = Clean;
 }
 
-void Fighter::stopAtContact() {
+void Fighter::onPosedStop(std::optional<float> StrikeKept) {
     // In any phase: nothing passes through the opponent. A contact in the
-    // startup jams the attack. The posed limbs are held back too.
-    if (getMove()) stopStrikeAtContact();
-    Body.holdLimbsBack(getStopDepth());
-}
-
-void Fighter::holdLimbsBack() { Body.holdLimbsBack(getStopDepth()); }
-
-void Fighter::stopStrikeAtContact() {
+    // startup jams the attack.
+    if (!getMove() || !StrikeKept) return;
+    const float Kept = *StrikeKept;
     const CombatTuning& Tuning = Rules->Tuning;
     const bool Startup = AttackTime < AttackClip->ActiveBeginSec;
-    const std::optional<float> Kept =
-        Body.stopAtContact(AttackClip->Strikers, getStopDepth());
-    if (!Kept || Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
+    if (Contact != ContactStage::None || AttackTimeBefore >= AttackClip->ActiveEndSec) return;
 
     // The first stop: the clip goes back to the time of the contact (clip
     // time advances evenly within a step) and holds there. A contact of the
     // striking phase stays in it, so one that was too slow to be a hit can
     // still land.
-    const float Stopped = AttackTimeBefore + (AttackTime - AttackTimeBefore) * *Kept;
+    const float Stopped = AttackTimeBefore + (AttackTime - AttackTimeBefore) * Kept;
     AttackTime = Startup ? Stopped : std::clamp(Stopped, AttackClip->ActiveBeginSec, AttackClip->ActiveEndSec);
     Contact = ContactStage::Holding;
     ContactClipSec = AttackTime;
@@ -256,14 +249,6 @@ void Fighter::stopStrikeAtContact() {
         debug::logEvent(std::format("P{} {} {} at the opponent (clip {:.2f} s)", Body.getFighterIndex() + 1,
                                     Move->Id, Startup ? "jammed in the startup" : "stopped", AttackTime));
     }
-}
-
-float Fighter::getStopDepth() const {
-    // A posed limb held pressed into a body lying on the floor would clamp
-    // its limp parts to the floor: the ragdoll pulled away levers them up
-    // into the limb (nothing moves a posed limb out of the way). On a lying
-    // opponent the limb stops at the touch.
-    return OpponentDown ? 0.0f : Rules->Tuning.ContactStopDepth;
 }
 
 bool Fighter::takeExhaustedNotice() { return std::exchange(ExhaustedNotice, false); }

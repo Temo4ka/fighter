@@ -80,7 +80,8 @@ public:
     std::optional<physics::PartOverlap> findWorstOverlap() const;
     /// How deep the parts of \p Overlap may sink into each other, m: two
     /// arms pressed together by their motors CombatTuning::ArmOverlapTolerance,
-    /// any other pair CombatTuning::OverlapTolerance (data/combat.json).
+    /// any other pair CombatTuning::OverlapTolerance (data/combat.json;
+    /// rig::ContactResolver::getOverlapTolerance).
     float getOverlapTolerance(const physics::PartOverlap& Overlap) const;
 
 private:
@@ -91,12 +92,15 @@ private:
     void settle(float Dt);
     /// Where the opponent of fighter \p Index is.
     Surroundings getSurroundings(size_t Index) const;
+    /// After the physics step: the posed limbs of both back to the contact
+    /// (rig::ContactResolver::afterStep), and a stopped strike holds its
+    /// clip (Fighter::onPosedStop).
+    void stopPosedLimbs();
     void publishSnapshot();
-    void drawDebug() const;
-    /// The panel line "overlap" (the worst overlap now and the worst so far,
-    /// with what their pairs may overlap) and a mark at the worst overlap of
-    /// the fighters. Does nothing in the release build.
-    void drawOverlap();
+    /// The panel and the debug draw, the contact stages and the overlap
+    /// first (rig::ContactResolver::drawDebug). Does nothing in the release
+    /// build.
+    void drawDebug();
 
     BattleConfig Cfg;
     std::unique_ptr<Simulation> Sim;   ///< Physics world, fighters, clips.
