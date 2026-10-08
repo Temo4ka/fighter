@@ -79,9 +79,8 @@ struct HitInput {
     /// The victim's block (its moveset's); nullptr: the table's alone
     /// (getDefaultBlock()).
     const BlockRules* Block = nullptr;
-    /// The height of the move (its tag high/mid/low), if it has one.
-    std::optional<BlockZone> Height;
-    /// The hit landed on the shield the victim holds: blocked in any guard.
+    /// The hit landed on the plate of a shield the victim holds in the off
+    /// hand (a guarding shield): blocked in any guard.
     bool OnShield = false;
     float MoveDamage = 1.0f;           ///< MoveDef::Damage.
     float PowerScale = 1.0f;           ///< WeaponProps::PowerScale for a weapon move, else 1.
@@ -107,18 +106,11 @@ bool isCoveredBy(BlockZone Zone, BodyPart Part);
 /// from (MoveLibrary::getBlock()).
 BlockRules getDefaultBlock(const ReactionTable& Table);
 
-/// The height zone of a move: its tag high, mid or low (MoveDef::getHeight()),
-/// or nullopt.
-std::optional<BlockZone> getHeightZone(const MoveDef& Move);
-
-/// Does \p Block guarding \p Guard stop a hit on \p Part by a move of
-/// \p Height? A move with a height is stopped when the guard covers that
-/// height: some part the O.2 zone of the height holds (so a shield's Mid that
-/// also covers the head stops high moves); the part it touched does not
-/// matter. A move without a height is stopped when the guard covers \p Part.
-/// A hit on the victim's shield (\p OnShield) is stopped by any guard.
-bool isBlockedBy(const BlockRules& Block, BlockZone Guard, std::optional<BlockZone> Height, BodyPart Part,
-                 bool OnShield = false);
+/// Does \p Block guarding \p Guard stop a hit on \p Part? Physics decides
+/// (decision 2026-10-08): the part the strike touched must be one the guard
+/// covers; the move's height tag plays no part. A hit on the plate of a
+/// guarding shield (\p OnShield) is stopped by any guard.
+bool isBlockedBy(const BlockRules& Block, BlockZone Guard, BodyPart Part, bool OnShield = false);
 
 /// How much the thresholds are scaled for a victim with \p Poise and
 /// \p Buildup: poise x max(1 - buildup x threshold_drop, MinThresholdScale).

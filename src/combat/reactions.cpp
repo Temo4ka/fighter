@@ -74,23 +74,8 @@ BlockRules getDefaultBlock(const ReactionTable& Table) {
     return Block;
 }
 
-std::optional<BlockZone> getHeightZone(const MoveDef& Move) {
-    const std::string_view Height = Move.getHeight();
-    if (Height == "high") return BlockZone::High;
-    if (Height == "mid") return BlockZone::Mid;
-    if (Height == "low") return BlockZone::Low;
-    return std::nullopt;
-}
-
-bool isBlockedBy(const BlockRules& Block, BlockZone Guard, std::optional<BlockZone> Height, BodyPart Part,
-                 bool OnShield) {
-    if (OnShield) return true;
-    if (!Height) return Block.covers(Guard, Part);
-    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
-        const auto Covered = static_cast<BodyPart>(Index);
-        if (isCoveredBy(*Height, Covered) && Block.covers(Guard, Covered)) return true;
-    }
-    return false;
+bool isBlockedBy(const BlockRules& Block, BlockZone Guard, BodyPart Part, bool OnShield) {
+    return OnShield || Block.covers(Guard, Part);
 }
 
 HitOutcome resolveHit(const ReactionTable& Table, const HitInput& Hit) {
@@ -105,7 +90,7 @@ HitOutcome resolveHit(const ReactionTable& Table, const HitInput& Hit) {
 
     const BlockRules Fallback = Hit.Block ? BlockRules{} : getDefaultBlock(Table);
     const BlockRules& Block = Hit.Block ? *Hit.Block : Fallback;
-    Outcome.Blocked = Hit.Guard && isBlockedBy(Block, *Hit.Guard, Hit.Height, Hit.Part, Hit.OnShield);
+    Outcome.Blocked = Hit.Guard && isBlockedBy(Block, *Hit.Guard, Hit.Part, Hit.OnShield);
     if (Outcome.Blocked) {
         Outcome.Damage *= Block.DamageScale;
         Outcome.Reaction = std::min(Outcome.Reaction, Block.MaxLevel);

@@ -142,10 +142,10 @@ TEST_CASE("Hands: both hands hold a two-handed weapon", "[combat][hands][data]")
     CHECK(Gripped < Unarmed);
 }
 
-TEST_CASE("Hands: the shield and the pair's block stop a high strike in the middle guard", "[combat][hands][data]") {
-    // The jab is a high move: an empty-handed middle guard does not stop it,
-    // the sword and shield guard (it covers the head too) does, and lets
-    // little damage through.
+TEST_CASE("Hands: the shield and the pair's block stop a jab in the middle guard", "[combat][hands][data]") {
+    // The sword and shield guard (the shield in the off hand, the middle
+    // guard covers the head too) stops the jab and lets little damage
+    // through.
     const auto jabAt = [](const FighterConfig& Victim, const PlayerCommands& Guard) {
         BattleConfig Config = makeConfig();
         Config.Right = Victim;
@@ -155,12 +155,9 @@ TEST_CASE("Hands: the shield and the pair's block stop a high strike in the midd
     };
     const FighterConfig Shielded = makeFighter({{.Id = "short_sword"}, {.Id = "wooden_shield"}});
     const std::vector<StrikeLanded> Clean = jabAt(Shielded, {});
-    const std::vector<StrikeLanded> Open = jabAt(FighterConfig{}, {.Block = true});
     const std::vector<StrikeLanded> Guarded = jabAt(Shielded, {.Block = true});
     REQUIRE_FALSE(Clean.empty());
-    REQUIRE_FALSE(Open.empty());
     REQUIRE_FALSE(Guarded.empty());
-    for (const StrikeLanded& Hit : Open) CHECK_FALSE(Hit.Blocked);
     float CleanDamage = 0.0f;
     for (const StrikeLanded& Hit : Clean) CleanDamage = std::max(CleanDamage, Hit.Damage);
     for (const StrikeLanded& Hit : Guarded) {
