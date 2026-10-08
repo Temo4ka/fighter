@@ -50,7 +50,7 @@ private:
 };
 
 /// An item of a fighter: its id and, for a one-handed item, the hand it is
-/// held in when that is not the item's own slot (a sword in the left hand).
+/// held in when that is not the item's own slot (a sword in the off hand).
 struct ItemRef {
     std::string Id;
     std::optional<EquipmentSlot> Slot;

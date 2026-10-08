@@ -203,21 +203,21 @@ TEST_CASE("buildLoadout: hands, two-handed items and changing hands", "[stats][e
     const auto Build = [&](std::vector<ItemRef> Items) { return buildLoadout(Items, Catalog); };
 
     const Loadout Armed = Build({{.Id = "sword"}, {.Id = "shield"}});
-    CHECK(Armed.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmR});
-    CHECK(Armed.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Armed.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Armed.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmR});
     CHECK(Armed.getMoveSet(EquipmentSlot::MainHand) == "sword");
     CHECK(Armed.getMoveSet(EquipmentSlot::OffHand) == "shield");
     CHECK(Armed.findWeapon()->ReachM == 0.5f);
 
     // A sword in the left hand: it covers the left forearm; the main hand is empty.
     const Loadout Left = Build({{.Id = "sword", .Slot = EquipmentSlot::OffHand}});
-    CHECK(Left.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmL});
+    CHECK(Left.findInSlot(EquipmentSlot::OffHand)->Covers == std::vector{BodyPart::ForearmR});
     CHECK(Left.findWeapon() == nullptr);
     CHECK(Left.getMoveSet(EquipmentSlot::OffHand) == "sword");
 
     const Loadout Both = Build({{.Id = "great"}});
     CHECK(Both.findInSlot(EquipmentSlot::OffHand)->Id == "great");
-    CHECK(Both.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmR, BodyPart::ForearmL});
+    CHECK(Both.findInSlot(EquipmentSlot::MainHand)->Covers == std::vector{BodyPart::ForearmL, BodyPart::ForearmR});
     CHECK(Both.getMoveSet(EquipmentSlot::OffHand).empty());
 
     CHECK_THROWS_WITH(Build({{.Id = "great"}, {.Id = "shield"}}),

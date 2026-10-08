@@ -55,8 +55,8 @@ struct Stats {
     int Constitution = 10;  ///< CON: mass, HP, knockback resistance.
 };
 
-/// Where an item is worn. MainHand is the right hand, OffHand the left; a
-/// two-handed item takes both.
+/// Where an item is worn. MainHand is the lead (front, L) hand, OffHand the
+/// rear (R) one; a two-handed item takes both.
 enum class EquipmentSlot { Head, Body, Hands, Legs, Feet, MainHand, OffHand };
 
 /// Is the slot a hand (MainHand, OffHand)?
@@ -114,10 +114,10 @@ struct EquipmentItem {
     }
 };
 
-/// The forearm a hand slot holds items with: MainHand the right, OffHand the
-/// left.
+/// The forearm a hand slot holds items with: MainHand the lead (L), OffHand
+/// the rear (R).
 constexpr BodyPart getHandPart(EquipmentSlot Hand) {
-    return Hand == EquipmentSlot::OffHand ? BodyPart::ForearmL : BodyPart::ForearmR;
+    return Hand == EquipmentSlot::OffHand ? BodyPart::ForearmR : BodyPart::ForearmL;
 }
 
 struct Loadout {

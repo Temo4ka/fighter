@@ -131,6 +131,6 @@ TEST_CASE("Sprites: a held item takes the other arm's picture", "[render][sprite
     const FighterLook Made = makeFighterLook(Config, "", "P1");
     REQUIRE(Made.Items.size() == 2);
     CHECK(Made.Items[0].Held);
-    CHECK(Made.Items[0].Covers == std::vector{BodyPart::ForearmL});
-    CHECK(Made.Items[1].Covers == std::vector{BodyPart::ForearmR});
+    CHECK(Made.Items[0].Covers == std::vector{BodyPart::ForearmR});
+    CHECK(Made.Items[1].Covers == std::vector{BodyPart::ForearmL});
 }

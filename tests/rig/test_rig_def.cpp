@@ -159,7 +159,7 @@ TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]"
 
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
-    CHECK(Humanoid.Weapon.Part == BodyPart::ForearmR);
+    CHECK(Humanoid.Weapon.Part == BodyPart::ForearmL);
     CHECK(Humanoid.Weapon.Radius > 0.0f);
     // Without a "weapon" object the default mount is kept, whatever the part.
     CHECK(parseRigDef(makeRigJson()).Weapon.Part == BodyPart::ForearmR);
@@ -217,7 +217,7 @@ TEST_CASE("parseRigDef: the smooth body parameters are read and checked", "[rig]
 
 TEST_CASE("parseRigDef: the other hand's part and the two-handed grip", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
-    CHECK(Humanoid.Weapon.OffPart == BodyPart::ForearmL);
+    CHECK(Humanoid.Weapon.OffPart == BodyPart::ForearmR);
     CHECK(Humanoid.Weapon.Grip > 0.0f);
     CHECK(Humanoid.Control.GripHertz > 0.0f);
     CHECK(Humanoid.Control.GripMaxStretch > 0.0f);

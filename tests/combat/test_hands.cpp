@@ -110,7 +110,7 @@ std::vector<StrikeLanded> attack(Battle& Fight, const PlayerCommands& Cmd, float
 
 } // namespace
 
-TEST_CASE("Hands: a sword in the left hand strikes with the left arm", "[combat][hands][data]") {
+TEST_CASE("Hands: a sword in the off hand strikes with the rear arm", "[combat][hands][data]") {
     BattleConfig Config = makeConfig();
     Config.Left = makeFighter({{.Id = "short_sword", .Slot = stats::EquipmentSlot::OffHand}});
     Battle Fight(Config);
@@ -123,7 +123,7 @@ TEST_CASE("Hands: a sword in the left hand strikes with the left arm", "[combat]
     for (const StrikeLanded& Hit : Hits) {
         CHECK(Hit.MoveId == "sword_slash");
         const BodyPart Part = Hit.Contact.Attacker.Part;
-        CHECK((Part == BodyPart::ForearmL || Part == BodyPart::UpperArmL));
+        CHECK((Part == BodyPart::ForearmR || Part == BodyPart::UpperArmR));
     }
 }
 
