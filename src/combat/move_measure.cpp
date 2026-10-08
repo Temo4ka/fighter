@@ -158,8 +158,10 @@ std::string describeMeasure(const MoveMeasure& Result) {
         Text += std::format("; reach {:.2f} m ({})", Farthest->ReachM, getBodyPartName(Farthest->Part));
     }
     if (Result.Hit) {
-        Text += std::format("; hit {} at {:.2f} s{}", getBodyPartName(Result.HitPart), Result.HitTimeSec,
-                            Result.Blocked ? " (blocked)" : "");
+        Text += std::format("; hit {} at {:.2f} s{}: {:.2f} m/s, J {:.1f} N*s, strength {:.2f}, damage {:.1f}, {}",
+                            getBodyPartName(Result.HitPart), Result.HitTimeSec, Result.Blocked ? " (blocked)" : "",
+                            Result.ApproachSpeed, Result.Impulse, Result.Strength, Result.Damage,
+                            getReactionLevelName(Result.Reaction));
     } else {
         Text += "; no hit";
     }
@@ -222,6 +224,9 @@ void MoveRun::observe(const Battle& After) {
         Measure.HitTimeSec = static_cast<float>(TimeSec);
         Measure.HitPart = Landed->Contact.Victim.Part;
         Measure.HitPoint = Landed->Contact.Point;
+        Measure.ApproachSpeed = Landed->Contact.ApproachSpeed;
+        Measure.Impulse = Landed->Contact.Impulse;
+        Measure.Strength = Landed->Strength;
         Measure.Damage = Landed->Damage;
         Measure.Reaction = Landed->Reaction;
         Measure.Blocked = Landed->Blocked;

@@ -186,6 +186,12 @@ TEST_CASE("describeMeasure: running, failed and finished", "[combat][measure]") 
     Result.HitPart = BodyPart::Head;
     Result.HitTimeSec = 0.2f;
     CHECK_THAT(describeMeasure(Result), ContainsSubstring("hit Head at 0.20 s"));
+    Result.ApproachSpeed = 6.0f;
+    Result.Impulse = 12.5f;
+    Result.Strength = 1.25f;
+    Result.Damage = 8.0f;
+    Result.Reaction = ReactionLevel::Stagger;
+    CHECK_THAT(describeMeasure(Result), ContainsSubstring("6.00 m/s, J 12.5 N*s, strength 1.25, damage 8.0, Stagger"));
 }
 
 TEST_CASE("MoveRun: an input that starts another move is reported", "[combat][measure]") {
