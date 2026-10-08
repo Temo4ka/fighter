@@ -112,6 +112,22 @@ TEST_CASE("checkData: the clips of the state machine must exist", "[combat][data
     CHECK(hasProblem(Problems, "poses/stance.json", "a clip the state machine plays"));
 }
 
+TEST_CASE("checkData: only attacks move the pelvis, within range", "[combat][data_check][pelvis]") {
+    const test::ScratchData Data("check_pelvis_track");
+    const std::string Track = R"("pelvisX": [ { "t": 0, "x": 0 }, { "t": 0.2, "x": 0.1 } ],)";
+    Data.replace("poses/flinch.json", R"("loop": false,)", R"("loop": false, )" + Track);
+    Data.write("poses/odd_guard.json", R"({ "duration": 0.5, )" + Track +
+                                           R"( "keys": [ { "t": 0, "pose": { "UpperArmL": 40 } } ] })");
+    Data.write("movesets/odd_guard.json", R"({"block": {"clips": {"High": "odd_guard"}}})");
+    Data.replace("poses/jab.json", R"("blendOut": 0.08,)",
+                 R"("blendOut": 0.08, "pelvisX": [ { "t": 0, "x": 0 }, { "t": 0.2, "x": 3.0 } ],)");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(hasProblem(Problems, "poses/flinch.json", "field 'pelvisX'"));
+    CHECK(hasProblem(Problems, "movesets/odd_guard.json", "'odd_guard' has a pelvis track"));
+    CHECK(hasProblem(Problems, "moves/jab.json", "pelvisX: x = 3 is out of"));
+}
+
 TEST_CASE("checkData: items and fighters", "[combat][data_check]") {
     const test::ScratchData Data("check_items");
     Data.write("items/extra.json", R"({"items": [
