@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <numbers>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -30,6 +31,7 @@ constexpr float LyingAspect = 2.0f;
 constexpr float OutlineShade = 0.55f;
 /// Narrowest picture of a weapon: wide enough for the cross guard, m.
 constexpr float MinWeaponWidth = 0.14f;
+constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
 struct Rgb {
     float R = 0.0f;
@@ -72,6 +74,7 @@ sf::Image renderLayers(Vec2 SizeMeters, float PixelsPerMeter, Variant Kind, cons
 std::vector<Layer> makeHelmetLayers(const PartGeometry& Geometry, Rgb Metal);
 std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal);
 std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, const PartGeometry& Geometry);
+std::vector<Layer> makeShieldLayers(const stats::ShieldProps& Shield);
 Rgb getArmorColor(float Armor);
 sf::Image drawReferencePose(const rig::RigDef& Rig, Variant Kind, float Overlap,
                             const std::vector<const stats::EquipmentItem*>& Items);
@@ -152,6 +155,11 @@ sf::Image drawItemOverlay(const stats::EquipmentItem& Item, const PartGeometry& 
         // Symmetric about the forearm centre so that the centre rule holds.
         const float HalfHeight = Geometry.getImageSize().Y * 0.5f + Item.Weapon->ReachM + ArmorMargin;
         Size = {std::max(Geometry.getImageSize().X, MinWeaponWidth), 2.0f * HalfHeight};
+    } else if (Item.Shield) {
+        Layers = makeShieldLayers(*Item.Shield);
+        // The plate is centered on the forearm, as the body's (rig.cpp).
+        Size = {std::max(Size.X, Item.Shield->WidthM + 2.0f * ArmorMargin),
+                std::max(Size.Y, Item.Shield->LengthM + 2.0f * ArmorMargin)};
     } else if (Item.Slot == stats::EquipmentSlot::Head) {
         Layers = makeHelmetLayers(Geometry, getArmorColor(Item.Armor));
     } else {
@@ -526,7 +534,7 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         return [Center, Half](Vec2 Point) { return getSdfBox(Point, Center, Half, 0.0f); };
     };
 
-    if (MoveSet == "sword") {
+    if (MoveSet.contains("sword")) {
         const float HalfWidth = 0.024f;
         const float TipLength = 0.05f;
         const float BladeTop = Fist - 0.016f;
@@ -557,6 +565,38 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.088f}, 0.02f); }, Wood, 0.02f);
     }
     return Layers;
+}
+
+/// A shield is the body's plate: a wooden board, length along the forearm and
+/// width across it, centered on the forearm and turned by its angle, with a
+/// metal rim and a boss in the middle.
+std::vector<Layer> makeShieldLayers(const stats::ShieldProps& Shield) {
+    const Rgb Wood{0.55f, 0.36f, 0.18f};
+    const Rgb Iron{0.55f, 0.58f, 0.62f};
+    const Vec2 Half{Shield.WidthM * 0.5f, Shield.LengthM * 0.5f};
+    const float Turn = Shield.AngleDeg * RadiansPerDegree;
+    const float Cos = std::cos(Turn);
+    const float Sin = std::sin(Turn);
+    auto turned = [Cos, Sin](Vec2 Point) { return Vec2{Point.X * Cos + Point.Y * Sin, Point.Y * Cos - Point.X * Sin}; };
+    constexpr float Rim = 0.02f;
+    constexpr float Boss = 0.05f;
+
+    Layer Board;
+    Board.Shape = [=](Vec2 Point) { return getSdfBox(turned(Point), {}, Half - Vec2{Rim, Rim}, Rim); };
+    Board.Fill = Iron;
+    Board.HalfThickness = std::min(Half.X, Half.Y);
+    Layer Planks;
+    Planks.Shape = [=](Vec2 Point) { return getSdfBox(turned(Point), {}, Half - Vec2{2.0f * Rim, 2.0f * Rim}, 0.0f); };
+    Planks.Fill = Wood;
+    Planks.HalfThickness = std::min(Half.X, Half.Y) - Rim;
+    Planks.Atop = true;
+    Planks.Outlined = false;
+    Layer Center;
+    Center.Shape = [](Vec2 Point) { return getSdfCircle(Point, {}, Boss); };
+    Center.Fill = Iron;
+    Center.HalfThickness = Boss;
+    Center.Atop = true;
+    return {Board, Planks, Center};
 }
 
 /// Leather brown for light armor, steel grey for heavy.

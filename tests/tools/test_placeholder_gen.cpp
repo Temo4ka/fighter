@@ -249,6 +249,27 @@ TEST_CASE("drawItemOverlay: a helmet covers the top of the head", "[placeholder]
     CHECK(Overlay.getPixel({Size.x / 2, Size.y - 1}).a == 0);
 }
 
+TEST_CASE("drawItemOverlay: a shield is its plate centered on the forearm", "[placeholder]") {
+    const auto Rig = loadHumanoid();
+    const auto Catalog = stats::loadItemCatalog(DataDir / "items");
+    const auto* Shield = Catalog.findItem("wooden_shield");
+    REQUIRE(Shield != nullptr);
+    REQUIRE(Shield->Shield.has_value());
+
+    const auto Geometry = computePartGeometry(Rig.getPart(BodyPart::ForearmL));
+    const float Ppm = getDefaultPixelsPerMeter(Variant::Smooth);
+    const sf::Image Overlay = drawItemOverlay(*Shield, Geometry, Variant::Smooth);
+    const auto Size = Overlay.getSize();
+    CHECK(Size.x >= getImageSizePixels(Shield->Shield->WidthM, Ppm));
+    CHECK(Size.y >= getImageSizePixels(Shield->Shield->LengthM, Ppm));
+    // Drawn in the middle and near the plate's edges, empty in the corners.
+    CHECK(Overlay.getPixel({Size.x / 2, Size.y / 2}).a == 255);
+    const auto Inset = static_cast<unsigned>(0.03f * Ppm);
+    const auto Left = static_cast<unsigned>((static_cast<float>(Size.x) - Shield->Shield->WidthM * Ppm) * 0.5f);
+    CHECK(Overlay.getPixel({Left + Inset, Size.y / 2}).a > 0);
+    CHECK(Overlay.getPixel({0, 0}).a == 0);
+}
+
 TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json", "[placeholder]") {
     const auto Out = std::filesystem::temp_directory_path() / "fighter_placeholder_gen_test";
     std::filesystem::remove_all(Out);
@@ -258,9 +279,10 @@ TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json
     Options.OutDir = Out;
     const auto Files = generatePlaceholders(Options);
 
-    // 13 parts, a helmet on the head and a sword on either forearm (an item
-    // held in a hand may be in either), two variants.
-    CHECK(Files.size() == 2 * (BodyPartCount + 3));
+    // 13 parts, a helmet on the head and four hand items (sword, hammer,
+    // greatsword, shield) on either forearm (an item held in a hand may be in
+    // either), two variants.
+    CHECK(Files.size() == 2 * (BodyPartCount + 1 + 4 * 2));
     for (const auto* Dir : {"pixel", "smooth"}) {
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Name = std::string(getBodyPartName(static_cast<BodyPart>(Index))) + ".png";
@@ -268,6 +290,7 @@ TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json
         }
         CHECK(std::filesystem::exists(Out / Dir / "items" / "iron_helmet" / "Head.png"));
         CHECK(std::filesystem::exists(Out / Dir / "items" / "short_sword" / "ForearmR.png"));
+        CHECK(std::filesystem::exists(Out / Dir / "items" / "wooden_shield" / "ForearmL.png"));
     }
 
     sf::Image Loaded;
