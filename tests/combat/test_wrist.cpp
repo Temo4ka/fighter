@@ -78,10 +78,13 @@ std::string insertAfterEach(std::string Text, const std::string& After, const st
 /// and WeaponOff of every clip and the items' angle_deg. The tests below set
 /// the wrists they check themselves.
 void stripWrists(const ScratchData& Data) {
+    // A key before another one, then one at the end of its pose.
     const std::regex Key(R"re("Weapon(Off)?": *-?[0-9.]+, *)re");
+    const std::regex LastKey(R"re(, *"Weapon(Off)?": *-?[0-9.]+)re");
     for (const auto& Entry : std::filesystem::directory_iterator(Data.getDir() / "poses")) {
         const std::filesystem::path Clip = std::filesystem::path("poses") / Entry.path().filename();
-        Data.write(Clip, std::regex_replace(readText(Entry.path()), Key, ""));
+        const std::string Text = std::regex_replace(readText(Entry.path()), Key, "");
+        Data.write(Clip, std::regex_replace(Text, LastKey, ""));
     }
     const std::regex Angle(R"re(,\s*"angle_deg": *-?[0-9.]+)re");
     const std::filesystem::path Items = "items/weapons.json";
@@ -139,8 +142,11 @@ TEST_CASE("Wrist: the weapon follows the Weapon key of the move's clip", "[comba
 }
 
 TEST_CASE("Wrist: a sword hit is the forearm's, with the arm and the sword behind it", "[combat][wrist][data]") {
-    const MoveMeasure Result =
-        measureMove({.MoveId = "sword_cut", .WeaponId = "short_sword", .WithDummy = true, .DataDir = DataDir});
+    ScratchData Data("wrist_hit");
+    stripWrists(Data);
+    const MoveMeasure Result = measureMove(
+        {.MoveId = "sword_cut", .WeaponId = "short_sword", .WithDummy = true, .DataDir = Data.getDir()});
+    INFO(describeMeasure(Result));
     REQUIRE(Result.Hit);
     REQUIRE(Result.HitPart == BodyPart::Head);
     REQUIRE(Result.ApproachSpeed > 0.0f);
