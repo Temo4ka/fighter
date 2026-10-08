@@ -23,7 +23,14 @@
 ///       CombatTuning::CrouchStandUpSec), then starts. Blocking, it can only
 ///       step back, slowly.
 ///   Attacking -- the move's clip plays (startup, active, recovery); walking
-///       only if the clip allows it. A clean hit may cancel the recovery into
+///       only if the clip allows it. A clip with a pelvis track
+///       (anim::Clip::PelvisTrack: a lunge, a weight shift) moves the body
+///       with it as planned pelvis motion: the opponent and the walls stop
+///       it like a walk, and then (or when the attack is interrupted, or
+///       its strike stopped at the opponent) the rest of the track is lost;
+///       the offset stays after the move. Meanwhile the planted feet hold
+///       their place, the leading foot steps (planLungeStep()), the
+///       trailing one stays. A clean hit may cancel the recovery into
 ///       a move of MoveDef::ChainTo (a short chain). Back to free at the end.
 ///       A posed striker (a kick) that meets the opponent's posed parts
 ///       (legs, pelvis) stops there: the clip holds that pose for
