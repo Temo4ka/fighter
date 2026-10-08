@@ -220,6 +220,25 @@ public:
     /// in front when it started).
     bool isLegActionMirrored() const { return LegsMirrored; }
 
+    /// The pelvis track of the attack's clip (anim::Clip::PelvisTrack): how
+    /// it moves the body in the current (or the last) attack.
+    struct PelvisTrack {
+        std::string ClipName;     ///< Empty: no attack with a track yet.
+        float StartX = 0.0f;      ///< The pelvis when the attack began, m (world).
+        float Facing = 1.0f;      ///< +1 facing right then, -1 left.
+        float Followed = 0.0f;    ///< The track's offset asked for so far, m (along the facing).
+        float Planned = 0.0f;     ///< The step of it planned in this control(), m (along the facing).
+        float Made = 0.0f;        ///< How far it really moved the pelvis, m (along the facing).
+        /// Why the rest of it was lost (held back by the opponent or a wall,
+        /// stopped at a contact, interrupted); empty while it plays and
+        /// after it played out.
+        std::string Stopped;
+        /// It moves the pelvis now: the attack plays, the track is not over
+        /// and not stopped.
+        bool Moving = false;
+    };
+    const PelvisTrack& getPelvisTrack() const { return Lunge; }
+
     void fillView(FighterView& View) const;
     /// The panel lines of this fighter ("<Name> stamina" ...) and the Block
     /// zone. Does nothing in the release build.
@@ -377,6 +396,28 @@ private:
     /// The time the clip on top is posed at: the attack's or the state's;
     /// recovering from a contact, back from the contact to the clip's start.
     float getTopClipTime() const;
+    /// \name The pelvis track of the attack's clip
+    /// @{
+    /// The attack's clip time advanced: the step of its pelvis track to that
+    /// time is this step's planned travel of the clip (Lunge.Planned).
+    void followPelvisTrack();
+    /// After the corrections of the step (applyControl()): what the step of
+    /// the track made. Held back (the opponent, a wall), the rest of the
+    /// track is lost.
+    void checkPelvisTrack();
+    /// The track stops where it is; \p Why: for the panel and the log.
+    void stopPelvisTrack(std::string_view Why);
+    /// The re-step of a lunge: the leading foot (along the track's travel)
+    /// steps when the pelvis left it LegStepTuning::LungeStepDistance
+    /// behind; the trailing one stays planted. \p Now, \p Wanted: as in
+    /// updateRestStep().
+    bool planLungeStep(const rig::LegStance& Now, const rig::LegStance& Wanted);
+    /// "sword_thrust: track +0.18 of +0.25 m, made +0.12 m, held back by
+    /// the opponent".
+    std::string describePelvisTrack() const;
+    /// The planned and the made offset as arrows on the pelvis (Forces).
+    void drawPelvisTrack() const;
+    /// @}
     void spendStamina(float Amount);
     void react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point);
 
@@ -508,6 +549,7 @@ private:
     bool Jammed = false;                   ///< Stopped at the opponent in the startup.
     float ContactClipSec = 0.0f;           ///< The clip time the strike stopped at the opponent.
     float AttackRate = 1.0f;               ///< Clip seconds per second.
+    PelvisTrack Lunge;                     ///< The pelvis track of the attack's clip.
     bool AttackLanded = false;
     bool AttackHitClean = false;
     float RecoverySec = 0.0f;              ///< Real time since the active phase ended.
