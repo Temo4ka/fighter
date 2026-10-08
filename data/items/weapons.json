@@ -23,7 +23,8 @@
             "weapon": {
                 "reach_m": 0.45,
                 "speed_scale": 0.8,
-                "power_scale": 1.5
+                "power_scale": 1.5,
+                "angle_deg": 80
             }
         },
         {
