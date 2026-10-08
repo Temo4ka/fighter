@@ -107,6 +107,27 @@ TEST_CASE("measureMove: the same request gives the same numbers", "[combat][meas
     CHECK(First.Hit == Second.Hit);
 }
 
+TEST_CASE("measureMove: the pelvis travel of a lunge, and the reach with it", "[combat][measure][lunge]") {
+    const MoveMeasure Plain = measureMove(makeRequest("jab", {}, false));
+    CHECK(Plain.PelvisForwardM < 0.005f);
+    CHECK_THAT(describeMeasure(Plain), !ContainsSubstring("pelvis"));
+
+    test::ScratchData Data("measure_lunge");
+    Data.replace("poses/jab.json", R"("blendOut": 0.08,)",
+                 R"("blendOut": 0.08, "pelvisX": [ { "t": 0, "x": 0 }, { "t": 0.2, "x": 0.25 }, { "t": 0.41, "x": 0.1 } ],)");
+    MeasureRequest Request = makeRequest("jab", {}, false);
+    Request.DataDir = Data.getDir();
+    const MoveMeasure Lunge = measureMove(Request);
+    INFO(describeMeasure(Lunge));
+    CHECK(std::abs(Lunge.PelvisForwardM - 0.25f) < 0.01f);
+    CHECK(std::abs(Lunge.PelvisEndM - 0.1f) < 0.02f);
+    CHECK(Lunge.PelvisBackM == 0.0f);
+    CHECK(Lunge.PelvisPath.size() > 3);
+    CHECK_THAT(describeMeasure(Lunge), ContainsSubstring("pelvis +0.25 m"));
+    // The reach is from where the pelvis stood when the move began.
+    CHECK(Lunge.getReachM() > Plain.getReachM() + 0.15f);
+}
+
 TEST_CASE("measureMove: a longer weapon of the same moveset reaches farther", "[combat][measure]") {
     const test::ScratchData Data("measure_reach");
     Data.write("items/blades.json", R"({"items": [
