@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -189,4 +190,42 @@ TEST_CASE("Scene: a fighter without parts is one rectangle", "[render][scene]") 
     CHECK(getLayer(List.getItems(), Layer::NearFighter).size() == 1);
     CHECK(getLayer(List.getItems(), Layer::FarFighter).size() == 1);
     CHECK(List.getStats().Fallbacks == 0);
+}
+
+TEST_CASE("Scene: a weapon is drawn on its own body after its forearm", "[render][scene]") {
+    const sf::Texture Body;
+    const sf::Texture Blade;
+    FighterSprites Sprites;
+    for (SpriteRef& Part : Sprites.Parts) Part = {.Texture = &Body};
+    Sprites.Weapons[static_cast<size_t>(BodyPart::ForearmR)] = {.Texture = &Blade, .MetersPerPixel = 0.01f};
+
+    combat::RenderSnapshot Snapshot = makeSnapshot();
+    // The weapon body at x = 6.5: after ForearmR (6), before ThighR (7).
+    for (auto& Fighter : Snapshot.Fighters) {
+        Fighter.Weapons.push_back({.Part = BodyPart::ForearmR,
+                                   .Position = {Fighter.Parts[0].Position.X + 6.5f, 0.5f},
+                                   .Angle = 1.2f,
+                                   .Size = {0.05f, 0.6f}});
+    }
+    SceneInput Scene;
+    Scene.Sprites = {&Sprites, nullptr};
+    const RenderList List = buildRenderList(Snapshot, Visuals{}, Scene);
+    const std::vector<RenderItem> Sorted = List.getSorted();
+    const auto Near = getLayer(Sorted, Layer::NearFighter);
+    REQUIRE(Near.size() == BodyPartCount + 1);
+    const auto& Weapon = std::get<SpritePrim>(Near[2]->What);
+    CHECK(Weapon.Texture == &Blade);
+    CHECK(Weapon.Position.X == 6.5f);
+    CHECK(Weapon.Angle == 1.2f);
+    CHECK(*findPart(Near[1]->What) == BodyPart::ForearmR);
+
+    // The other fighter has no pictures: its weapon is a capsule of the weapon's size.
+    const auto Far = getLayer(Sorted, Layer::FarFighter);
+    const auto IsWeapon = [](const RenderItem* Item) {
+        const auto* Capsule = std::get_if<CapsulePrim>(&Item->What);
+        return Capsule && Capsule->Position.X == 106.5f;
+    };
+    const auto Found = std::ranges::find_if(Far, IsWeapon);
+    REQUIRE(Found != Far.end());
+    CHECK(std::get<CapsulePrim>((*Found)->What).Size.Y == 0.6f);
 }

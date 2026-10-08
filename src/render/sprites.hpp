@@ -39,6 +39,10 @@ struct ItemLook {
     /// an arm part, the overlay takes the other arm's (a sword drawn for the
     /// right forearm, held in the left hand), with its origin.
     bool Held = false;
+    /// A held weapon: a body of its own on the wrist, drawn from its own
+    /// picture (getWeaponPicturePath()) on that body instead of an overlay
+    /// of the forearm.
+    bool Weapon = false;
 };
 
 struct FighterLook {
@@ -64,6 +68,10 @@ struct FighterSprites {
     PerBodyPart<SpriteRef> Parts{};
     /// Equipment drawn right over each part.
     PerBodyPart<std::vector<SpriteRef>> Overlays{};
+    /// The picture of the weapon each forearm holds (ItemLook::Weapon),
+    /// drawn on the weapon body right after the forearm's overlays; a null
+    /// texture: the weapon is drawn as a capsule.
+    PerBodyPart<SpriteRef> Weapons{};
     size_t MissingFiles = 0;         ///< Pictures that were expected but not found.
 };
 
@@ -73,6 +81,10 @@ using TextureLoader = std::function<const sf::Texture*(const std::string& Relati
 
 /// The path of a picture: `<Dir>/<Part>.png`.
 std::string getPicturePath(std::string_view Dir, BodyPart Part);
+/// The picture of a held weapon in its item's directory: dir/Weapon.png,
+/// the blade along -Y from the hilt (top) to the tip (bottom), centered on
+/// the weapon's capsule.
+std::string getWeaponPicturePath(std::string_view Dir);
 
 /// Looks up the pictures of \p Look: `<skin dir>/<Part>.png` for each body
 /// part and `<item dir>/<Part>.png` for each part an item covers. Missing
