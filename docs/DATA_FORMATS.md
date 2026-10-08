@@ -309,7 +309,7 @@ false`) соперник стоит далеко (`no_dummy_distance_m`), и н�
 
     strength = impulse / victim_mass × location[part] × (1 − armor[part])
 
-`impulse` — из `HitEvent`, `victim_mass` — масса всего тела жертвы, `armor` — броня
+`impulse` — из `HitEvent`: скорость сближения × приведённая ударная масса двух частей (одна мера для всех ударов, [TUNING.md](TUNING.md), раздел 3), `victim_mass` — масса всего тела жертвы, `armor` — броня
 части, в которую попали (`PhysicalProfile::Parts`).
 
 **Урон:** `damage = strength × damage_per_strength × move.damage × weapon.power_scale`
