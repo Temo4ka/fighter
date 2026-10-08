@@ -5,6 +5,7 @@
 #include <exception>
 #include <format>
 #include <map>
+#include <numbers>
 #include <optional>
 #include <set>
 #include <string>
@@ -69,12 +70,21 @@ private:
     void checkMoveSetFiles(const MoveLibrary& Library, const std::set<std::string>& Stubs);
     void checkStateClips();
     void checkItemsAndFighters(const std::set<std::string>& KnownSets);
+    /// The wrist angles of the loaded clips (the key "Weapon") within the
+    /// wrist limits of every rig.
+    void checkClipWrists();
+    /// Is \p Degrees outside the wrist limits of a rig? Reports it to \p File
+    /// with \p What in front and returns true.
+    bool checkWristAngle(const std::string& File, const std::string& What, float Degrees);
 
     fs::path DataDir;
     std::vector<DataProblem> Problems;
     std::map<std::string, std::optional<anim::Clip>> Clips;
     std::map<std::string, std::string> ClipErrors;
+    std::vector<std::pair<std::string, rig::RigDef>> Rigs;   ///< The rigs that load, by file.
 };
+
+constexpr float DegreesPerRadian = 180.0f / std::numbers::pi_v<float>;
 
 } // namespace
 
@@ -86,6 +96,7 @@ std::vector<DataProblem> Checker::run() {
     checkSingletons();
     checkRigs();
     checkMovesAndSets();
+    checkClipWrists();
     return std::move(Problems);
 }
 
@@ -161,7 +172,38 @@ void Checker::checkSingletons() {
 }
 
 void Checker::checkRigs() {
-    for (const fs::path& File : listFiles("rigs")) guard(File, [&] { rig::loadRigDef(File); });
+    for (const fs::path& File : listFiles("rigs")) {
+        guard(File, [&] { Rigs.emplace_back(relative(File), rig::loadRigDef(File)); });
+    }
+}
+
+bool Checker::checkWristAngle(const std::string& File, const std::string& What, float Degrees) {
+    for (const auto& [RigFile, Def] : Rigs) {
+        const float Lower = Def.Weapon.WristLowerAngle * DegreesPerRadian;
+        const float Upper = Def.Weapon.WristUpperAngle * DegreesPerRadian;
+        // A float off by rounding is not outside.
+        constexpr float Slack = 1e-3f;
+        if (Degrees >= Lower - Slack && Degrees <= Upper + Slack) continue;
+        add(File, std::format("{} {:g} deg is outside the wrist limits [{:g}, {:g}] of {} (weapon.wristLimits); "
+                              "the rig clamps it",
+                              What, Degrees, Lower, Upper, RigFile));
+        return true;
+    }
+    return false;
+}
+
+void Checker::checkClipWrists() {
+    for (const auto& [Name, Clip] : Clips) {
+        if (!Clip) continue;
+        for (const anim::Keyframe& Key : Clip->Keys) {
+            if (!Key.Target.HasWeapon) continue;
+            const std::string What = std::format("key at t = {:g} s: '{}'", Key.TimeSec, anim::WeaponKey);
+            // One report per clip is enough.
+            if (checkWristAngle(std::format("poses/{}.json", Name), What, Key.Target.WeaponAngle * DegreesPerRadian)) {
+                break;
+            }
+        }
+    }
 }
 
 void Checker::checkMovesAndSets() {
@@ -279,6 +321,10 @@ void Checker::checkItemsAndFighters(const std::set<std::string>& KnownSets) {
                 } catch (const std::exception& Error) {
                     add(relative(File), std::format("item '{}': {}", Item.Id, Error.what()));
                     continue;
+                }
+                if (Item.Weapon && Item.Weapon->AngleDeg) {
+                    checkWristAngle(relative(File), std::format("item '{}': field 'weapon.angle_deg':", Item.Id),
+                                    *Item.Weapon->AngleDeg);
                 }
                 if (!Item.MoveSet.empty() && !KnownSets.contains(Item.MoveSet)) {
                     add(relative(File), std::format("item '{}': field 'moveset': there is no moveset '{}'", Item.Id,
