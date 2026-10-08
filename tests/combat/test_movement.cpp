@@ -199,7 +199,7 @@ StrikeTrace throwStrike(Battle& Fight, MoveButton Button) {
 } // namespace
 
 TEST_CASE("Movement: a walk stopped in any phase comes back into the stance around a foot that stays",
-          "[combat][movement]") {
+          "[combat][movement][slow]") {
     int Tried = 0;
     bool RestedLeft = false;
     bool RestedRight = false;
@@ -258,7 +258,7 @@ TEST_CASE("Movement: a walk stopped in any phase comes back into the stance arou
     CHECK(RestedRight);
 }
 
-TEST_CASE("Movement: walking again goes on from the phase the legs rest at", "[combat][movement]") {
+TEST_CASE("Movement: walking again goes on from the phase the legs rest at", "[combat][movement][slow]") {
     for (const BodyPart Front : {BodyPart::FootL, BodyPart::FootR}) {
         INFO("front " << getBodyPartName(Front));
         Battle Fight(makeConfig());
@@ -286,7 +286,7 @@ TEST_CASE("Movement: walking again goes on from the phase the legs rest at", "[c
     }
 }
 
-TEST_CASE("Movement: a jab after a stop leaves the legs as they rest", "[combat][movement]") {
+TEST_CASE("Movement: a jab after a stop leaves the legs as they rest", "[combat][movement][slow]") {
     for (const BodyPart Front : {BodyPart::FootL, BodyPart::FootR}) {
         INFO("front " << getBodyPartName(Front));
         Battle Fight(makeConfig());

@@ -150,7 +150,7 @@ OverlapLog runScripted(Battle& Fight, uint32_t Seed, bool Pushy, int Seconds) {
 
 } // namespace
 
-TEST_CASE("No pass-through: a scripted brawl in the open", "[combat][overlap]") {
+TEST_CASE("No pass-through: a scripted brawl in the open", "[combat][overlap][slow]") {
     ScratchData Data("overlap_open");
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     Battle Fight(Data.makeConfig());
@@ -159,7 +159,7 @@ TEST_CASE("No pass-through: a scripted brawl in the open", "[combat][overlap]") 
     CHECK(Log.WorstExcess <= 0.0f);
 }
 
-TEST_CASE("No pass-through: both walk into each other and strike", "[combat][overlap]") {
+TEST_CASE("No pass-through: both walk into each other and strike", "[combat][overlap][slow]") {
     ScratchData Data("overlap_pushy");
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     Battle Fight(Data.makeConfig());
@@ -168,7 +168,7 @@ TEST_CASE("No pass-through: both walk into each other and strike", "[combat][ove
     CHECK(Log.WorstExcess <= 0.0f);
 }
 
-TEST_CASE("No pass-through: at the wall", "[combat][overlap]") {
+TEST_CASE("No pass-through: at the wall", "[combat][overlap][slow]") {
     ScratchData Data("overlap_wall");
     Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
     Battle Fight(Data.makeConfig());

@@ -35,6 +35,8 @@
   ],
   "testPresets": [
     { "name": "debug",   "configurePreset": "debug",   "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "debug-fast", "configurePreset": "debug", "output": { "outputOnFailure": true },
+      "filter": { "exclude": { "label": "slow" } } }
   ]
 }

@@ -76,4 +76,5 @@ target_compile_definitions(fighter_tests PRIVATE FIGHTER_SOURCE_DIR="${PROJECT_S
 
 include(Catch)
 # PRE_TEST: the test list is collected when ctest runs, not at build time.
-catch_discover_tests(fighter_tests DISCOVERY_MODE PRE_TEST)
+# Catch tags become ctest labels, so `-LE slow` skips the long scenarios.
+catch_discover_tests(fighter_tests DISCOVERY_MODE PRE_TEST ADD_TAGS_AS_LABELS)
