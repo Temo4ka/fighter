@@ -2,10 +2,8 @@
   "loop": true,
   "duration": 1.0,
   "stiffness": 1.4,
-  "allowMove": false,
-  "blendIn": 0.12,
-  "blendOut": 0.12,
+  "allowMove": true,
   "keys": [
-    { "t": 0.0, "pose": { "Torso": -26, "Head": 14, "UpperArmL": 30, "ForearmL": 40, "UpperArmR": 30, "ForearmR": 40, "ThighL": 60, "ShinL": -95, "FootL": 35, "ThighR": 40, "ShinR": -110, "FootR": 35 } }
+    { "t": 0.0, "pose": { "Torso": -26, "Head": 14, "UpperArmR": 5, "ForearmR": 82, "UpperArmL": -15, "ForearmL": 126, "Weapon": -46, "ThighL": 60, "ShinL": -95, "FootL": 35, "ThighR": 40, "ShinR": -110, "FootR": 35 } }
   ]
 }

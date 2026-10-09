@@ -1,19 +1,12 @@
 {
     "clip": "greatsword_overhead",
     "uses_weapon": true,
-    "damage": 2.1,
-    "min_reaction": "Knockback",
-    "stamina": 27,
-    "tags": [
-        "high",
-        "swing"
-    ],
+    "damage": 2.0,
+    "min_reaction": "Stagger",
+    "stamina": 22,
+    "tags": ["high", "swing"],
     "ai": {
-        "range_m": [
-            0.8,
-            1.3
-        ],
-        "role": "heavy",
-        "weight": 0.4
+        "range_m": [0.8, 1.3],
+        "role": "heavy"
     }
 }

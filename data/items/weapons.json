@@ -34,12 +34,15 @@
             "name": "Greatsword",
             "slot": "MainHand",
             "two_handed": true,
-            "mass_kg": 3.0,
+            "mass_kg": 3.5,
             "moveset": "greatsword",
             "weapon": {
-                "reach_m": 0.95,
+                "reach_m": 1.0,
                 "speed_scale": 0.85,
-                "power_scale": 1.4
+                "power_scale": 1.4,
+                "width_m": 0.07,
+                "angle_deg": 104,
+                "grip_m": -0.17
             }
         },
         {

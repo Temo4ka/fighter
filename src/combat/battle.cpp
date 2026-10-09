@@ -433,6 +433,7 @@ std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::W
             Entry.WeaponWidthM = Item->Weapon->WidthM;
             Entry.WeaponMassKg = Item->MassKg;
             Entry.WeaponAngleDeg = Item->Weapon->AngleDeg;
+            Entry.GripM = Item->Weapon->GripM;
         }
         if (Item->Shield) {
             Entry.ShieldLengthM = Item->Shield->LengthM;
