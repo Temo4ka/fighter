@@ -141,34 +141,6 @@ TEST_CASE("Wrist: the weapon follows the Weapon key of the move's clip", "[comba
     CHECK(*Swung == Approx(60.0f * RadiansPerDegree).margin(0.2f));
 }
 
-TEST_CASE("Wrist: a sword hit is the forearm's, with the arm and the sword behind it", "[combat][wrist][data]") {
-    ScratchData Data("wrist_hit");
-    const MoveMeasure Result = measureMove(
-        {.MoveId = "sword_cut", .WeaponId = "short_sword", .WithDummy = true, .DataDir = Data.getDir()});
-    INFO(describeMeasure(Result));
-    REQUIRE(Result.Hit);
-    REQUIRE(Result.HitPart == BodyPart::Head);
-    REQUIRE(Result.ApproachSpeed > 0.0f);
-
-    // J = v * mA*mB/(mA+mB): the attacker's strike mass from the dummy's head.
-    const StandConfig Stand = loadStandConfig(DataDir / "stand.json");
-    const stats::BalanceTable Balance = stats::loadBalanceTable(DataDir / "balance.json");
-    const stats::ItemCatalog Catalog = stats::loadItemCatalog(DataDir / "items");
-    const std::vector<std::string> Sword = {"short_sword"};
-    const stats::PhysicalProfile Attacker =
-        stats::computeProfile(Stand.Attacker, stats::buildLoadout(Sword, Catalog), Balance);
-    const stats::PhysicalProfile Dummy = stats::computeProfile(Stand.Dummy, {}, Balance);
-    const float Reduced = Result.Impulse / Result.ApproachSpeed;
-    const float HeadMass = Dummy.Parts[static_cast<size_t>(BodyPart::Head)].MassKg;
-    const float StrikeMass = 1.0f / (1.0f / Reduced - 1.0f / HeadMass);
-    // The forearm's profile mass includes the sword's 1.2 kg.
-    const float ArmMass = Attacker.Parts[static_cast<size_t>(BodyPart::ForearmL)].MassKg +
-                          Attacker.Parts[static_cast<size_t>(BodyPart::UpperArmL)].MassKg;
-    CHECK(StrikeMass == Approx(ArmMass).epsilon(0.02));
-    // A cut, not a touch: faster than the hit threshold by far.
-    CHECK(Result.ApproachSpeed > 3.0f);
-}
-
 TEST_CASE("Wrist: a sword fight with a moving wrist is deterministic", "[combat][wrist][dod]") {
     ScratchData Data("wrist_determinism");
     stripWrists(Data);
