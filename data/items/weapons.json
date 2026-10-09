@@ -9,19 +9,24 @@
             "weapon": {
                 "reach_m": 0.55,
                 "speed_scale": 1.0,
-                "power_scale": 1.15
+                "power_scale": 1.15,
+                "width_m": 0.06,
+                "angle_deg": 85
             }
         },
         {
             "id": "war_hammer",
             "name": "War hammer",
             "slot": "MainHand",
+            "two_handed": true,
             "mass_kg": 3.5,
             "moveset": "hammer",
             "weapon": {
-                "reach_m": 0.45,
+                "reach_m": 0.7,
                 "speed_scale": 0.8,
-                "power_scale": 1.5
+                "power_scale": 1.5,
+                "width_m": 0.06,
+                "angle_deg": 80
             }
         },
         {

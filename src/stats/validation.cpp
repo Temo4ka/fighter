@@ -118,7 +118,7 @@ void validateItem(const EquipmentItem& Item) {
 
     if (!Item.Weapon) return;
     const WeaponProps& Weapon = *Item.Weapon;
-    if (Weapon.RadiusM) CheckSize("weapon radius", *Weapon.RadiusM, MaxWeaponRadiusM);
+    if (Weapon.WidthM) CheckSize("weapon width", *Weapon.WidthM, MaxWeaponWidthM);
     if (Weapon.AngleDeg) CheckAngle("weapon angle", *Weapon.AngleDeg);
     checkItemRange(Item, "reach", Weapon.ReachM, MaxWeaponReachM, " m");
     const auto CheckScale = [&](std::string_view Name, float Scale) {

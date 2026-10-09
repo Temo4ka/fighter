@@ -85,17 +85,22 @@
 
 namespace fighter::rig {
 
-/// An item held in a hand, as the body shapes it: a weapon is a second
-/// capsule of the holding forearm from the fist outwards, a shield a plate on
-/// it. Both are parts of the forearm for physics and hits.
+/// An item held in a hand, as the body shapes it: a weapon is a body of its
+/// own, a capsule from the fist outwards hinged at the fist by the wrist (a
+/// joint driven like the others); a shield is a plate on the forearm. Both
+/// are parts of the forearm for hits: a hit with or on them is the forearm's.
 struct HeldItem {
     BodyPart Part = BodyPart::ForearmR;   ///< The forearm that holds it (a capsule).
     /// How far the weapon sticks out beyond the fist, m; 0: no weapon.
     float WeaponReachM = 0.0f;
-    /// The weapon's thickness, m, and its angle to the forearm, degrees;
-    /// nullopt: the rig's weapon mount (RigDef::Weapon).
-    std::optional<float> WeaponRadiusM;
+    /// The weapon's width, m (its capsule's radius is half of it), and its
+    /// default wrist angle to the forearm, degrees (when no clip sets the
+    /// wrist); nullopt: the rig's weapon mount (RigDef::Weapon).
+    std::optional<float> WeaponWidthM;
     std::optional<float> WeaponAngleDeg;
+    /// The item's mass, kg: the weapon body weighs it, and the holding
+    /// forearm (whose profile mass includes the item) that much less.
+    float WeaponMassKg = 0.0f;
     /// A two-handed weapon: how far along it from the fist the other hand
     /// grips it, m; nullopt: the mount's (WeaponMount::Grip).
     std::optional<float> GripM;
@@ -221,6 +226,12 @@ public:
     /// poses it the same way). Call after setTargetAngles(), which drops the
     /// link.
     void setTravelPose(const PerBodyPart<float>& StillAngles, float Travel);
+    /// The wrist of the held weapons (the clip key "Weapon", anim::Pose::
+    /// WeaponAngle): the weapon's angle to its forearm for a fighter facing
+    /// right, rad, clamped to the mount's wrist limits; nullopt: each
+    /// weapon's own default (the item's angle, else the mount's). Kept
+    /// until set again; setTargetAngles() does not change it.
+    void setWristAngle(std::optional<float> Angle);
     /// Requested walking speed in the world, m/s; 0 stops.
     void setMoveVelocity(float Velocity);
     /// Stiffness without hits: 1 normally, higher during an attack.
@@ -421,6 +432,23 @@ public:
     /// its joint range); a point out of reach gets the nearest the leg can do. The
     /// other joints are left as they are. Nothing moves.
     void reachFoot(PerBodyPart<float>& Angles, BodyPart Foot, float PelvisHeight, Vec2 Ankle, float FootAngle) const;
+    /// The default wrist angle of the first held weapon (setWristAngle()),
+    /// unmirrored, rad; nullopt if unarmed.
+    std::optional<float> getDefaultWristAngle() const;
+    /// The wrist of the weapon \p Part holds, unmirrored (as in a pose), rad:
+    /// where it is now and where its motor drives it; nullopt if it holds
+    /// none.
+    std::optional<float> getWristAngle(BodyPart Part) const;
+    std::optional<float> getWristTarget(BodyPart Part) const;
+    /// The world point of the weapon \p Part holds at its working end (the
+    /// tip of its capsule's surface), m; nullopt if it holds none.
+    std::optional<Vec2> getWeaponTip(BodyPart Part) const;
+    /// The weapon bodies as the renderer draws them: PartTransform::Part is
+    /// the holding forearm, Position the center of the capsule, Size its
+    /// width and length (X across, Y along), and the capsule runs from the
+    /// fist to the tip along -Y of its frame turned by Angle (as a forearm
+    /// hanging in the reference pose points down).
+    void getWeaponTransforms(std::vector<PartTransform>& Out) const;
     /// How far the longest weapon sticks out beyond the fist, m; 0 if
     /// unarmed.
     float getWeaponReach() const;
@@ -541,14 +569,27 @@ private:
         float Angle = 0.0f;
     };
 
-    /// A weapon shape on its part, in the part's body frame.
-    struct WeaponShape {
-        BodyPart Part = BodyPart::ForearmR;
-        Vec2 Grip;
+    /// A held weapon: its own body, hinged at the fist of the holding
+    /// forearm by the wrist (a revolute joint with a motor, as JointState).
+    struct WeaponState {
+        BodyPart Part = BodyPart::ForearmR;  ///< The holding forearm: hits on the weapon are its hits.
+        physics::Body Handle;     ///< Its origin is the wrist; angle 0 continues the forearm.
+        physics::RevoluteJoint Wrist;        ///< The forearm (A) to the weapon (B).
+        Vec2 Fist;                ///< The wrist in the forearm's body frame.
+        Vec2 Grip;                ///< The capsule's ends in the weapon's body frame (Grip at the origin).
         Vec2 Tip;
         float Radius = 0.0f;
         float Reach = 0.0f;       ///< Beyond the fist, m.
         float GripOffset = 0.0f;  ///< Where the other hand grips it, from the fist along it, m.
+        float Mass = 0.0f;        ///< kg.
+        float Inertia = 0.0f;     ///< About the center of mass, kg*m^2.
+        float Strength = 1.0f;    ///< WeaponMount::WristStrength.
+        float DefaultAngle = 0.0f; ///< The item's (or the mount's) wrist angle, unmirrored, rad.
+        float LowerAngle = 0.0f;  ///< Wrist limits, mirrored, rad.
+        float UpperAngle = 0.0f;
+        float Target = 0.0f;      ///< What the motor drives to, mirrored and clamped, rad.
+        float PreviousTarget = 0.0f;
+        float HoldTorque = 0.0f;  ///< As JointState::HoldTorque, N*m.
     };
 
     /// A shield plate on its part, in the part's body frame.
@@ -574,10 +615,24 @@ private:
     void createJoints(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup,
                       const PerBodyPart<Vec2>& Centers);
     void setStrikeMasses(physics::World& PhysWorld);
-    /// The weapon and shield shapes \p Item gives the part whose shape (in
-    /// its body frame) is \p Holder; adds them to the body.
-    void addHeldShapes(physics::World& PhysWorld, const RigDef& Def, const HeldItem& Item, const PartDef& Holder,
-                       const physics::ShapeDef& Base);
+    /// The shield plate \p Item gives the part whose shape (in its body
+    /// frame) is \p Holder; adds it to the body.
+    void addShield(physics::World& PhysWorld, const HeldItem& Item, const PartDef& Holder,
+                   const physics::ShapeDef& Base);
+    /// The weapon body of \p Item, hinged at the fist of its holder (whose
+    /// shape in its body frame is \p Holder), with \p Base's collision
+    /// filter.
+    void addWeapon(physics::World& PhysWorld, const RigDef& Def, const HeldItem& Item, const PartDef& Holder,
+                   const physics::ShapeDef& Base);
+    /// The weapons' wrist targets from the wish (setWristAngle()).
+    void refreshWristTargets();
+    /// Places the weapons at their wrist targets on their holders placed
+    /// as in \p Pose, at rest.
+    void snapWeapons(const PerBodyPart<Placement>& Pose);
+    /// The torque the wrist of \p Weapon needs at motor gain \p Gain, as
+    /// getHoldTorque().
+    float getWristHoldTorque(const WeaponState& Weapon, float Gain) const;
+    void drawWrists() const;
     /// The spring of the other hand on a two-handed weapon (RigSetup::GripPart).
     void createGrip(physics::World& PhysWorld, const RigSetup& Setup);
     const JointState* findJoint(BodyPart Child) const;
@@ -706,7 +761,8 @@ private:
     float BaseStiffness = 1.0f;
     float HitFactor = 1.0f;           ///< 1 without hits, drops to MinStiffness.
     int WallSide = 0;
-    std::vector<WeaponShape> Weapons;
+    std::vector<WeaponState> Weapons;
+    std::optional<float> WristWish;   ///< setWristAngle(), unmirrored.
     std::vector<ShieldShape> Shields;
     std::optional<GripState> Grip;
     /// The joints (by child part) of the gripping arm: softer while it grips.

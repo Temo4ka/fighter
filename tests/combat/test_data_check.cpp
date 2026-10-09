@@ -181,3 +181,19 @@ TEST_CASE("MoveLibrary::findProblems lists every problem", "[combat][data_check]
     CHECK(Problems[1].File == "movesets/lost.json");
     CHECK(Problems[1].format() == "movesets/lost.json: field 'inherit': there is no moveset 'nowhere'");
 }
+
+TEST_CASE("checkData: wrist angles of clips and items are within the rig's wrist limits", "[combat][data_check]") {
+    const test::ScratchData Data("check_wrist");
+    Data.write("poses/odd_wrist.json", R"({ "duration": 0.5, "keys": [
+        { "t": 0, "pose": { "UpperArmL": 40, "Weapon": 30 } },
+        { "t": 0.2, "pose": { "UpperArmL": 40, "Weapon": 150 } } ] })");
+    Data.write("movesets/odd_wrist.json", R"({"stance": "odd_wrist"})");
+    Data.write("items/extra.json", R"({"items": [
+        {"id": "bent_blade", "slot": "MainHand", "mass_kg": 1.0,
+         "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1, "angle_deg": 170, "width_m": 0.04}}]})");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(hasProblem(Problems, "poses/odd_wrist.json", "key at t = 0.2 s: 'Weapon' 150 deg is outside the wrist limits"));
+    CHECK(hasProblem(Problems, "items/extra.json", "item 'bent_blade': field 'weapon.angle_deg': 170 deg"));
+    CHECK(Problems.size() == 2);
+}

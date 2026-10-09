@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "anim/clip.hpp"
+#include "anim/layers.hpp"
 #include "combat/moves.hpp"
 #include "rig/rig_def.hpp"
 
@@ -151,7 +152,7 @@ TEST_CASE("Clips: every move names an existing clip", "[anim][clips]") {
 TEST_CASE("Clips: the punches use the right arm parts", "[anim][clips]") {
     CHECK(getClip("jab").isStriker(BodyPart::ForearmL));
     CHECK(getClip("jab_close").isStriker(BodyPart::ForearmL));
-    for (const auto* Name : {"heavy_punch", "heavy_punch_close", "sword_slash", "hammer_smash"}) {
+    for (const auto* Name : {"heavy_punch", "heavy_punch_close", "sword_slash"}) {
         const Clip& Attack = getClip(Name);
         INFO(Name);
         // The rear hand (and the weapon held in it) strikes, nothing else.
@@ -161,6 +162,13 @@ TEST_CASE("Clips: the punches use the right arm parts", "[anim][clips]") {
         CHECK_FALSE(setsAny(Attack, {BodyPart::UpperArmL, BodyPart::ForearmL}));
         CHECK_FALSE(Attack.AllowMove);
     }
+    // The two-handed hammer strikes with the weapon arm; the other arm keeps
+    // its hand on the haft, so the clip poses both.
+    const Clip& Hammer = getClip("hammer_smash");
+    CHECK(Hammer.isStriker(BodyPart::ForearmR));
+    CHECK(Hammer.Strikers.count() == 1);
+    CHECK(setsAll(Hammer, {BodyPart::UpperArmR, BodyPart::ForearmR, BodyPart::UpperArmL, BodyPart::ForearmL}));
+    CHECK_FALSE(Hammer.AllowMove);
 }
 
 TEST_CASE("Clips: weapon moves are slower and wider than the cross", "[anim][clips]") {
@@ -290,10 +298,16 @@ TEST_CASE("Clips: reactions are one-shot, harmless and end where they began", "[
 TEST_CASE("Clips: attacks start and end in the guard of the stance", "[anim][clips]") {
     // Layered over the stance, an attack must not make the body jump when it
     // starts or finishes: the joints it sets begin and end at the stance
-    // angles. (The old kick is not re-posed yet and is left out.)
-    const Pose Stance = getClip("stance").Keys.front().Target;
+    // angles. A weapon's strike starts in its moveset's stance and plays with
+    // the arms swapped (authored for R, held in L). (The old kick is not
+    // re-posed yet and is left out.)
+    const std::map<std::string, std::string> WeaponStances = {{"sword_slash", "stance_sword"},
+                                                              {"hammer_smash", "stance_hammer"}};
     for (const auto& Name : AttackNames) {
         if (Name == "kick") continue;
+        const auto Weapon = WeaponStances.find(Name);
+        const Pose Stance = Weapon == WeaponStances.end() ? getClip("stance").Keys.front().Target
+                                                          : mirrorArms(getClip(Weapon->second).Keys.front().Target);
         const Clip& Attack = getClip(Name);
         for (const Pose* Edge : {&Attack.Keys.front().Target, &Attack.Keys.back().Target}) {
             for (size_t Index = 0; Index < BodyPartCount; ++Index) {

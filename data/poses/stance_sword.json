@@ -3,8 +3,8 @@
   "duration": 1.0,
   "keys": [
     { "t": 0.0, "pose": {
-        "Pelvis": 0, "Torso": -8, "Head": 8,
-        "UpperArmL": 45, "ForearmL": 110, "UpperArmR": 25, "ForearmR": 135,
+        "Pelvis": 0, "Torso": -10, "Head": 8,
+        "UpperArmL": 20, "ForearmL": 45, "UpperArmR": 20, "ForearmR": 120, "Weapon": 85,
         "ThighL": 25, "ShinL": -20, "FootL": -5,
         "ThighR": -15, "ShinR": -5, "FootR": 20 } }
   ]

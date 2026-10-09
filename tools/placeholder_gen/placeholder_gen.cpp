@@ -31,6 +31,15 @@ constexpr float LyingAspect = 2.0f;
 constexpr float OutlineShade = 0.55f;
 /// Narrowest picture of a weapon: wide enough for the cross guard, m.
 constexpr float MinWeaponWidth = 0.14f;
+/// How far the hilt and pommel stick out behind the fist's surface, m.
+constexpr float HiltLength = 0.12f;
+/// How far the haft of a blunt weapon sticks out behind the fist, m.
+constexpr float HaftTail = 0.2f;
+/// The haft and the head of a blunt weapon (half across the haft, half along
+/// it), as shares of its width.
+constexpr float HaftShare = 0.6f;
+constexpr float HeadAcrossShare = 4.0f;
+constexpr float HeadAlongShare = 2.4f;
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
 struct Rgb {
@@ -73,7 +82,10 @@ void addPartMarks(const PartGeometry& Geometry, Rgb Base, std::vector<Layer>& La
 sf::Image renderLayers(Vec2 SizeMeters, float PixelsPerMeter, Variant Kind, const std::vector<Layer>& Layers);
 std::vector<Layer> makeHelmetLayers(const PartGeometry& Geometry, Rgb Metal);
 std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal);
-std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, const PartGeometry& Geometry);
+/// The layers of a weapon whose fist surface is at \p Fist (Y) and whose
+/// blade is \p HalfWidth wide on either side of the axis.
+std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, float Fist,
+                                    float HalfWidth);
 std::vector<Layer> makeShieldLayers(const stats::ShieldProps& Shield);
 Rgb getArmorColor(float Armor);
 sf::Image drawReferencePose(const rig::RigDef& Rig, Variant Kind, float Overlap,
@@ -151,11 +163,9 @@ sf::Image drawItemOverlay(const stats::EquipmentItem& Item, const PartGeometry& 
     Vec2 Size = Geometry.getImageSize() + Vec2{2.0f * ArmorMargin, 2.0f * ArmorMargin};
     std::vector<Layer> Layers;
     if (Item.Weapon) {
-        Layers = makeWeaponLayers(*Item.Weapon, Item.MoveSet, Geometry);
-        // Symmetric about the forearm centre so that the centre rule holds.
-        const float HalfHeight = Geometry.getImageSize().Y * 0.5f + Item.Weapon->ReachM + ArmorMargin;
-        Size = {std::max(Geometry.getImageSize().X, MinWeaponWidth), 2.0f * HalfHeight};
-    } else if (Item.Shield) {
+        throw std::invalid_argument(std::format("item '{}': a weapon has no overlay, it is drawn by drawWeapon()", Item.Id));
+    }
+    if (Item.Shield) {
         Layers = makeShieldLayers(*Item.Shield);
         // The plate is centered on the forearm, as the body's (rig.cpp).
         Size = {std::max(Size.X, Item.Shield->WidthM + 2.0f * ArmorMargin),
@@ -166,6 +176,29 @@ sf::Image drawItemOverlay(const stats::EquipmentItem& Item, const PartGeometry& 
         Layers = makeShellLayers(Geometry, getArmorColor(Item.Armor));
     }
     return renderLayers(Size, PixelsPerMeter, Kind, Layers);
+}
+
+WeaponGeometry computeWeaponGeometry(const stats::WeaponProps& Weapon, const rig::RigDef& Rig) {
+    WeaponGeometry Result;
+    Result.Radius = Weapon.WidthM.value_or(Rig.Weapon.Width) * 0.5f;
+    Result.HolderRadius = Rig.getPart(Rig.Weapon.Part).Radius;
+    Result.Reach = Weapon.ReachM;
+    Result.Segment = std::max(Result.HolderRadius + Weapon.ReachM - Result.Radius, 0.0f);
+    return Result;
+}
+
+sf::Image drawWeapon(const stats::EquipmentItem& Item, const WeaponGeometry& Geometry, Variant Kind,
+                     float PixelsPerMeter) {
+    if (!Item.Weapon) throw std::invalid_argument(std::format("item '{}' is not a weapon", Item.Id));
+    if (PixelsPerMeter <= 0.0f) PixelsPerMeter = getDefaultPixelsPerMeter(Kind);
+    const float Fist = Geometry.getFistY();
+    const std::vector<Layer> Layers = makeWeaponLayers(*Item.Weapon, Item.MoveSet, Fist, Geometry.Radius);
+    // Symmetric about the capsule's center so that the centre rule holds:
+    // the hilt behind the fist or the tip, whichever is further.
+    const float Behind = Item.MoveSet.contains("sword") ? HiltLength : HaftTail;
+    const float HalfHeight = std::max(Geometry.getLength() * 0.5f, Fist + Behind) + ArmorMargin;
+    const float Width = std::max(2.0f * Geometry.Radius * HeadAcrossShare, MinWeaponWidth);
+    return renderLayers({Width, 2.0f * HalfHeight}, PixelsPerMeter, Kind, Layers);
 }
 
 std::vector<std::filesystem::path> generatePlaceholders(const GenerateOptions& Options) {
@@ -198,6 +231,13 @@ std::vector<std::filesystem::path> generatePlaceholders(const GenerateOptions& O
         }
 
         for (const stats::EquipmentItem* Item : Items) {
+            // A weapon is a body of its own: one picture for either hand.
+            if (Item->Weapon) {
+                const auto Path = VariantDir / "items" / Item->Id / "Weapon.png";
+                saveImage(drawWeapon(*Item, computeWeaponGeometry(*Item->Weapon, Rig), Kind), Path);
+                Written.push_back(Path);
+                continue;
+            }
             // An item held in a hand covers the holding forearm, which the
             // fighter sheet chooses: draw both.
             const std::vector<BodyPart> Parts = stats::isHandSlot(Item->Slot)
@@ -511,11 +551,11 @@ std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal) {
     return {Shell};
 }
 
-/// A weapon lies along the forearm with its hilt in the fist and the working
-/// end beyond the fist's lower edge by the reach: a blade for a sword, a head
-/// on a shaft for anything blunt.
-std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, const PartGeometry& Geometry) {
-    const float Fist = -Geometry.ShapeSize.Y * 0.5f;
+/// A weapon points down (-Y) with its hilt in the fist and the working end
+/// beyond the fist's surface by the reach: a blade for a sword, a head on a
+/// shaft for anything blunt.
+std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, float Fist,
+                                    float HalfWidth) {
     const float Reach = Weapon.ReachM;
     const Rgb Wood{0.45f, 0.30f, 0.16f};
     const Rgb Gold{0.85f, 0.70f, 0.25f};
@@ -535,7 +575,6 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
     };
 
     if (MoveSet.contains("sword")) {
-        const float HalfWidth = 0.024f;
         const float TipLength = 0.05f;
         const float BladeTop = Fist - 0.016f;
         const float ShoulderY = Fist - Reach + TipLength;
@@ -558,11 +597,24 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         addLayer(boxSdf({0.0f, Fist - 0.006f}, {0.06f, 0.011f}), Gold, 0.011f);
         addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.098f}, 0.022f); }, Gold, 0.022f);
     } else {
-        const float HeadHalf = 0.05f;
-        const float HeadY = Fist - Reach + HeadHalf;
-        addLayer(boxSdf({0.0f, (Fist + 0.08f + HeadY) * 0.5f}, {0.015f, (Fist + 0.08f - HeadY) * 0.5f}), Wood, 0.015f);
-        addLayer(boxSdf({0.0f, HeadY}, {HeadHalf, HeadHalf}), scaled(Steel, 0.7f), HeadHalf);
-        addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.088f}, 0.02f); }, Wood, 0.02f);
+        const float HeadAcross = HalfWidth * HeadAcrossShare;
+        const float HeadAlong = HalfWidth * HeadAlongShare;
+        const float HaftHalf = HalfWidth * HaftShare;
+        const float HeadY = Fist - Reach + HeadAlong;
+        const float Butt = Fist + HaftTail - 0.03f;
+        addLayer(boxSdf({0.0f, (Butt + HeadY) * 0.5f}, {HaftHalf, (Butt - HeadY) * 0.5f}), Wood,
+                 HaftHalf);
+        addLayer(boxSdf({0.0f, HeadY}, {HeadAcross, HeadAlong}), scaled(Steel, 0.7f), HeadAlong);
+        // Striking faces: thicker plates at both ends of the head.
+        const float FaceHalf = HeadAcross * 0.18f;
+        for (const float Side : {-1.0f, 1.0f}) {
+            addLayer(boxSdf({Side * (HeadAcross - FaceHalf), HeadY}, {FaceHalf, HeadAlong * 1.2f}),
+                     scaled(Steel, 0.55f), HeadAlong);
+        }
+        // A band where the haft goes through the head.
+        addLayer(boxSdf({0.0f, HeadY}, {HaftHalf * 1.8f, HeadAlong * 1.1f}), Gold, HaftHalf);
+        addLayer([Butt](Vec2 Point) { return getSdfCircle(Point, {0.0f, Butt + 0.008f}, 0.022f); }, scaled(Steel, 0.6f),
+                 0.022f);
     }
     return Layers;
 }

@@ -8,11 +8,11 @@
   "blendIn": 0.05,
   "blendOut": 0.1,
   "keys": [
-    { "t": 0.00, "pose": { "Torso": -8, "UpperArmR": 25, "ForearmR": 135 } },
-    { "t": 0.14, "pose": { "Torso": 0, "UpperArmR": 110, "ForearmR": 60 } },
-    { "t": 0.28, "pose": { "Torso": -18, "UpperArmR": 95, "ForearmR": 10 } },
-    { "t": 0.38, "pose": { "Torso": -18, "UpperArmR": 95, "ForearmR": 10 } },
-    { "t": 0.52, "pose": { "Torso": -12, "UpperArmR": 50, "ForearmR": 100 } },
-    { "t": 0.62, "pose": { "Torso": -8, "UpperArmR": 25, "ForearmR": 135 } }
+    { "t": 0.00, "pose": { "Torso": -6, "UpperArmR": 20, "ForearmR": 120, "UpperArmL": 15, "ForearmL": 135, "Weapon": 80 } },
+    { "t": 0.14, "pose": { "Torso": 0, "UpperArmR": 110, "ForearmR": 60, "UpperArmL": 105, "ForearmL": 75, "Weapon": 70 } },
+    { "t": 0.28, "pose": { "Torso": -18, "UpperArmR": 95, "ForearmR": 0, "UpperArmL": 90, "ForearmL": 15, "Weapon": 20 } },
+    { "t": 0.38, "pose": { "Torso": -18, "UpperArmR": 90, "ForearmR": 0, "UpperArmL": 85, "ForearmL": 15, "Weapon": 10 } },
+    { "t": 0.52, "pose": { "Torso": -12, "UpperArmR": 50, "ForearmR": 70, "UpperArmL": 45, "ForearmL": 85, "Weapon": 70 } },
+    { "t": 0.62, "pose": { "Torso": -6, "UpperArmR": 20, "ForearmR": 120, "UpperArmL": 15, "ForearmL": 135, "Weapon": 80 } }
   ]
 }

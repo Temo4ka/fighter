@@ -13,6 +13,7 @@ add_executable(fighter_tests
     rig/test_rig_body.cpp
     rig/test_rig_scenarios.cpp
     rig/test_rig_smooth.cpp
+    rig/test_rig_wrist.cpp
     anim/test_clip.cpp
     anim/test_playback.cpp
     anim/test_layers.cpp
@@ -43,6 +44,7 @@ add_executable(fighter_tests
     combat/test_spacing_smooth.cpp
     combat/test_stride.cpp
     combat/test_lunge.cpp
+    combat/test_wrist.cpp
     render/test_camera.cpp
     render/test_pixel_view.cpp
     render/test_visuals.cpp

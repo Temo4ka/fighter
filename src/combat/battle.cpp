@@ -430,7 +430,8 @@ std::vector<rig::HeldItem> getHeldItems(const stats::Loadout& Gear, const rig::W
         Entry.Part = Hand == stats::EquipmentSlot::MainHand ? Mount.Part : Mount.OffPart;
         if (Item->Weapon) {
             Entry.WeaponReachM = Item->Weapon->ReachM;
-            Entry.WeaponRadiusM = Item->Weapon->RadiusM;
+            Entry.WeaponWidthM = Item->Weapon->WidthM;
+            Entry.WeaponMassKg = Item->MassKg;
             Entry.WeaponAngleDeg = Item->Weapon->AngleDeg;
         }
         if (Item->Shield) {

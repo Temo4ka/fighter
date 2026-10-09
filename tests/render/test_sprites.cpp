@@ -134,3 +134,33 @@ TEST_CASE("Sprites: a held item takes the other arm's picture", "[render][sprite
     CHECK(Made.Items[0].Covers == std::vector{BodyPart::ForearmR});
     CHECK(Made.Items[1].Covers == std::vector{BodyPart::ForearmL});
 }
+
+TEST_CASE("Sprites: a held weapon gets its own picture for the weapon body", "[render][sprites]") {
+    CHECK(getWeaponPicturePath("items/sword") == "items/sword/Weapon.png");
+    FakeFiles Files;
+    Files.Present = {"items/sword/Weapon.png", "items/sword/ForearmL.png"};
+    FighterLook Look;
+    Look.Items = {{.Id = "sword", .Covers = {BodyPart::ForearmL}, .Held = true, .Weapon = true}};
+    const FighterSprites Sprites = resolveFighterSprites(makeVisuals(), Look, Files.getLoader());
+    CHECK(Sprites.Weapons[static_cast<size_t>(BodyPart::ForearmL)].Texture == &Files.Picture);
+    CHECK(Sprites.Weapons[static_cast<size_t>(BodyPart::ForearmL)].MetersPerPixel == 1.0f / 50.0f);
+    // Not an overlay of the forearm any more.
+    CHECK(Sprites.Overlays[static_cast<size_t>(BodyPart::ForearmL)].empty());
+    CHECK_FALSE(Files.Asked.contains("items/sword/ForearmL.png"));
+
+    // Without the picture the weapon is a capsule, counted as missing.
+    FakeFiles None;
+    const FighterSprites Bare = resolveFighterSprites(makeVisuals(), Look, None.getLoader());
+    CHECK(Bare.Weapons[static_cast<size_t>(BodyPart::ForearmL)].Texture == nullptr);
+    CHECK(Bare.MissingFiles == BodyPartCount + 1);
+
+    // The look marks held weapons, not shields.
+    combat::FighterConfig Config;
+    stats::EquipmentItem Sword{.Id = "sword", .Slot = stats::EquipmentSlot::MainHand, .Weapon = stats::WeaponProps{}};
+    stats::EquipmentItem Shield{.Id = "shield", .Slot = stats::EquipmentSlot::OffHand, .Shield = stats::ShieldProps{}};
+    Config.Loadout.Items = {Sword, Shield};
+    const FighterLook Made = makeFighterLook(Config, "", "P1");
+    REQUIRE(Made.Items.size() == 2);
+    CHECK(Made.Items[0].Weapon);
+    CHECK_FALSE(Made.Items[1].Weapon);
+}

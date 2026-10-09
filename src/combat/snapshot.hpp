@@ -68,6 +68,10 @@ struct FighterView {
     bool AgainstWall = false;
 
     std::vector<PartTransform> Parts; ///< Body parts; empty until the rig exists (phase 1).
+    /// The held weapons, each a body of its own on the wrist
+    /// (rig::Rig::getWeaponTransforms): Part is the holding forearm, the
+    /// weapon runs from the fist to the tip along -Y of its frame.
+    std::vector<PartTransform> Weapons;
 };
 
 struct ArenaView {

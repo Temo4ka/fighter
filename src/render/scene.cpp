@@ -13,6 +13,8 @@ const sf::Color StaminaColor(225, 195, 70);
 const sf::Color SkyColor(70, 80, 100);
 const sf::Color FloorColor(45, 40, 38);
 const sf::Color WallColor(30, 28, 27, 200);
+/// A weapon without a picture.
+const sf::Color WeaponColor(190, 195, 205);
 /// Width of a wall as drawn; the wall itself is the line at +-HalfWidthM.
 constexpr float WallThicknessM = 0.15f;
 
@@ -105,6 +107,25 @@ void appendFighter(RenderList& List, Layer Where, const combat::FighterView& Fig
         const PartTransform* Transform = ByPart[static_cast<size_t>(Part)];
         if (!Transform) continue;
 
+        // The weapon this forearm holds, on its own body, under the forearm:
+        // the fist closes over the grip.
+        for (const PartTransform& Weapon : Fighter.Weapons) {
+            if (Weapon.Part != Part) continue;
+            const SpriteRef* Blade = Sprites ? &Sprites->Weapons[static_cast<size_t>(Part)] : nullptr;
+            if (Blade && Blade->Texture) {
+                List.add(Where, SpritePrim{.Texture = Blade->Texture,
+                                           .Position = Weapon.Position,
+                                           .Angle = Weapon.Angle,
+                                           .Scale = {Blade->MetersPerPixel * Mirror, Blade->MetersPerPixel},
+                                           .Origin = Blade->Origin});
+            } else {
+                List.addFallback(Where, CapsulePrim{.Position = Weapon.Position,
+                                                    .Angle = Weapon.Angle,
+                                                    .Size = Weapon.Size,
+                                                    .Fill = WeaponColor});
+            }
+        }
+
         const SpriteRef* Picture = Sprites ? &Sprites->Parts[static_cast<size_t>(Part)] : nullptr;
         if (Picture && Picture->Texture) {
             List.add(Where, SpritePrim{.Texture = Picture->Texture,
@@ -119,13 +140,14 @@ void appendFighter(RenderList& List, Layer Where, const combat::FighterView& Fig
                                                 .Fill = isFarSide(Part) ? darken(Color) : Color});
         }
 
-        if (!Sprites) continue;
-        for (const SpriteRef& Overlay : Sprites->Overlays[static_cast<size_t>(Part)]) {
-            List.add(Where, SpritePrim{.Texture = Overlay.Texture,
-                                       .Position = Transform->Position,
-                                       .Angle = Transform->Angle,
-                                       .Scale = {Overlay.MetersPerPixel * Mirror, Overlay.MetersPerPixel},
-                                       .Origin = Overlay.Origin});
+        if (Sprites) {
+            for (const SpriteRef& Overlay : Sprites->Overlays[static_cast<size_t>(Part)]) {
+                List.add(Where, SpritePrim{.Texture = Overlay.Texture,
+                                           .Position = Transform->Position,
+                                           .Angle = Transform->Angle,
+                                           .Scale = {Overlay.MetersPerPixel * Mirror, Overlay.MetersPerPixel},
+                                           .Origin = Overlay.Origin});
+            }
         }
     }
 }

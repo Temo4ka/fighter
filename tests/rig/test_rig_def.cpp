@@ -160,19 +160,34 @@ TEST_CASE("parseRigDef: the yield pose sets angles of parts that yield", "[rig]"
 TEST_CASE("parseRigDef: the weapon mount needs a capsule", "[rig]") {
     const RigDef Humanoid = loadRigDef(HumanoidPath);
     CHECK(Humanoid.Weapon.Part == BodyPart::ForearmL);
-    CHECK(Humanoid.Weapon.Radius > 0.0f);
+    CHECK(Humanoid.Weapon.Width > 0.0f);
+    CHECK(Humanoid.Weapon.WristLowerAngle < 0.0f);
+    CHECK(Humanoid.Weapon.WristUpperAngle > 0.0f);
     // Without a "weapon" object the default mount is kept, whatever the part.
     CHECK(parseRigDef(makeRigJson()).Weapon.Part == BodyPart::ForearmR);
     // The minimal rig is made of circles: no weapon can continue them.
     CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "weapon": { "part": "ForearmL" })")), std::runtime_error);
-    std::string Capsule = makeRigJson(R"(, "weapon": { "part": "ForearmL", "angle": 90, "radius": 0.03 })");
+    std::string Capsule = makeRigJson(R"(, "weapon": { "part": "ForearmL", "angle": 90, "width": 0.06,)"
+                                      R"( "wristLimits": [-100, 110], "wristStrength": 0.5 })");
     const std::string Circle = R"({ "part": "ForearmL", "shape": "circle", "center": [0, 1], "radius": 0.1 })";
     Capsule.replace(Capsule.find(Circle), Circle.size(),
                     R"({ "part": "ForearmL", "shape": "capsule", "from": [0, 1], "to": [0, 0.8], "radius": 0.04 })");
     const RigDef Armed = parseRigDef(Capsule);
     CHECK(Armed.Weapon.Part == BodyPart::ForearmL);
     CHECK(Armed.Weapon.Angle == Catch::Approx(1.5708f));
-    CHECK(Armed.Weapon.Radius == 0.03f);
+    CHECK(Armed.Weapon.Width == 0.06f);
+    CHECK(Armed.Weapon.WristLowerAngle == Catch::Approx(-1.7453f).margin(1e-4f));
+    CHECK(Armed.Weapon.WristUpperAngle == Catch::Approx(1.9199f).margin(1e-4f));
+    CHECK(Armed.Weapon.WristStrength == 0.5f);
+    // The default angle must be within the wrist's limits, the limits ordered.
+    const std::string Fields = R"("angle": 90, "width": 0.06, "wristLimits": [-100, 110], "wristStrength": 0.5)";
+    for (const auto* Wrong : {R"("angle": 90, "wristLimits": [-60, 60])", R"("wristLimits": [30, -30])",
+                              R"("wristLimits": [-180, 0])", R"("wristStrength": -1)", R"("width": 0)"}) {
+        CAPTURE(Wrong);
+        std::string Bad = Capsule;
+        Bad.replace(Bad.find(Fields), Fields.size(), Wrong);
+        CHECK_THROWS_AS(parseRigDef(Bad), std::runtime_error);
+    }
     CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "weapon": { "part": "ForearmL", "length": 1 })")),
                     std::runtime_error);
 }

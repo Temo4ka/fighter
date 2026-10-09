@@ -54,11 +54,12 @@ Layer getLayer(BodyPart Part);
 /// Does the clip pose any joint of the leg layer?
 bool usesLegs(const Clip& Source);
 
-/// The joints of \p Source that \p Joints holds; the others are unset.
+/// The joints of \p Source that \p Joints holds; the others and the wrist
+/// (Pose::WeaponAngle) are unset.
 Pose selectJoints(const Pose& Source, const std::bitset<BodyPartCount>& Joints);
 
 /// Joins two layers: the leg joints of \p Legs over \p Upper (whose own
-/// leg joints are dropped).
+/// leg joints are dropped). The wrist is the upper layer's.
 Pose joinLayers(const Pose& Upper, const Pose& Legs);
 
 /// The same part on the other leg (ThighL -> ThighR, FootR -> FootL); any

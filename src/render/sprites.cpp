@@ -29,7 +29,8 @@ FighterLook makeFighterLook(const combat::FighterConfig& Config, std::string Ski
         const bool Held = stats::isHandSlot(Item.Slot);
         Look.Items.push_back({.Id = Item.Id,
                               .Covers = Held ? std::vector{stats::getHandPart(Item.Slot)} : Item.Covers,
-                              .Held = Held});
+                              .Held = Held,
+                              .Weapon = Held && Item.Weapon.has_value()});
     }
     return Look;
 }
@@ -37,6 +38,8 @@ FighterLook makeFighterLook(const combat::FighterConfig& Config, std::string Ski
 std::string getPicturePath(std::string_view Dir, BodyPart Part) {
     return std::format("{}/{}.png", Dir, getBodyPartName(Part));
 }
+
+std::string getWeaponPicturePath(std::string_view Dir) { return std::format("{}/Weapon.png", Dir); }
 
 FighterSprites resolveFighterSprites(const Visuals& Vis, const FighterLook& Look, const TextureLoader& Load) {
     FighterSprites Out;
@@ -104,6 +107,17 @@ void resolveItem(const Visuals& Vis, const SkinDef* Skin, const ItemLook& Item, 
     const float PixelsPerMeter =
         Def && Def->PixelsPerMeter ? *Def->PixelsPerMeter : (Skin ? Skin->PixelsPerMeter : Vis.PixelsPerMeter);
     const bool Smooth = Skin ? Skin->Smooth : true;
+    if (Item.Weapon) {
+        // One picture for either hand, on the weapon body.
+        SpriteRef Ref{.Texture = Load(getWeaponPicturePath(Dir), Smooth), .MetersPerPixel = 1.0f / PixelsPerMeter};
+        if (!Ref.Texture) {
+            ++Out.MissingFiles;
+            log::warnOnce("item {}: no {}, drawing a capsule", Item.Id, getWeaponPicturePath(Dir));
+            return;
+        }
+        for (const BodyPart Part : Item.Covers) Out.Weapons[static_cast<size_t>(Part)] = Ref;
+        return;
+    }
     std::vector<BodyPart> Missing;
     for (const BodyPart Part : Item.Covers) {
         SpriteRef Ref;

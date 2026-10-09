@@ -513,3 +513,32 @@ TEST_CASE("Movement: the debug panel shows the leg layer and the upper body", "[
 #endif
 }
 
+
+TEST_CASE("Movement: every sword input starts its own strike", "[combat][movement]") {
+    // The keys a player presses with a sword (data/movesets/sword.json).
+    struct InputCase {
+        PlayerCommands Cmd;
+        std::string_view Move;
+    };
+    const InputCase Cases[] = {
+        {{.Light = true}, "sword_cut"},
+        {{.Heavy = true}, "sword_slash"},
+        {{.MoveX = 1.0f, .Heavy = true}, "sword_thrust"},
+        {{.Down = true, .Heavy = true}, "sword_low_cut"},
+        {{.Up = true, .Heavy = true}, "sword_rising"},
+        {{.Special = true}, "sword_spin"},
+    };
+    for (const auto& Case : Cases) {
+        INFO("Move " << Case.Move);
+        BattleConfig Config = makeConfig();
+        Config.Left = loadFighter("shieldman");
+        Battle Fight(Config);
+        run(Fight, {}, {}, TicksPerSecond / 2);
+        run(Fight, Case.Cmd, {}, 1);
+        CHECK(getLeft(Fight).State == FighterState::Attacking);
+        CHECK(getLeft(Fight).MoveId == Case.Move);
+        // The strike plays to its end and the fighter is free again.
+        run(Fight, {}, {}, TicksPerSecond * 2);
+        CHECK(getLeft(Fight).State != FighterState::Attacking);
+    }
+}

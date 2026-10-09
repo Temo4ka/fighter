@@ -22,6 +22,8 @@ namespace {
 using Json = nlohmann::json;
 
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
+/// The largest wrist angle a clip may write (the rig clamps it to its limits).
+constexpr float MaxWeaponAngle = std::numbers::pi_v<float>;
 
 float clampRate(float Rate);
 bool hasStartup(const Clip& Source);
@@ -167,6 +169,10 @@ void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, 
 Pose parsePose(const Json& Node) {
     Pose Result;
     for (const auto& [PartName, Degrees] : Node.items()) {
+        if (PartName == WeaponKey) {
+            Result.setWeaponAngle(Degrees.get<float>() * RadiansPerDegree);
+            continue;
+        }
         const auto Part = findBodyPart(PartName);
         if (!Part) throw std::runtime_error(std::format("unknown body part '{}'", PartName));
         Result.setAngle(*Part, Degrees.get<float>() * RadiansPerDegree);
@@ -199,7 +205,13 @@ void validateClip(const Clip& Result) {
     }
     if (Result.Keys.front().TimeSec != 0.0f) Fail("the first key must be at t = 0");
     for (const auto& Key : Result.Keys) {
-        if (Key.Target.Mask != Result.Keys.front().Target.Mask) Fail("every key must set the same joints");
+        if (Key.Target.Mask != Result.Keys.front().Target.Mask ||
+            Key.Target.HasWeapon != Result.Keys.front().Target.HasWeapon) {
+            Fail("every key must set the same joints");
+        }
+        if (Key.Target.HasWeapon && std::abs(Key.Target.WeaponAngle) > MaxWeaponAngle) {
+            Fail(std::format("{} = {} deg is out of [-180, 180]", WeaponKey, Key.Target.WeaponAngle / RadiansPerDegree));
+        }
         if (Key.TimeSec > Result.DurationSec) Fail("a key is after the end of the clip");
     }
     const bool Sorted = std::ranges::is_sorted(Result.Keys, {}, &Keyframe::TimeSec);

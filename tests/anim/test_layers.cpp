@@ -165,3 +165,19 @@ TEST_CASE("Layers: mirrorClipArms strikes with the other arm", "[anim][layers]")
     CHECK(Swapped.getAngle(BodyPart::UpperArmL) == Slash.Keys.back().Target.getAngle(BodyPart::UpperArmR));
     CHECK(Swapped.getAngle(BodyPart::Torso) == Slash.Keys.back().Target.getAngle(BodyPart::Torso));
 }
+
+TEST_CASE("joinLayers: the wrist comes with the upper layer, selectJoints drops it", "[anim][layers]") {
+    Pose Upper;
+    Upper.setAngle(BodyPart::ForearmL, 0.5f);
+    Upper.setWeaponAngle(0.7f);
+    Pose Legs;
+    Legs.setAngle(BodyPart::ThighL, 0.3f);
+    Legs.setWeaponAngle(-1.0f);
+    const Pose Joined = joinLayers(Upper, Legs);
+    REQUIRE(Joined.HasWeapon);
+    CHECK(Joined.WeaponAngle == 0.7f);
+    CHECK_FALSE(selectJoints(Upper, getLegJoints()).HasWeapon);
+    // The other hand and the mirrored legs keep it: it is either hand's.
+    CHECK(mirrorArms(Upper).WeaponAngle == 0.7f);
+    CHECK(mirrorLegs(Upper).WeaponAngle == 0.7f);
+}
