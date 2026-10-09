@@ -6,6 +6,6 @@
   "blendIn": 0.12,
   "blendOut": 0.12,
   "keys": [
-    { "t": 0.0, "pose": { "Torso": -26, "Head": 14, "UpperArmL": 40, "ForearmL": 30, "UpperArmR": 25, "ForearmR": 30, "ThighL": 60, "ShinL": -95, "FootL": 35, "ThighR": 40, "ShinR": -110, "FootR": 35, "Weapon": -70 } }
+    { "t": 0.0, "pose": { "Torso": -26, "Head": 14, "UpperArmL": 40, "ForearmL": 30, "UpperArmR": 35, "ForearmR": 45, "ThighL": 60, "ShinL": -95, "FootL": 35, "ThighR": 40, "ShinR": -110, "FootR": 35, "Weapon": -70 } }
   ]
 }

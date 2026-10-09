@@ -33,9 +33,11 @@ constexpr float OutlineShade = 0.55f;
 constexpr float MinWeaponWidth = 0.14f;
 /// How far the hilt and pommel stick out behind the fist's surface, m.
 constexpr float HiltLength = 0.12f;
-/// The haft and the head of a blunt weapon, as shares of its width.
+/// The haft and the head of a blunt weapon (half across the haft, half along
+/// it), as shares of its width.
 constexpr float HaftShare = 0.6f;
-constexpr float HeadShare = 2.0f;
+constexpr float HeadAcrossShare = 4.0f;
+constexpr float HeadAlongShare = 2.4f;
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
 struct Rgb {
@@ -192,7 +194,7 @@ sf::Image drawWeapon(const stats::EquipmentItem& Item, const WeaponGeometry& Geo
     // Symmetric about the capsule's center so that the centre rule holds:
     // the hilt behind the fist or the tip, whichever is further.
     const float HalfHeight = std::max(Geometry.getLength() * 0.5f, Fist + HiltLength) + ArmorMargin;
-    const float Width = std::max(2.0f * Geometry.Radius * HeadShare, MinWeaponWidth);
+    const float Width = std::max(2.0f * Geometry.Radius * HeadAcrossShare, MinWeaponWidth);
     return renderLayers({Width, 2.0f * HalfHeight}, PixelsPerMeter, Kind, Layers);
 }
 
@@ -592,12 +594,21 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         addLayer(boxSdf({0.0f, Fist - 0.006f}, {0.06f, 0.011f}), Gold, 0.011f);
         addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.098f}, 0.022f); }, Gold, 0.022f);
     } else {
-        const float HeadHalf = HalfWidth * HeadShare;
+        const float HeadAcross = HalfWidth * HeadAcrossShare;
+        const float HeadAlong = HalfWidth * HeadAlongShare;
         const float HaftHalf = HalfWidth * HaftShare;
-        const float HeadY = Fist - Reach + HeadHalf;
+        const float HeadY = Fist - Reach + HeadAlong;
         addLayer(boxSdf({0.0f, (Fist + 0.08f + HeadY) * 0.5f}, {HaftHalf, (Fist + 0.08f - HeadY) * 0.5f}), Wood,
                  HaftHalf);
-        addLayer(boxSdf({0.0f, HeadY}, {HeadHalf, HeadHalf}), scaled(Steel, 0.7f), HeadHalf);
+        addLayer(boxSdf({0.0f, HeadY}, {HeadAcross, HeadAlong}), scaled(Steel, 0.7f), HeadAlong);
+        // Striking faces: thicker plates at both ends of the head.
+        const float FaceHalf = HeadAcross * 0.18f;
+        for (const float Side : {-1.0f, 1.0f}) {
+            addLayer(boxSdf({Side * (HeadAcross - FaceHalf), HeadY}, {FaceHalf, HeadAlong * 1.2f}),
+                     scaled(Steel, 0.55f), HeadAlong);
+        }
+        // A band where the haft goes through the head.
+        addLayer(boxSdf({0.0f, HeadY}, {HaftHalf * 1.8f, HeadAlong * 1.1f}), Gold, HaftHalf);
         addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.088f}, 0.02f); }, Wood, 0.02f);
     }
     return Layers;
