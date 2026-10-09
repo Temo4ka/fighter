@@ -20,6 +20,7 @@
 ///   // data/movesets/sword.json; the id is the file stem
 ///   {"inherit": "unarmed",
 ///    "moves": {"Heavy": "sword_slash", "Forward+Heavy": "sword_thrust"},
+///    "stance": "stance_sword",
 ///    "block": {"damage_scale": 0.1, "max_level": "Touch",
 ///              "clips": {"Mid": "block_mid_sword"}}}
 ///
@@ -87,6 +88,9 @@ struct MoveSet {
     std::vector<std::string> Pair;
     std::vector<MoveSetEntry> Entries;
     BlockDef Block;
+    /// The clip of the idle stance; absent: the parent's, at the root the
+    /// general "stance" clip.
+    std::optional<std::string> Stance;
 };
 
 /// The block a fighter has, after the parents and the general rules.
@@ -173,6 +177,10 @@ public:
     /// The block of \p Set with its parents and the defaults filled in.
     /// \p Defaults are the general rules (reactions.json, the O.2 zones).
     BlockRules getBlock(const MoveSet& Set, const BlockRules& Defaults) const;
+
+    /// The idle stance clip of \p Set: its own, else the nearest parent's,
+    /// else \p Default (the general stance clip).
+    std::string getStance(const MoveSet& Set, std::string_view Default) const;
 
 private:
     std::vector<MoveDef> Moves;

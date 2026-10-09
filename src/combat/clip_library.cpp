@@ -26,6 +26,15 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<c
 ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveLibrary& Library) {
     ClipLibrary Clips = load(PosesDir, Library.getMoves());
     for (const MoveSet& Set : Library.getSets()) {
+        if (Set.Stance && !Clips.Clips.contains(*Set.Stance)) {
+            try {
+                Clips.add(PosesDir, *Set.Stance);
+            } catch (const std::exception& Error) {
+                throw std::runtime_error(std::format("movesets/{}.json: field 'stance': '{}': {}", Set.Id,
+                                                     *Set.Stance, Error.what()));
+            }
+            Clips.addCopies(*Set.Stance);
+        }
         for (const std::optional<std::string>& Name : Set.Block.Clips) {
             if (!Name || Clips.Clips.contains(*Name)) continue;
             try {

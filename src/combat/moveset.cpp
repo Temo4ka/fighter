@@ -132,6 +132,14 @@ BlockRules MoveLibrary::getBlock(const MoveSet& Set, const BlockRules& Defaults)
     return Rules;
 }
 
+std::string MoveLibrary::getStance(const MoveSet& Set, std::string_view Default) const {
+    for (const MoveSet* Current = &Set; Current; Current = findSet(Current->Inherit)) {
+        if (Current->Stance) return *Current->Stance;
+        if (Current->Inherit.empty()) break;
+    }
+    return std::string(Default);
+}
+
 std::vector<DataProblem> MoveLibrary::findProblems() const {
     std::vector<DataProblem> Problems;
     if (!findSet(UnarmedMoveSetId)) {
@@ -188,7 +196,7 @@ MoveSet parseMoveSet(std::string_view JsonText, std::string Id) {
         if (!Root.is_object()) throw std::runtime_error("the file must hold a JSON object");
         for (const auto& Field : Root.items()) {
             const std::string& Key = Field.key();
-            if (Key != "inherit" && Key != "pair" && Key != "moves" && Key != "block") {
+            if (Key != "inherit" && Key != "pair" && Key != "moves" && Key != "block" && Key != "stance") {
                 throw std::runtime_error(std::format("unknown field '{}'", Key));
             }
         }
@@ -222,6 +230,7 @@ MoveSet parseMoveSet(std::string_view JsonText, std::string Id) {
                 Set.Entries.push_back(std::move(Line));
             }
         }
+        if (const auto Stance = Root.find("stance"); Stance != Root.end()) Set.Stance = readId(*Stance, "stance");
         if (const auto Block = Root.find("block"); Block != Root.end()) Set.Block = readBlock(*Block);
     } catch (const Json::exception& Error) {
         throw std::runtime_error(Error.what());

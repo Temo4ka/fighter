@@ -444,6 +444,7 @@ private:
     /// other hand than the clip was authored for.
     bool StrikeOtherHand = false;
     const MoveSet* Set = nullptr;          ///< From the weapon: which input starts which move, and the block.
+    std::string StanceName;                ///< The idle stance clip of Set (a moveset field, else "stance").
     BlockRules Block;                      ///< The block of Set, with its parents and reactions.json.
     float Hp = 0.0f;
     float Stamina = 0.0f;

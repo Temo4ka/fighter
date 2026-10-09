@@ -1,5 +1,6 @@
 {
     "inherit": "unarmed",
+    "stance": "stance_sword",
     "moves": {
         "Light": "sword_cut",
         "Heavy": "sword_slash",

@@ -232,6 +232,14 @@ void Checker::checkMoveSetFiles(const MoveLibrary& Library, const std::set<std::
     for (const MoveSet& Set : Library.getSets()) {
         if (Stubs.contains("movesets/" + Set.Id)) continue;
         const std::string File = std::format("movesets/{}.json", Set.Id);
+        if (Set.Stance) {
+            const anim::Clip* Clip = requireClip(File, "stance", *Set.Stance);
+            if (Clip && !Clip->PelvisTrack.empty()) {
+                add(File, std::format("field 'stance': '{}' has a pelvis track (pelvisX), but only attacks move "
+                                      "the pelvis",
+                                      *Set.Stance));
+            }
+        }
         for (size_t Zone = 0; Zone < BlockZoneCount; ++Zone) {
             if (const auto& Name = Set.Block.Clips[Zone]) {
                 const anim::Clip* Clip = requireClip(File, std::format("block.clips.{}", ZoneNames[Zone]), *Name);
