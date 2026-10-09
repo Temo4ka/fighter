@@ -33,6 +33,8 @@ constexpr float OutlineShade = 0.55f;
 constexpr float MinWeaponWidth = 0.14f;
 /// How far the hilt and pommel stick out behind the fist's surface, m.
 constexpr float HiltLength = 0.12f;
+/// How far the haft of a blunt weapon sticks out behind the fist, m.
+constexpr float HaftTail = 0.2f;
 /// The haft and the head of a blunt weapon (half across the haft, half along
 /// it), as shares of its width.
 constexpr float HaftShare = 0.6f;
@@ -193,7 +195,8 @@ sf::Image drawWeapon(const stats::EquipmentItem& Item, const WeaponGeometry& Geo
     const std::vector<Layer> Layers = makeWeaponLayers(*Item.Weapon, Item.MoveSet, Fist, Geometry.Radius);
     // Symmetric about the capsule's center so that the centre rule holds:
     // the hilt behind the fist or the tip, whichever is further.
-    const float HalfHeight = std::max(Geometry.getLength() * 0.5f, Fist + HiltLength) + ArmorMargin;
+    const float Behind = Item.MoveSet.contains("sword") ? HiltLength : HaftTail;
+    const float HalfHeight = std::max(Geometry.getLength() * 0.5f, Fist + Behind) + ArmorMargin;
     const float Width = std::max(2.0f * Geometry.Radius * HeadAcrossShare, MinWeaponWidth);
     return renderLayers({Width, 2.0f * HalfHeight}, PixelsPerMeter, Kind, Layers);
 }
@@ -598,7 +601,8 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         const float HeadAlong = HalfWidth * HeadAlongShare;
         const float HaftHalf = HalfWidth * HaftShare;
         const float HeadY = Fist - Reach + HeadAlong;
-        addLayer(boxSdf({0.0f, (Fist + 0.08f + HeadY) * 0.5f}, {HaftHalf, (Fist + 0.08f - HeadY) * 0.5f}), Wood,
+        const float Butt = Fist + HaftTail - 0.03f;
+        addLayer(boxSdf({0.0f, (Butt + HeadY) * 0.5f}, {HaftHalf, (Butt - HeadY) * 0.5f}), Wood,
                  HaftHalf);
         addLayer(boxSdf({0.0f, HeadY}, {HeadAcross, HeadAlong}), scaled(Steel, 0.7f), HeadAlong);
         // Striking faces: thicker plates at both ends of the head.
@@ -609,7 +613,8 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         }
         // A band where the haft goes through the head.
         addLayer(boxSdf({0.0f, HeadY}, {HaftHalf * 1.8f, HeadAlong * 1.1f}), Gold, HaftHalf);
-        addLayer([Fist](Vec2 Point) { return getSdfCircle(Point, {0.0f, Fist + 0.088f}, 0.02f); }, Wood, 0.02f);
+        addLayer([Butt](Vec2 Point) { return getSdfCircle(Point, {0.0f, Butt + 0.008f}, 0.022f); }, scaled(Steel, 0.6f),
+                 0.022f);
     }
     return Layers;
 }
