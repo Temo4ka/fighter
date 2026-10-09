@@ -219,7 +219,7 @@ TEST_CASE("Fight: a fighter idles in the stance of its moveset", "[combat][fight
     const float Bare = idleTorsoAngle(makeConfig(), FighterConfig{});
 
     ScratchData Data("stance_moveset");
-    Data.replace("poses/stance_sword.json", "\"Torso\": -8", "\"Torso\": 25");
+    Data.replace("poses/stance_sword.json", "\"Torso\": -10", "\"Torso\": 25");
     // The sword's stance is read; the bare hands keep the general one.
     CHECK(std::abs(idleTorsoAngle(Data.makeConfig(), Swordsman) - Before) > 0.05f);
     CHECK(idleTorsoAngle(Data.makeConfig(), FighterConfig{}) == Bare);

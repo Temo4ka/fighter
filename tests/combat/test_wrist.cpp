@@ -143,7 +143,6 @@ TEST_CASE("Wrist: the weapon follows the Weapon key of the move's clip", "[comba
 
 TEST_CASE("Wrist: a sword hit is the forearm's, with the arm and the sword behind it", "[combat][wrist][data]") {
     ScratchData Data("wrist_hit");
-    stripWrists(Data);
     const MoveMeasure Result = measureMove(
         {.MoveId = "sword_cut", .WeaponId = "short_sword", .WithDummy = true, .DataDir = Data.getDir()});
     INFO(describeMeasure(Result));

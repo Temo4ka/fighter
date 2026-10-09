@@ -135,8 +135,8 @@ TEST_CASE("measureMove: a longer weapon of the same moveset reaches farther", "[
          "weapon": {"reach_m": 0.2, "speed_scale": 1.0, "power_scale": 1.0}},
         {"id": "stub_pike", "slot": "MainHand", "mass_kg": 1.0, "moveset": "sword",
          "weapon": {"reach_m": 0.9, "speed_scale": 1.0, "power_scale": 1.0}}]})");
-    MeasureRequest Short = makeRequest("sword_slash", "stub_dagger", false);
-    MeasureRequest Long = makeRequest("sword_slash", "stub_pike", false);
+    MeasureRequest Short = makeRequest("sword_thrust", "stub_dagger", false);
+    MeasureRequest Long = makeRequest("sword_thrust", "stub_pike", false);
     Short.DataDir = Long.DataDir = Data.getDir();
     const MoveMeasure ShortResult = measureMove(Short);
     const MoveMeasure LongResult = measureMove(Long);
