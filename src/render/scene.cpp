@@ -107,6 +107,25 @@ void appendFighter(RenderList& List, Layer Where, const combat::FighterView& Fig
         const PartTransform* Transform = ByPart[static_cast<size_t>(Part)];
         if (!Transform) continue;
 
+        // The weapon this forearm holds, on its own body, under the forearm:
+        // the fist closes over the grip.
+        for (const PartTransform& Weapon : Fighter.Weapons) {
+            if (Weapon.Part != Part) continue;
+            const SpriteRef* Blade = Sprites ? &Sprites->Weapons[static_cast<size_t>(Part)] : nullptr;
+            if (Blade && Blade->Texture) {
+                List.add(Where, SpritePrim{.Texture = Blade->Texture,
+                                           .Position = Weapon.Position,
+                                           .Angle = Weapon.Angle,
+                                           .Scale = {Blade->MetersPerPixel * Mirror, Blade->MetersPerPixel},
+                                           .Origin = Blade->Origin});
+            } else {
+                List.addFallback(Where, CapsulePrim{.Position = Weapon.Position,
+                                                    .Angle = Weapon.Angle,
+                                                    .Size = Weapon.Size,
+                                                    .Fill = WeaponColor});
+            }
+        }
+
         const SpriteRef* Picture = Sprites ? &Sprites->Parts[static_cast<size_t>(Part)] : nullptr;
         if (Picture && Picture->Texture) {
             List.add(Where, SpritePrim{.Texture = Picture->Texture,
@@ -128,24 +147,6 @@ void appendFighter(RenderList& List, Layer Where, const combat::FighterView& Fig
                                            .Angle = Transform->Angle,
                                            .Scale = {Overlay.MetersPerPixel * Mirror, Overlay.MetersPerPixel},
                                            .Origin = Overlay.Origin});
-            }
-        }
-
-        // The weapon this forearm holds, on its own body.
-        for (const PartTransform& Weapon : Fighter.Weapons) {
-            if (Weapon.Part != Part) continue;
-            const SpriteRef* Blade = Sprites ? &Sprites->Weapons[static_cast<size_t>(Part)] : nullptr;
-            if (Blade && Blade->Texture) {
-                List.add(Where, SpritePrim{.Texture = Blade->Texture,
-                                           .Position = Weapon.Position,
-                                           .Angle = Weapon.Angle,
-                                           .Scale = {Blade->MetersPerPixel * Mirror, Blade->MetersPerPixel},
-                                           .Origin = Blade->Origin});
-            } else {
-                List.addFallback(Where, CapsulePrim{.Position = Weapon.Position,
-                                                    .Angle = Weapon.Angle,
-                                                    .Size = Weapon.Size,
-                                                    .Fill = WeaponColor});
             }
         }
     }

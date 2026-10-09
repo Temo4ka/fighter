@@ -140,7 +140,7 @@ TEST_CASE("Scene: equipment goes right after its part", "[render][scene]") {
     CHECK(Overlay.Texture == &Weapon);
     CHECK(Overlay.Origin.Y == 0.2f);
     CHECK(Overlay.Position.X == static_cast<float>(BodyPart::ForearmR));
-    CHECK(*findPart(Near[1]->What) == BodyPart::ForearmR);
+    CHECK(*findPart(Near[2]->What) == BodyPart::ForearmR);
     CHECK(*findPart(Near[3]->What) == BodyPart::ThighR);
 }
 
@@ -192,7 +192,7 @@ TEST_CASE("Scene: a fighter without parts is one rectangle", "[render][scene]") 
     CHECK(List.getStats().Fallbacks == 0);
 }
 
-TEST_CASE("Scene: a weapon is drawn on its own body after its forearm", "[render][scene]") {
+TEST_CASE("Scene: a weapon is drawn on its own body under its forearm", "[render][scene]") {
     const sf::Texture Body;
     const sf::Texture Blade;
     FighterSprites Sprites;
@@ -200,7 +200,7 @@ TEST_CASE("Scene: a weapon is drawn on its own body after its forearm", "[render
     Sprites.Weapons[static_cast<size_t>(BodyPart::ForearmR)] = {.Texture = &Blade, .MetersPerPixel = 0.01f};
 
     combat::RenderSnapshot Snapshot = makeSnapshot();
-    // The weapon body at x = 6.5: after ForearmR (6), before ThighR (7).
+    // The weapon body at x = 6.5, drawn just before ForearmR (6).
     for (auto& Fighter : Snapshot.Fighters) {
         Fighter.Weapons.push_back({.Part = BodyPart::ForearmR,
                                    .Position = {Fighter.Parts[0].Position.X + 6.5f, 0.5f},
@@ -213,11 +213,11 @@ TEST_CASE("Scene: a weapon is drawn on its own body after its forearm", "[render
     const std::vector<RenderItem> Sorted = List.getSorted();
     const auto Near = getLayer(Sorted, Layer::NearFighter);
     REQUIRE(Near.size() == BodyPartCount + 1);
-    const auto& Weapon = std::get<SpritePrim>(Near[2]->What);
+    const auto& Weapon = std::get<SpritePrim>(Near[1]->What);
     CHECK(Weapon.Texture == &Blade);
     CHECK(Weapon.Position.X == 6.5f);
     CHECK(Weapon.Angle == 1.2f);
-    CHECK(*findPart(Near[1]->What) == BodyPart::ForearmR);
+    CHECK(*findPart(Near[2]->What) == BodyPart::ForearmR);
 
     // The other fighter has no pictures: its weapon is a capsule of the weapon's size.
     const auto Far = getLayer(Sorted, Layer::FarFighter);
