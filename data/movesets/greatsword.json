@@ -15,7 +15,7 @@
         "clips": {
             "High": "block_high_greatsword",
             "Mid": "block_mid_greatsword",
-            "Low": "block_low_greatsword"
+            "Low": null
         }
     }
 }

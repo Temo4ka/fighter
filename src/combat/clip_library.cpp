@@ -36,7 +36,7 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveL
             Clips.addCopies(*Set.Stance);
         }
         for (const std::optional<std::string>& Name : Set.Block.Clips) {
-            if (!Name || Clips.Clips.contains(*Name)) continue;
+            if (!Name || Name->empty() || Clips.Clips.contains(*Name)) continue;
             try {
                 Clips.add(PosesDir, *Name);
             } catch (const std::exception& Error) {

@@ -68,7 +68,8 @@ struct BlockDef {
     /// Multiplies the stamina a blocked hit costs (reactions.json
     /// "stamina_per_strength"): a shield takes hits cheaper.
     std::optional<float> StaminaScale;
-    /// Per zone (indexed by BlockZone): the clip that holds this guard.
+    /// Per zone (indexed by BlockZone): the clip that holds this guard; an
+    /// empty name (null in the file): the set has no guard in this zone.
     std::array<std::optional<std::string>, BlockZoneCount> Clips{};
     /// Per zone: the body parts the guard covers (a shield's Mid can cover
     /// the head too).
@@ -102,6 +103,8 @@ struct BlockRules {
     std::array<std::vector<BodyPart>, BlockZoneCount> Covers{};
 
     const std::string& getClip(BlockZone Zone) const { return Clips[static_cast<size_t>(Zone)]; }
+    /// The set guards this zone (its clip is not switched off with null).
+    bool hasGuard(BlockZone Zone) const { return !getClip(Zone).empty(); }
     bool covers(BlockZone Zone, BodyPart Part) const;
 };
 

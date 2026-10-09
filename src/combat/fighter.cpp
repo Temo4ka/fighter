@@ -555,7 +555,8 @@ const MoveDef* Fighter::advanceAttack(const PlayerCommands& Cmd, const Surroundi
 }
 
 const MoveDef* Fighter::chooseFreeState(const PlayerCommands& Cmd, const Surroundings& Around, float Dt) {
-    if (const std::optional<BlockZone> Zone = getBlockZone(Cmd, Body.isFacingRight())) {
+    // A zone the moveset does not guard: the block button does nothing there.
+    if (const std::optional<BlockZone> Zone = getBlockZone(Cmd, Body.isFacingRight()); Zone && Block.hasGuard(*Zone)) {
         if (State != FighterState::Blocking || *Zone != Guard) StateSec = 0.0f;
         Guard = *Zone;
         PendingAttack = nullptr;
@@ -1479,7 +1480,7 @@ PoseKind Fighter::getClipKind(const anim::Clip& Played) const {
     if (&Source == &Clips.get(clips::Crouch)) return PoseKind::Crouch;
     if (&Source == &Clips.get(clips::CrouchWalk)) return PoseKind::CrouchWalk;
     for (const std::string& Name : Block.Clips) {
-        if (&Source == &Clips.get(Name)) return PoseKind::Block;
+        if (!Name.empty() && &Source == &Clips.get(Name)) return PoseKind::Block;
     }
     for (const ReactionLevel Level : {ReactionLevel::Flinch, ReactionLevel::Stagger, ReactionLevel::Knockback}) {
         if (&Source == Clips.findReaction(Level)) return PoseKind::Reaction;

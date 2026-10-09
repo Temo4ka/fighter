@@ -210,6 +210,18 @@ TEST_CASE("Hands: the small shield is torso-sized in the middle guard", "[combat
     CHECK(Forearm.Position.Y - HalfHeight > getPart(View, BodyPart::Pelvis).Position.Y + PelvisHalfHeightM);
 }
 
+TEST_CASE("Hands: the greatsword has no low block", "[combat][hands][data]") {
+    // Its moveset switches the low zone off: Down+Block only crouches.
+    BattleConfig Config = makeConfig();
+    Config.Left = makeFighter({{.Id = "greatsword"}});
+    Battle Fight(Config);
+    run(Fight, {.Down = true, .Block = true}, {}, TicksPerSecond / 2);
+    CHECK(getLeft(Fight).State != FighterState::Blocking);
+    run(Fight, {.Block = true}, {}, TicksPerSecond / 2);
+    CHECK(getLeft(Fight).State == FighterState::Blocking);
+    CHECK(getLeft(Fight).Block == BlockZone::Mid);
+}
+
 TEST_CASE("Fight: a fighter idles in the stance of its moveset", "[combat][fight][data]") {
     const auto idleTorsoAngle = [](const BattleConfig& Config, const FighterConfig& Who) {
         BattleConfig Setup = Config;

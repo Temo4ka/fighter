@@ -4,6 +4,6 @@
   "stiffness": 1.4,
   "allowMove": true,
   "keys": [
-    { "t": 0.0, "pose": { "Torso": -12, "Head": -4, "UpperArmR": 98, "ForearmR": 101, "UpperArmL": 92, "ForearmL": 138, "Weapon": -67 } }
+    { "t": 0.0, "pose": { "Torso": -10, "Head": -4, "UpperArmR": 68, "ForearmR": 135, "UpperArmL": 26, "ForearmL": 136, "Weapon": 7 } }
   ]
 }

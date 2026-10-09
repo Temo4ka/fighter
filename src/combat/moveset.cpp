@@ -290,7 +290,7 @@ BlockDef readBlock(const Json& Node) {
                 if (!Which) throw std::runtime_error(std::format("field '{}': zone is not High, Mid or Low", ZoneField));
                 const auto Index = static_cast<size_t>(*Which);
                 if (Key == "clips") {
-                    Block.Clips[Index] = readId(Zone.value(), ZoneField);
+                    Block.Clips[Index] = Zone.value().is_null() ? std::string() : readId(Zone.value(), ZoneField);
                     continue;
                 }
                 if (!Zone.value().is_array()) {

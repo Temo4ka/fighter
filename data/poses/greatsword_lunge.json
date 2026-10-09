@@ -16,13 +16,13 @@
     { "t": 1.28, "x": 0.0 }
   ],
   "keys": [
-    { "t": 0.00, "pose": { "Torso": -8, "UpperArmR": -4, "ForearmR": 63, "UpperArmL": 16, "ForearmL": 2, "Weapon": 104 } },
-    { "t": 0.36, "pose": { "Torso": 14, "UpperArmR": 108, "ForearmR": 77, "UpperArmL": 90, "ForearmL": 69, "Weapon": 51 } },
-    { "t": 0.50, "pose": { "Torso": 8, "UpperArmR": 113, "ForearmR": 81, "UpperArmL": 98, "ForearmL": 70, "Weapon": 52 } },
-    { "t": 0.62, "pose": { "Torso": -14, "UpperArmR": 36, "ForearmR": 121, "UpperArmL": -15, "ForearmL": 141, "Weapon": -13 } },
-    { "t": 0.72, "pose": { "Torso": -28, "UpperArmR": 37, "ForearmR": 81, "UpperArmL": 0, "ForearmL": 121, "Weapon": -15 } },
-    { "t": 0.84, "pose": { "Torso": -30, "UpperArmR": 33, "ForearmR": 60, "UpperArmL": -5, "ForearmL": 109, "Weapon": -8 } },
-    { "t": 1.06, "pose": { "Torso": -14, "UpperArmR": 9, "ForearmR": 59, "UpperArmL": 1, "ForearmL": 39, "Weapon": 66 } },
-    { "t": 1.28, "pose": { "Torso": -8, "UpperArmR": -4, "ForearmR": 63, "UpperArmL": 16, "ForearmL": 2, "Weapon": 104 } }
+    { "t": 0.00, "pose": { "Torso": -8, "UpperArmR": -11, "ForearmR": 91, "UpperArmL": -6, "ForearmL": 55, "Weapon": 83 } },
+    { "t": 0.36, "pose": { "Torso": 14, "UpperArmR": 108, "ForearmR": 77, "UpperArmL": 92, "ForearmL": 71, "Weapon": 51 } },
+    { "t": 0.50, "pose": { "Torso": 8, "UpperArmR": 113, "ForearmR": 81, "UpperArmL": 99, "ForearmL": 72, "Weapon": 52 } },
+    { "t": 0.62, "pose": { "Torso": -14, "UpperArmR": 36, "ForearmR": 121, "UpperArmL": -8, "ForearmL": 140, "Weapon": -13 } },
+    { "t": 0.72, "pose": { "Torso": -28, "UpperArmR": 37, "ForearmR": 81, "UpperArmL": 5, "ForearmL": 117, "Weapon": -15 } },
+    { "t": 0.84, "pose": { "Torso": -30, "UpperArmR": 33, "ForearmR": 60, "UpperArmL": 0, "ForearmL": 104, "Weapon": -8 } },
+    { "t": 1.06, "pose": { "Torso": -14, "UpperArmR": 9, "ForearmR": 59, "UpperArmL": 0, "ForearmL": 43, "Weapon": 66 } },
+    { "t": 1.28, "pose": { "Torso": -8, "UpperArmR": -11, "ForearmR": 91, "UpperArmL": -6, "ForearmL": 55, "Weapon": 83 } }
   ]
 }

@@ -2,6 +2,6 @@
   "loop": false,
   "duration": 1.0,
   "keys": [
-    { "t": 0.0, "pose": { "Pelvis": 0, "Torso": -8, "Head": 8, "UpperArmR": -4, "ForearmR": 63, "UpperArmL": 16, "ForearmL": 2, "Weapon": 104, "ThighL": 35, "ShinL": -40, "FootL": 5, "ThighR": -5, "ShinR": -30, "FootR": 35 } }
+    { "t": 0.0, "pose": { "Pelvis": 0, "Torso": -8, "Head": 8, "UpperArmR": -11, "ForearmR": 91, "UpperArmL": -6, "ForearmL": 55, "Weapon": 83, "ThighL": 35, "ShinL": -40, "FootL": 5, "ThighR": -5, "ShinR": -30, "FootR": 35 } }
   ]
 }
