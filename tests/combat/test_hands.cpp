@@ -128,19 +128,23 @@ TEST_CASE("Hands: a sword in the off hand strikes with the rear arm", "[combat][
 }
 
 TEST_CASE("Hands: both hands hold a two-handed weapon", "[combat][hands][data]") {
-    const auto getForearmsApart = [](const FighterConfig& Who) {
-        BattleConfig Config = makeConfig();
-        Config.Left = Who;
-        Battle Fight(Config);
-        run(Fight, {}, {}, TicksPerSecond);
-        const FighterView& View = getLeft(Fight);
-        return (getPart(View, BodyPart::ForearmL).Position - getPart(View, BodyPart::ForearmR).Position).getLength();
+    BattleConfig Config = makeConfig();
+    Config.Left = makeFighter({{.Id = "greatsword"}});
+    Battle Fight(Config);
+    run(Fight, {}, {}, TicksPerSecond);
+    const FighterView& View = getLeft(Fight);
+    // The fist: the far end of the forearm's capsule segment.
+    const auto getFist = [&View](BodyPart Part) {
+        const PartTransform& Forearm = getPart(View, Part);
+        const float Reach = (Forearm.Size.Y - Forearm.Size.X) * 0.5f;
+        return Forearm.Position + Vec2{std::sin(Forearm.Angle), -std::cos(Forearm.Angle)} * Reach;
     };
-    const float Unarmed = getForearmsApart(FighterConfig{});
-    const float Gripped = getForearmsApart(makeFighter({{.Id = "greatsword"}}));
-    // The left fist is on the handle, a hand's width past the right one.
-    CHECK(Gripped < 0.2f);
-    CHECK(Gripped < Unarmed);
+    const Vec2 Main = getFist(BodyPart::ForearmL);
+    const Vec2 Other = getFist(BodyPart::ForearmR);
+    // The other fist is on the long hilt, a hand's width behind the main one:
+    // below it in the low guard, where the blade points up.
+    CHECK((Main - Other).getLength() < 0.2f);
+    CHECK(Other.Y < Main.Y);
 }
 
 TEST_CASE("Hands: the shield and the pair's block stop a jab in the middle guard", "[combat][hands][data]") {
