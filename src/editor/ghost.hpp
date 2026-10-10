@@ -1,4 +1,4 @@
-//===- editor/ghost.hpp - The target pose shown by the editor ----*- C++ -*-===//
+//===- editor/ghost.hpp - The target pose shown by the editor ---*- C++ -*-===//
 //
 // Part of the Fighter project.
 //

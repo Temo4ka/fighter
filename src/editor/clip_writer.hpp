@@ -1,4 +1,4 @@
-//===- editor/clip_writer.hpp - Writing clips back to JSON -------*- C++ -*-===//
+//===- editor/clip_writer.hpp - Writing clips back to JSON ------*- C++ -*-===//
 //
 // Part of the Fighter project.
 //

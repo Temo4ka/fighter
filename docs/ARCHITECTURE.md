@@ -14,6 +14,7 @@ app ──► render ──► combat ──► stats ──► core
  │         │          │
  │         │          ├──► physics ──► Box2D (PRIVATE)
  │         │          ├──► rig, anim
+ ├──► editor ──► combat, rig, anim, stats
  │         └──► SFML  │
  └────────────────────┴──► debug ──► core
 ```
@@ -27,6 +28,7 @@ app ──► render ──► combat ──► stats ──► core
 | `anim` | `Pose`, `Clip` (клипы из `data/poses/*.json`), `sampleClip`, `layerPose`, слои ног и верха тела, зеркальные ноги и переставленные руки (`anim/layers.hpp`) | — | — |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка из JSON | — | — |
 | `combat` | `Battle`, `BattleConfig` (config.hpp), `BattleEvent` (events.hpp), `BattleResult` (result.hpp), `PlayerCommands` (commands.hpp), `RenderSnapshot` (snapshot.hpp); внутри — `Fighter`, `CombatTuning` (`data/combat.json`), `MoveDef` (`data/moves/`), `checkData` (проверка `data/`), `measureMove` и `MoveRun` (замер удара на стенде), `LegCycle` (цикл ходьбы и его остановка), `LegStep` (шаги в действие ногами) | — | — |
+| `editor` | Логика редактора поз без окна: `poseBody` (прямая кинематика: углы → части рига и предмет в руке), `composeGhostPose` (стойка оружия + клип, как у бойца), правка ключей клипа (`clip_edit.hpp`), `writeClip`/`saveClip` (запись `data/poses/*.json` в виде файлов). Окно — `app/pose_editor.cpp`, только debug | — | — |
 | `render` | `Camera`, `Resources`, `Visuals` (`data/visuals.json`), `RenderList` и `drawRenderList` (общие примитивы и один цикл отрисовки), `buildRenderList` (бой → примитивы), `BattleEffects` (вспышки, тряска, пыль), `PixelLayout` (пиксельный режим), `BattleRenderer`, `DebugOverlay` | да | — |
 | `app` | `App`, `InputSystem`, `main` | да | — |
 
