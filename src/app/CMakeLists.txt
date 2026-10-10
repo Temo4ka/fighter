@@ -16,6 +16,7 @@ fighter_add_module(app_lib
         fighter::core
         fighter::debug
         fighter::combat
+        fighter::editor
         fighter::render
         fighter::ui
         SFML::Graphics

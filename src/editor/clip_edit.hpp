@@ -55,6 +55,16 @@ float setDuration(anim::Clip& Edited, float DurationSec);
 /// Sets the striking phase, kept inside [0, duration] with begin <= end.
 void setActive(anim::Clip& Edited, float BeginSec, float EndSec);
 
+/// Does the clip key the joint of \p Part (all its keys set the same joints)?
+bool isJointKeyed(const anim::Clip& Edited, BodyPart Part);
+
+/// Adds the joint of \p Part to every key of the clip, at \p Angle (rad), or
+/// removes it from every key. Nothing changes if the clip already is that way.
+void setJointKeyed(anim::Clip& Edited, BodyPart Part, bool Keyed, float Angle);
+
+/// The same for the wrist of the held weapon (the key "Weapon").
+void setWristKeyed(anim::Clip& Edited, bool Keyed, float Angle);
+
 /// Inserts a key of the pelvis track at \p TimeSec with the offset the track
 /// has there (the track is created with its key at 0 if there is none). The
 /// index of the new key, or nullopt as for addKey(), or if the clip loops

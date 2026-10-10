@@ -109,7 +109,8 @@ int main(int Argc, char** Argv) {
 
     if (PoseEditorClip) {
 #if FIGHTER_DEBUG
-        app::PoseEditor Editor({.Root = Opts.Root, .Clip = *PoseEditorClip, .Weapon = Opts.StandWeapon});
+        app::PoseEditor Editor({.Root = Opts.Root, .Clip = *PoseEditorClip, .Weapon = Opts.StandWeapon,
+                                .Screenshot = Opts.Screenshot});
         return Editor.run();
 #else
         log::error("the pose editor is in the debug build only");

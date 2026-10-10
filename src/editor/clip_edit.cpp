@@ -63,6 +63,30 @@ void setActive(anim::Clip& Edited, float BeginSec, float EndSec) {
     Edited.ActiveEndSec = std::clamp(EndSec, Begin, Edited.DurationSec);
 }
 
+bool isJointKeyed(const anim::Clip& Edited, BodyPart Part) {
+    return !Edited.Keys.empty() && Edited.Keys.front().Target.hasJoint(Part);
+}
+
+void setJointKeyed(anim::Clip& Edited, BodyPart Part, bool Keyed, float Angle) {
+    if (isJointKeyed(Edited, Part) == Keyed) return;
+    for (auto& Key : Edited.Keys) {
+        if (Keyed) {
+            Key.Target.setAngle(Part, Angle);
+        } else {
+            Key.Target.Mask.reset(static_cast<size_t>(Part));
+            Key.Target.Angles[static_cast<size_t>(Part)] = 0.0f;
+        }
+    }
+}
+
+void setWristKeyed(anim::Clip& Edited, bool Keyed, float Angle) {
+    if (Edited.Keys.empty() || Edited.Keys.front().Target.HasWeapon == Keyed) return;
+    for (auto& Key : Edited.Keys) {
+        Key.Target.HasWeapon = Keyed;
+        Key.Target.WeaponAngle = Keyed ? Angle : 0.0f;
+    }
+}
+
 std::optional<size_t> addPelvisKey(anim::Clip& Edited, float TimeSec) {
     if (Edited.Loop || TimeSec <= 0.0f || TimeSec > Edited.DurationSec) return std::nullopt;
     if (Edited.PelvisTrack.empty()) Edited.PelvisTrack.push_back({.TimeSec = 0.0f, .OffsetX = 0.0f});

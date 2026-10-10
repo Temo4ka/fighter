@@ -166,3 +166,30 @@ TEST_CASE("A looping clip has no pelvis track to add to", "[editor][edit]") {
     CHECK_FALSE(addPelvisKey(Edited, 0.2f));
     CHECK(Edited.PelvisTrack.empty());
 }
+
+TEST_CASE("A joint is keyed in every key or in none", "[editor][edit]") {
+    anim::Clip Edited = makeClip();
+    CHECK(isJointKeyed(Edited, BodyPart::Torso));
+    CHECK_FALSE(isJointKeyed(Edited, BodyPart::Head));
+    setJointKeyed(Edited, BodyPart::Head, true, 0.25f);
+    for (const auto& Key : Edited.Keys) CHECK(Key.Target.getAngle(BodyPart::Head) == Approx(0.25f));
+    checkValid(Edited);
+
+    setJointKeyed(Edited, BodyPart::Torso, false, 0.0f);
+    CHECK_FALSE(isJointKeyed(Edited, BodyPart::Torso));
+    for (const auto& Key : Edited.Keys) CHECK_FALSE(Key.Target.hasJoint(BodyPart::Torso));
+    checkValid(Edited);
+}
+
+TEST_CASE("The wrist is keyed in every key or in none", "[editor][edit]") {
+    anim::Clip Edited = makeClip();
+    setWristKeyed(Edited, true, 1.0f);
+    for (const auto& Key : Edited.Keys) {
+        CHECK(Key.Target.HasWeapon);
+        CHECK(Key.Target.WeaponAngle == Approx(1.0f));
+    }
+    checkValid(Edited);
+    setWristKeyed(Edited, false, 0.0f);
+    for (const auto& Key : Edited.Keys) CHECK_FALSE(Key.Target.HasWeapon);
+    checkValid(Edited);
+}
