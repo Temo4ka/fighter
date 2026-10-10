@@ -9,6 +9,7 @@
 #include <numbers>
 #include <ranges>
 #include <utility>
+#include <vector>
 
 #include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/Color.hpp>
@@ -29,6 +30,7 @@
 #include "editor/arm_roles.hpp"
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
+#include "editor/pose_drag.hpp"
 #include "editor/pose_fk.hpp"
 
 namespace fighter::app {
@@ -45,6 +47,11 @@ constexpr float HeadroomM = 1.95f;
 constexpr float MinPlaySpeed = 0.05f;
 constexpr float MaxPlaySpeed = 1.0f;
 constexpr std::array PlaySpeedPresets = {0.1f, 0.25f, 0.5f, 1.0f};
+/// The mouse: the radius of a handle and how near a part must be to take it, px.
+constexpr float HandleRadiusPx = 8.0f;
+constexpr float PartTolerancePx = 3.0f;
+/// The time slider is on a key when this close to it, s.
+constexpr float OnKeySec = 1e-5f;
 /// Frames before a screenshot is taken (the panels need a couple to lay out).
 constexpr int ScreenshotFrame = 3;
 
@@ -69,6 +76,57 @@ std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool Played
 std::string getJointLabel(BodyPart Joint, BodyPart MainHand, bool PlayedOtherHand);
 View makeView(sf::Vector2u Size);
 sf::Vector2f toScreen(const View& Scene, Vec2 Point);
+Vec2 fromScreen(const View& Scene, ImVec2 Pixel);
+/// The handles of the ghost: the fists that can be moved and the blade tip.
+struct HandlePoint {
+    BodyPart Forearm;
+    bool Tip;
+    Vec2 Point;
+};
+std::vector<HandlePoint> getHandles(const editor::GhostContext& Context, const editor::PosedBody& Body);
+void drawHandles(sf::RenderTarget& Target, const View& Scene, const editor::GhostContext& Context,
+                 const editor::PosedBody& Body, float OffsetX, std::optional<HandlePoint> Hovered);
+Vec2 fromScreen(const View& Scene, ImVec2 Pixel) {
+    return {(Pixel.x - Scene.Origin.x) / Scene.PixelsPerMeter, (Scene.Origin.y - Pixel.y) / Scene.PixelsPerMeter};
+}
+
+std::vector<HandlePoint> getHandles(const editor::GhostContext& Context, const editor::PosedBody& Body) {
+    std::vector<HandlePoint> Handles;
+    for (const auto& Weapon : Body.Weapons) {
+        if (Weapon.Holder == Context.WeaponHand) Handles.push_back({.Forearm = Weapon.Holder, .Tip = true, .Point = Weapon.Tip});
+    }
+    // The gripping fist of a two-handed weapon follows the handle.
+    for (const BodyPart Forearm : {BodyPart::ForearmL, BodyPart::ForearmR}) {
+        if (Forearm == Context.GripHand) continue;
+        Handles.push_back({.Forearm = Forearm, .Tip = false, .Point = editor::getFistPoint(Context.Rig, Body, Forearm)});
+    }
+    return Handles;
+}
+
+void drawHandles(sf::RenderTarget& Target, const View& Scene, const editor::GhostContext& Context,
+                 const editor::PosedBody& Body, float OffsetX, std::optional<HandlePoint> Hovered) {
+    for (const auto& Handle : getHandles(Context, Body)) {
+        const bool Lit = Hovered && Hovered->Forearm == Handle.Forearm && Hovered->Tip == Handle.Tip;
+        sf::CircleShape Circle(HandleRadiusPx, 20);
+        Circle.setOrigin({HandleRadiusPx, HandleRadiusPx});
+        Circle.setPosition(toScreen(Scene, Handle.Point + Vec2{OffsetX, 0.0f}));
+        Circle.setFillColor(Lit ? sf::Color(255, 210, 80, 150) : sf::Color(255, 255, 255, 40));
+        Circle.setOutlineColor(Lit ? sf::Color(255, 220, 90) : (Handle.Tip ? sf::Color(240, 170, 80) : sf::Color(140, 220, 255)));
+        Circle.setOutlineThickness(Lit ? 2.5f : 1.5f);
+        Target.draw(Circle);
+    }
+    // Where the other hand holds a two-handed weapon.
+    if (!Context.GripHand) return;
+    for (const auto& Weapon : Body.Weapons) {
+        if (Weapon.Holder != Context.WeaponHand) continue;
+        sf::CircleShape Dot(3.0f, 12);
+        Dot.setOrigin({3.0f, 3.0f});
+        Dot.setPosition(toScreen(Scene, editor::getGripPoint(Weapon, Context.GripM) + Vec2{OffsetX, 0.0f}));
+        Dot.setFillColor(sf::Color(140, 220, 255));
+        Target.draw(Dot);
+    }
+}
+
 Vec2 toWorld(const editor::PosedPart& Posed, const rig::PartDef& Part, Vec2 Point, float OffsetX);
 void drawCapsule(sf::RenderTarget& Target, const View& Scene, Vec2 From, Vec2 To, float Radius, sf::Color Fill, sf::Color Line);
 void drawPolygon(sf::RenderTarget& Target, const View& Scene, const std::array<Vec2, 4>& Corners, sf::Color Fill, sf::Color Line);
@@ -140,14 +198,28 @@ int PoseEditor::run() {
         // A one-shot clip plays over and over in the preview.
         if (Playing && !Edit.Loop && Edit.isFinishedAt(TimeSec)) TimeSec = 0.0f;
 
+        if (!IO.WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+            Bend = Bend == editor::ElbowBend::Down ? editor::ElbowBend::Up : editor::ElbowBend::Down;
+        }
+
         Highlight.reset();
         Window.clear(sf::Color(40, 40, 46));
         const View Scene = makeView(Window.getSize());
         drawFloor(Window, Scene);
+        drawPanels();
+        // The ghost is drawn without the pelvis offset; the mouse is taken to it.
+        const Vec2 Mouse = fromScreen(Scene, IO.MousePos) - Vec2{anim::samplePelvisOffset(Edit, TimeSec), 0.0f};
+        updateMouse(Mouse, Scene.PixelsPerMeter);
+        const float OffsetX = anim::samplePelvisOffset(Edit, TimeSec);
         const anim::Pose Ghost = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
         const editor::PosedBody Body = editor::poseBody(Context.Rig, Ghost, Context.Held);
-        drawPanels();
-        drawBody(Window, Scene, Context.Rig, Body, anim::samplePelvisOffset(Edit, TimeSec), Highlight);
+        if (!Highlight && Hovered.Kind == GrabKind::Part) Highlight = Hovered.Part;
+        drawBody(Window, Scene, Context.Rig, Body, OffsetX, Highlight);
+        std::optional<HandlePoint> HoveredHandle;
+        if (Hovered.Kind == GrabKind::Fist || Hovered.Kind == GrabKind::Tip) {
+            HoveredHandle = HandlePoint{.Forearm = Hovered.Part, .Tip = Hovered.Kind == GrabKind::Tip, .Point = {}};
+        }
+        drawHandles(Window, Scene, Context, Body, OffsetX, HoveredHandle);
         ImGui::SFML::Render(Window);
         Window.display();
 
@@ -192,6 +264,71 @@ void PoseEditor::selectKey(size_t Index) {
     SelectedKey = Index;
     TimeSec = Edit.Keys[Index].TimeSec;
     Playing = false;
+}
+
+void PoseEditor::updateMouse(Vec2 Mouse, float PixelsPerMeter) {
+    if (Dragging) {
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            Dragging.reset();
+        } else {
+            Hovered = Dragging->Target;
+            if (Mouse != Dragging->From) applyDrag(Mouse);
+            return;
+        }
+    }
+    Hovered = {};
+    // Over a panel the mouse belongs to Dear ImGui.
+    if (ImGui::GetIO().WantCaptureMouse) return;
+    const anim::Pose Ghost = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
+    Hovered = findGrab(editor::poseBody(Context.Rig, Ghost, Context.Held), Mouse, PixelsPerMeter);
+    if (Hovered.Kind == GrabKind::None || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return;
+
+    // The mouse edits a key: off a key, the time moves onto the nearest one.
+    const size_t Key = editor::findNearestKey(Edit, TimeSec);
+    if (std::abs(Edit.Keys[Key].TimeSec - TimeSec) > OnKeySec) {
+        Status = std::format("the mouse edits key {}: the time moved onto it", Key);
+    }
+    selectKey(Key);
+    Dragging = Drag{.Target = Hovered,
+                    .From = Mouse,
+                    .StartGhost = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand)};
+}
+
+void PoseEditor::applyDrag(Vec2 Mouse) {
+    const Drag& Current = *Dragging;
+    editor::GhostEdit Change;
+    switch (Current.Target.Kind) {
+        case GrabKind::None: return;
+        case GrabKind::Part:
+            Change = editor::rotateGhostJoint(Context, Current.StartGhost, Current.Target.Part, Current.From, Mouse, Bend);
+            break;
+        case GrabKind::Fist:
+            Change = editor::moveGhostFist(Context, Current.StartGhost, Current.Target.Part, Mouse, Bend);
+            break;
+        case GrabKind::Tip: Change = editor::aimGhostWeapon(Context, Current.StartGhost, Mouse, Bend); break;
+    }
+    editor::applyGhostEdit(Change, Edit, SelectedKey, editor::isPlayedOtherHand(Edit, Context.WeaponHand));
+    markEdited();
+}
+
+PoseEditor::Grab PoseEditor::findGrab(const editor::PosedBody& Body, Vec2 Mouse, float PixelsPerMeter) const {
+    const float HandleRadius = HandleRadiusPx / PixelsPerMeter;
+    // The tip before the fists: on a short blade they are close.
+    std::vector<HandlePoint> Handles = getHandles(Context, Body);
+    std::ranges::stable_partition(Handles, [](const HandlePoint& Handle) { return Handle.Tip; });
+    for (const auto& Handle : Handles) {
+        if ((Handle.Point - Mouse).getLength() <= HandleRadius) {
+            return {.Kind = Handle.Tip ? GrabKind::Tip : GrabKind::Fist, .Part = Handle.Forearm};
+        }
+    }
+    // The nearest part on top: draw order back to front.
+    for (const BodyPart Part : std::views::reverse(DrawOrder)) {
+        if (!editor::isDraggablePart(Context.Rig, Part)) continue;
+        if (editor::getDistanceToPart(Context.Rig.getPart(Part), Body.get(Part), Mouse) <= PartTolerancePx / PixelsPerMeter) {
+            return {.Kind = GrabKind::Part, .Part = Part};
+        }
+    }
+    return {};
 }
 
 void PoseEditor::drawPanels() {
@@ -425,6 +562,13 @@ void PoseEditor::drawKeyPanel() {
     anim::Keyframe& Key = Edit.Keys[SelectedKey];
     ImGui::Text("key %zu at %.3f s", SelectedKey, Key.TimeSec);
     ImGui::TextDisabled("arms by role; legs are shown, not edited");
+    ImGui::TextDisabled("mouse: drag a part to turn its joint;\ndrag a circle: a fist (arm IK)\nor the blade tip (wrist)");
+    bool ElbowUp = Bend == editor::ElbowBend::Up;
+    if (ImGui::Checkbox("IK: elbow up (E)", &ElbowUp)) Bend = ElbowUp ? editor::ElbowBend::Up : editor::ElbowBend::Down;
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("the bend the arm IK prefers; a bend past the elbow limits\n"
+                          "falls back to the other one (the humanoid bends only down)");
+    }
     if (editor::isPlayedOtherHand(Edit, Context.WeaponHand)) ImGui::TextDisabled("(the file stores them on the other side)");
     ImGui::Separator();
     const BodyPart MainHand = Context.Rig.Weapon.Part;
