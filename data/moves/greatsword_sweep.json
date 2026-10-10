@@ -4,15 +4,9 @@
     "damage": 1.5,
     "min_reaction": "Flinch",
     "stamina": 19,
-    "tags": [
-        "low",
-        "swing"
-    ],
+    "tags": ["low", "swing"],
     "ai": {
-        "range_m": [
-            0.9,
-            1.5
-        ],
+        "range_m": [0.8, 1.3],
         "role": "low"
     }
 }

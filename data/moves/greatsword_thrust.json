@@ -4,15 +4,9 @@
     "damage": 1.5,
     "min_reaction": "Flinch",
     "stamina": 17,
-    "tags": [
-        "mid",
-        "thrust"
-    ],
+    "tags": ["mid", "thrust"],
     "ai": {
-        "range_m": [
-            1.1,
-            1.7
-        ],
+        "range_m": [1.0, 1.5],
         "role": "poke"
     }
 }

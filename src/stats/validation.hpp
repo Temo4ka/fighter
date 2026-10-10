@@ -60,6 +60,8 @@ inline constexpr float MaxWeaponReachM = 1.5f;
 /// The largest weapon width and shield length or width, m.
 inline constexpr float MaxWeaponWidthM = 0.2f;
 inline constexpr float MaxShieldSizeM = 1.2f;
+/// How far from the holding fist the other hand may grip a weapon, m.
+inline constexpr float MaxWeaponGripM = 0.5f;
 /// A shield in the main hand at most triples poise.
 inline constexpr float MaxShieldPoiseBonus = 2.0f;
 

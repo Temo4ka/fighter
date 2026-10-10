@@ -209,6 +209,14 @@ TEST_CASE("parseItemCatalog: applies item validation", "[stats][loading]") {
         "shield": {"length_m": 0.4, "width_m": 0.4, "poise_bonus": -0.1}})"),
                       ContainsSubstring("shield poise_bonus -0.1 is out of [0, 2]"));
     CHECK(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3})").findItem("great")->TwoHanded);
+    CHECK(Read.Weapon->GripM == std::nullopt);
+    CHECK(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3,
+        "weapon": {"reach_m": 1, "speed_scale": 1, "power_scale": 1, "grip_m": -0.17}})")
+              .findItem("great")
+              ->Weapon->GripM == -0.17f);
+    CHECK_THROWS_WITH(Parse(R"({"id": "great", "slot": "MainHand", "two_handed": true, "mass_kg": 3,
+        "weapon": {"reach_m": 1, "speed_scale": 1, "power_scale": 1, "grip_m": 0.8}})"),
+                      ContainsSubstring("weapon grip 0.8 m is out of [-0.5, 0.5] m"));
 
     CHECK_THROWS_WITH(Parse(R"({"id": "cap", "slot": "Head", "covers": ["Head"], "mass_kg": 1,
         "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1}})"),

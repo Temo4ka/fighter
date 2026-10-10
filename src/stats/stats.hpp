@@ -75,6 +75,10 @@ struct WeaponProps {
     /// mount (data/rigs/).
     std::optional<float> WidthM;
     std::optional<float> AngleDeg;
+    /// A two-handed weapon: where the other hand grips it, m along the
+    /// weapon from the holding fist (negative: behind it, on a long hilt);
+    /// nullopt: the rig's "weapon" mount ("grip").
+    std::optional<float> GripM;
 };
 
 /// The shield component of an item: a plate on the forearm that holds it, a

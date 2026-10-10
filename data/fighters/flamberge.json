@@ -1,0 +1,13 @@
+{
+    "name": "Flamberge",
+    "stats": {
+        "strength": 14,
+        "dexterity": 9,
+        "constitution": 12
+    },
+    "items": [
+        "iron_helmet",
+        "chainmail",
+        "greatsword"
+    ]
+}

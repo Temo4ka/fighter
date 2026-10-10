@@ -119,6 +119,16 @@ TEST_CASE("MoveSet: the block inherits field by field", "[combat][moveset]") {
     CHECK_FALSE(Pair.covers(BlockZone::Mid, BodyPart::ForearmR));
 }
 
+TEST_CASE("MoveSet: a null block clip switches its zone off", "[combat][moveset]") {
+    const MoveSet Set = parseMoveSet(R"({"block": {"clips": {"Low": null}}})", "great");
+    REQUIRE(Set.Block.Clips[static_cast<size_t>(BlockZone::Low)]);
+    CHECK(Set.Block.Clips[static_cast<size_t>(BlockZone::Low)]->empty());
+    BlockRules Rules;
+    Rules.Clips = {"block_high", "block_mid", ""};
+    CHECK(Rules.hasGuard(BlockZone::Mid));
+    CHECK_FALSE(Rules.hasGuard(BlockZone::Low));
+}
+
 TEST_CASE("MoveSet: parse rejects bad fields", "[combat][moveset]") {
     const auto Parse = [](const std::string& Text) { return parseMoveSet(Text, "s"); };
     CHECK_THROWS_WITH(Parse(R"({"moves": {"Jab": "jab"}})"), ContainsSubstring("field 'moves.Jab'"));

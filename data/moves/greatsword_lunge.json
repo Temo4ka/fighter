@@ -1,0 +1,13 @@
+{
+    "clip": "greatsword_lunge",
+    "uses_weapon": true,
+    "damage": 1.9,
+    "min_reaction": "Stagger",
+    "stamina": 24,
+    "tags": ["mid", "swing"],
+    "ai": {
+        "range_m": [1.0, 1.5],
+        "role": "heavy",
+        "weight": 0.5
+    }
+}

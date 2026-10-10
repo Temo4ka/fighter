@@ -120,6 +120,11 @@ void validateItem(const EquipmentItem& Item) {
     const WeaponProps& Weapon = *Item.Weapon;
     if (Weapon.WidthM) CheckSize("weapon width", *Weapon.WidthM, MaxWeaponWidthM);
     if (Weapon.AngleDeg) CheckAngle("weapon angle", *Weapon.AngleDeg);
+    // Written so that NaN fails the check too.
+    if (Weapon.GripM && !(std::abs(*Weapon.GripM) <= MaxWeaponGripM)) {
+        throw DataError(std::format("item '{}': weapon grip {} m is out of [-{}, {}] m", Item.Id, *Weapon.GripM,
+                                    MaxWeaponGripM, MaxWeaponGripM));
+    }
     checkItemRange(Item, "reach", Weapon.ReachM, MaxWeaponReachM, " m");
     const auto CheckScale = [&](std::string_view Name, float Scale) {
         if (Scale >= MinWeaponScale && Scale <= MaxWeaponScale) return;

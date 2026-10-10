@@ -283,7 +283,7 @@ void Checker::checkMoveSetFiles(const MoveLibrary& Library, const std::set<std::
             }
         }
         for (size_t Zone = 0; Zone < BlockZoneCount; ++Zone) {
-            if (const auto& Name = Set.Block.Clips[Zone]) {
+            if (const auto& Name = Set.Block.Clips[Zone]; Name && !Name->empty()) {
                 const anim::Clip* Clip = requireClip(File, std::format("block.clips.{}", ZoneNames[Zone]), *Name);
                 if (Clip && !Clip->PelvisTrack.empty()) {
                     add(File, std::format("field 'block.clips.{}': '{}' has a pelvis track (pelvisX), but only "

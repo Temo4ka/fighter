@@ -40,6 +40,12 @@ constexpr float HaftTail = 0.2f;
 constexpr float HaftShare = 0.6f;
 constexpr float HeadAcrossShare = 4.0f;
 constexpr float HeadAlongShare = 2.4f;
+/// A greatsword's hilt behind the fist beyond the other hand's grip, and its
+/// flame-shaped blade: the waves' length and how far they swing, m.
+constexpr float GreatHiltPastGrip = 0.07f;
+constexpr float GreatPommelRadius = 0.03f;
+constexpr float FlameWaveLength = 0.15f;
+constexpr float FlameAmplitude = 0.014f;
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
 struct Rgb {
@@ -86,6 +92,8 @@ std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal);
 /// blade is \p HalfWidth wide on either side of the axis.
 std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, float Fist,
                                     float HalfWidth);
+std::vector<Layer> makeGreatswordLayers(const stats::WeaponProps& Weapon, float Fist, float HalfWidth);
+float getGreatHiltLength(const stats::WeaponProps& Weapon);
 std::vector<Layer> makeShieldLayers(const stats::ShieldProps& Shield);
 Rgb getArmorColor(float Armor);
 sf::Image drawReferencePose(const rig::RigDef& Rig, Variant Kind, float Overlap,
@@ -195,7 +203,9 @@ sf::Image drawWeapon(const stats::EquipmentItem& Item, const WeaponGeometry& Geo
     const std::vector<Layer> Layers = makeWeaponLayers(*Item.Weapon, Item.MoveSet, Fist, Geometry.Radius);
     // Symmetric about the capsule's center so that the centre rule holds:
     // the hilt behind the fist or the tip, whichever is further.
-    const float Behind = Item.MoveSet.contains("sword") ? HiltLength : HaftTail;
+    const float Behind = Item.MoveSet == "greatsword"
+                             ? getGreatHiltLength(*Item.Weapon) + 2.0f * GreatPommelRadius
+                             : (Item.MoveSet.contains("sword") ? HiltLength : HaftTail);
     const float HalfHeight = std::max(Geometry.getLength() * 0.5f, Fist + Behind) + ArmorMargin;
     const float Width = std::max(2.0f * Geometry.Radius * HeadAcrossShare, MinWeaponWidth);
     return renderLayers({Width, 2.0f * HalfHeight}, PixelsPerMeter, Kind, Layers);
@@ -556,6 +566,7 @@ std::vector<Layer> makeShellLayers(const PartGeometry& Geometry, Rgb Metal) {
 /// shaft for anything blunt.
 std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::string_view MoveSet, float Fist,
                                     float HalfWidth) {
+    if (MoveSet == "greatsword") return makeGreatswordLayers(Weapon, Fist, HalfWidth);
     const float Reach = Weapon.ReachM;
     const Rgb Wood{0.45f, 0.30f, 0.16f};
     const Rgb Gold{0.85f, 0.70f, 0.25f};
@@ -616,6 +627,124 @@ std::vector<Layer> makeWeaponLayers(const stats::WeaponProps& Weapon, std::strin
         addLayer([Butt](Vec2 Point) { return getSdfCircle(Point, {0.0f, Butt + 0.008f}, 0.022f); }, scaled(Steel, 0.6f),
                  0.022f);
     }
+    return Layers;
+}
+
+/// The grip, from the fist to the hilt's end: both hands and a little more.
+float getGreatHiltLength(const stats::WeaponProps& Weapon) {
+    return std::max(-Weapon.GripM.value_or(0.0f), 0.0f) + GreatHiltPastGrip;
+}
+
+/// A two-handed sword: a long wrapped grip with a heavy pommel, a wide guard
+/// whose quillons curl towards the tip, a blunt ricasso with parrying lugs
+/// and a flame-shaped (wavy) blade with a fuller.
+std::vector<Layer> makeGreatswordLayers(const stats::WeaponProps& Weapon, float Fist, float HalfWidth) {
+    const Rgb Leather{0.32f, 0.18f, 0.12f};
+    const Rgb Gold{0.85f, 0.70f, 0.25f};
+    const Rgb Steel{0.82f, 0.85f, 0.90f};
+    const Rgb DarkSteel = scaled(Steel, 0.86f);
+    std::vector<Layer> Layers;
+    auto addLayer = [&Layers](Sdf Shape, Rgb Fill, float HalfThickness) {
+        Layer Added;
+        Added.Shape = std::move(Shape);
+        Added.Fill = Fill;
+        Added.HalfThickness = HalfThickness;
+        Layers.push_back(std::move(Added));
+        return Layers.size() - 1;
+    };
+    auto boxSdf = [](Vec2 Center, Vec2 Half) {
+        return [Center, Half](Vec2 Point) { return getSdfBox(Point, Center, Half, 0.0f); };
+    };
+    auto circleSdf = [](Vec2 Center, float Radius) {
+        return [Center, Radius](Vec2 Point) { return getSdfCircle(Point, Center, Radius); };
+    };
+    auto markAtop = [&Layers](size_t Index) {
+        Layers[Index].Atop = true;
+        Layers[Index].Outlined = false;
+        Layers[Index].Shaded = false;
+    };
+
+    // Grip with gold wire bands, a collar and the pommel.
+    const float Hilt = getGreatHiltLength(Weapon);
+    const float GripHalf = 0.018f;
+    addLayer(boxSdf({0.0f, Fist + Hilt * 0.5f}, {GripHalf, Hilt * 0.5f}), Leather, GripHalf);
+    for (float Band = 0.04f; Band < Hilt - 0.02f; Band += 0.05f) {
+        markAtop(addLayer(boxSdf({0.0f, Fist + Band}, {GripHalf, 0.004f}), scaled(Gold, 0.8f), 0.004f));
+    }
+    const float PommelY = Fist + Hilt + GreatPommelRadius * 0.8f;
+    addLayer(boxSdf({0.0f, Fist + Hilt}, {GripHalf * 1.4f, 0.008f}), Gold, 0.008f);
+    addLayer(circleSdf({0.0f, PommelY}, GreatPommelRadius), Gold, GreatPommelRadius);
+    markAtop(addLayer(circleSdf({0.0f, PommelY}, GreatPommelRadius * 0.4f), scaled(Gold, 0.65f), 0.01f));
+    addLayer(circleSdf({0.0f, PommelY + GreatPommelRadius}, GreatPommelRadius * 0.4f), Gold, 0.01f);
+
+    // Ricasso: a blunt narrow stretch past the guard, ending in parrying lugs.
+    const float GuardY = Fist - 0.012f;
+    const float RicassoEnd = GuardY - 0.13f;
+    const float RicassoHalf = HalfWidth * 0.6f;
+    addLayer(boxSdf({0.0f, (GuardY + RicassoEnd) * 0.5f}, {RicassoHalf, (GuardY - RicassoEnd) * 0.5f}), Steel,
+             RicassoHalf);
+
+    // The flame blade: its middle line snakes (the edges wave in opposite
+    // phases), it narrows towards the tip and ends in a point. The waves
+    // fade in after the ricasso and out before the point.
+    const float Tip = Fist - Weapon.ReachM;
+    const float BladeTop = RicassoEnd;
+    const float PointLength = 0.12f;
+    const auto getWave = [=](float Y) {
+        const float Along = BladeTop - Y;
+        const float Fade = std::clamp(Along / FlameWaveLength, 0.0f, 1.0f) *
+                           std::clamp((Y - Tip - PointLength * 0.5f) / FlameWaveLength, 0.0f, 1.0f);
+        return FlameAmplitude * Fade * std::sin(2.0f * std::numbers::pi_v<float> * Along / FlameWaveLength);
+    };
+    const auto getHalfWidth = [=](float Y) {
+        const float Share = std::clamp((BladeTop - Y) / (BladeTop - Tip), 0.0f, 1.0f);
+        const float Point = std::clamp((Y - Tip) / PointLength, 0.0f, 1.0f);
+        return HalfWidth * (1.0f - 0.3f * Share) * Point;
+    };
+    const Sdf Blade = [=](Vec2 Point) {
+        const float Across = std::fabs(Point.X - getWave(Point.Y)) - getHalfWidth(Point.Y);
+        const float Along = std::max(Point.Y - BladeTop, Tip - Point.Y);
+        // Not an exact distance: the waves are gentle enough for the shading.
+        return std::max(Across * 0.85f, Along);
+    };
+    addLayer(Blade, Steel, HalfWidth);
+    const float FullerEnd = Tip + (BladeTop - Tip) * 0.35f;
+    markAtop(addLayer(
+        [=](Vec2 Point) {
+            return std::max(std::fabs(Point.X - getWave(Point.Y)) - 0.004f,
+                            std::max(Point.Y - BladeTop + 0.02f, FullerEnd - Point.Y));
+        },
+        DarkSteel, 0.005f));
+
+    // Parrying lugs: small hooks out of both sides where the ricasso ends.
+    for (const float Side : {-1.0f, 1.0f}) {
+        const Vec2 Root{Side * RicassoHalf * 0.8f, RicassoEnd + 0.02f};
+        const Vec2 Out{Side * (HalfWidth + 0.035f), RicassoEnd + 0.03f};
+        const Vec2 Base{Side * RicassoHalf * 0.8f, RicassoEnd - 0.015f};
+        addLayer([=](Vec2 Point) { return getSdfTriangle(Point, Root, Out, Base); }, Steel, 0.01f);
+    }
+
+    // Guard: a wide bar, quillons curling towards the tip with round ends,
+    // and a langet over the ricasso.
+    const float GuardHalf = 0.115f;
+    const float BarHalf = 0.011f;
+    addLayer(boxSdf({0.0f, GuardY}, {GuardHalf - 0.02f, BarHalf}), Gold, BarHalf);
+    for (const float Side : {-1.0f, 1.0f}) {
+        const Vec2 Bend{Side * (GuardHalf - 0.02f), GuardY};
+        const Vec2 End{Side * GuardHalf, GuardY - 0.035f};
+        addLayer(
+            [=](Vec2 Point) {
+                const Vec2 Segment = End - Bend;
+                const float Along = std::clamp(dot(Point - Bend, Segment) / dot(Segment, Segment), 0.0f, 1.0f);
+                return (Point - Bend - Segment * Along).getLength() - BarHalf;
+            },
+            Gold, BarHalf);
+        addLayer(circleSdf(End + Vec2{0.0f, -0.006f}, BarHalf * 1.3f), Gold, BarHalf);
+    }
+    addLayer([=](Vec2 Point) {
+        return getSdfTriangle(Point, {-0.024f, GuardY}, {0.024f, GuardY}, {0.0f, GuardY - 0.05f});
+    }, Gold, 0.012f);
+    markAtop(addLayer(circleSdf({0.0f, GuardY - 0.012f}, 0.007f), {0.70f, 0.12f, 0.12f}, 0.007f));
     return Layers;
 }
 
