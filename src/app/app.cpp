@@ -10,6 +10,8 @@
 #include <utility>
 
 #include <SFML/Graphics/Image.hpp>
+#include <SFML/Graphics/Text.hpp>
+#include <SFML/Graphics/View.hpp>
 #include <SFML/Graphics/Texture.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
@@ -17,6 +19,7 @@
 
 #include "core/log.hpp"
 #include "debug/draw.hpp"
+#include "render/assets.hpp"
 #include "stats/describe.hpp"
 #include "stats/equipment.hpp"
 #include "stats/fighter_sheet.hpp"
@@ -37,6 +40,9 @@ namespace {
 /// not larger than PreferredWindowWidth; it can be resized afterwards.
 constexpr unsigned PreferredWindowWidth = 1600;
 constexpr float DesktopShare = 0.95f;
+// The FPS counter in the bottom left corner.
+constexpr unsigned FpsFontSize = 16;
+constexpr float FpsMarginPx = 8.0f;
 
 sf::Vector2u getWindowSize();
 std::optional<ui::MenuKey> getMenuKey(sf::Keyboard::Scancode Key);
@@ -126,6 +132,8 @@ int App::run() {
         Screens.update(RealFrameSec, Flow);
         publishFrameStats(RealFrameSec);
         render(LastAlpha);
+        // Screenshots stay comparable from run to run without it.
+        if (!Opts.Screenshot) drawFpsCounter();
 
         ++Frame;
         if (Opts.Screenshot && Frame >= Opts.Frames) {
@@ -377,6 +385,19 @@ void App::publishFrameStats(double FrameSec) {
         debug::setPanel("sim", std::format("{}  x{:.2f}", Loop.isPaused() ? "PAUSED" : "running",
                                            Loop.getTimeScale()));
     }
+}
+
+void App::drawFpsCounter() {
+    if (FrameSecSmoothed <= 0.0) return;
+    const sf::Vector2f WindowSize(Window.getSize());
+    Window.setView(sf::View(sf::FloatRect({0.0f, 0.0f}, WindowSize)));
+    sf::Text Label(Assets.getFont(render::assets::MonoFontPath),
+                   std::format("{:.0f} fps", 1.0 / FrameSecSmoothed), FpsFontSize);
+    Label.setFillColor(sf::Color(255, 255, 120));
+    Label.setOutlineColor(sf::Color::Black);
+    Label.setOutlineThickness(2.0f);
+    Label.setPosition({FpsMarginPx, WindowSize.y - FpsMarginPx - static_cast<float>(FpsFontSize)});
+    Window.draw(Label);
 }
 
 void App::saveScreenshot() {

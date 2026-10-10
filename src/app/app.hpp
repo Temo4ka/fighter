@@ -87,6 +87,8 @@ private:
     /// the current battle, reports the error and returns false.
     bool restartBattle();
     void publishFrameStats(double FrameSec);
+    /// Draws the smoothed FPS in the bottom left corner, over every screen.
+    void drawFpsCounter();
     /// Records the stand run after a step, draws it and starts the next run
     /// when this one is over.
     void stepStand();
@@ -139,7 +141,7 @@ private:
     combat::MoveMeasure StandShown;
     bool StandLogged = false;
     /// Exponential moving average of the frame time, shown as FPS in the
-    /// debug panel. Averaging the time rather than 1/time keeps rare fast
+    /// corner and in the debug panel. Averaging the time rather than 1/time keeps rare fast
     /// frames from inflating the FPS.
     double FrameSecSmoothed = 0.0;
     /// The interpolation factor of the last simulated frame, kept while a pause freezes the battle.
