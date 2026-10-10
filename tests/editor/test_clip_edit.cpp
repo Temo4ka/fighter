@@ -48,6 +48,15 @@ TEST_CASE("A new key keeps the motion the clip already has", "[editor][edit]") {
     checkValid(Edited);
 }
 
+TEST_CASE("The nearest key to a time", "[editor][edit]") {
+    const anim::Clip Edited = makeClip();
+    CHECK(findNearestKey(Edited, 0.0f) == 0);
+    CHECK(findNearestKey(Edited, 0.09f) == 0);
+    CHECK(findNearestKey(Edited, 0.11f) == 1);
+    CHECK(findNearestKey(Edited, 0.33f) == 2);
+    CHECK(findNearestKey(Edited, 0.5f) == 2);
+}
+
 TEST_CASE("A key cannot be added at 0, past the end or on top of another", "[editor][edit]") {
     anim::Clip Edited = makeClip();
     CHECK_FALSE(addKey(Edited, 0.0f));

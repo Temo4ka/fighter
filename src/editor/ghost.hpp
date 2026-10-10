@@ -45,6 +45,11 @@ struct GhostContext {
     /// The forearm that holds the weapon (rig::WeaponMount::Part); nullopt
     /// without a weapon in the main hand.
     std::optional<BodyPart> WeaponHand;
+    /// A two-handed weapon: the forearm of the other hand that grips it
+    /// (rig::WeaponMount::OffPart), and where along the weapon from the fist,
+    /// m (the item's grip_m, else the mount's grip); nullopt: one hand.
+    std::optional<BodyPart> GripHand;
+    float GripM = 0.0f;
     anim::Clip Stance;                   ///< The idle stance of the held weapon's moveset.
     std::string ItemName;                ///< Of the held item, for the panel; empty: none.
 };

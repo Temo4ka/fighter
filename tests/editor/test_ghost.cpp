@@ -29,6 +29,14 @@ TEST_CASE("The ghost context of a sword has the sword in the main hand and its s
     CHECK(Context.ItemName == "Short sword");
 }
 
+TEST_CASE("A two-handed weapon is gripped by the other hand at its grip_m", "[editor][ghost]") {
+    const GhostContext TwoHanded = loadGhostContext(DataDir.parent_path(), "greatsword");
+    CHECK(TwoHanded.GripHand == TwoHanded.Rig.Weapon.OffPart);
+    CHECK(TwoHanded.GripM == Approx(-0.15f));   // grip_m of data/items
+    const GhostContext OneHanded = loadGhostContext(DataDir.parent_path(), "short_sword");
+    CHECK_FALSE(OneHanded.GripHand.has_value());
+}
+
 TEST_CASE("The ghost context without an item is bare hands in the general stance", "[editor][ghost]") {
     const GhostContext Context = loadGhostContext(DataDir.parent_path(), "");
     CHECK(Context.Held.empty());

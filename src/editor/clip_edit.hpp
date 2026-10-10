@@ -55,6 +55,9 @@ float setDuration(anim::Clip& Edited, float DurationSec);
 /// Sets the striking phase, kept inside [0, duration] with begin <= end.
 void setActive(anim::Clip& Edited, float BeginSec, float EndSec);
 
+/// The key nearest to \p TimeSec (the earlier of two as near).
+size_t findNearestKey(const anim::Clip& Edited, float TimeSec);
+
 /// Does the clip key the joint of \p Part (all its keys set the same joints)?
 bool isJointKeyed(const anim::Clip& Edited, BodyPart Part);
 
