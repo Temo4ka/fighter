@@ -20,6 +20,7 @@ add_executable(fighter_tests
     anim/test_clips_data.cpp
     editor/test_arm_ik.cpp
     editor/test_arm_roles.cpp
+    editor/test_pose_drag.cpp
     editor/test_pose_fk.cpp
     editor/test_clip_writer.cpp
     editor/test_clip_edit.cpp

@@ -7,6 +7,7 @@ fighter_add_module(editor
         clip_edit.cpp
         clip_writer.cpp
         ghost.cpp
+        pose_drag.cpp
         pose_fk.cpp
     PUBLIC_DEPS
         fighter::core
