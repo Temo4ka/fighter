@@ -18,6 +18,10 @@ add_executable(fighter_tests
     anim/test_playback.cpp
     anim/test_layers.cpp
     anim/test_clips_data.cpp
+    editor/test_pose_fk.cpp
+    editor/test_clip_writer.cpp
+    editor/test_clip_edit.cpp
+    editor/test_ghost.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp
     stats/test_equipment.cpp
@@ -68,6 +72,7 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::physics
     fighter::rig
     fighter::anim
+    fighter::editor
     fighter::stats
     fighter::combat
     fighter::render

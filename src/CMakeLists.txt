@@ -7,6 +7,7 @@ add_subdirectory(rig)
 add_subdirectory(anim)
 add_subdirectory(stats)
 add_subdirectory(combat)
+add_subdirectory(editor)
 add_subdirectory(render)
 
 if(FIGHTER_BUILD_APP)
