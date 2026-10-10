@@ -2,6 +2,7 @@
 # editing a clip and writing it back. The window itself is app/pose_editor.cpp.
 fighter_add_module(editor
     SOURCES
+        arm_ik.cpp
         arm_roles.cpp
         clip_edit.cpp
         clip_writer.cpp
