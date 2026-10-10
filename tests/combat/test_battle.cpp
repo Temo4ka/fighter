@@ -346,9 +346,19 @@ TEST_CASE("Battle: a heavy fighter is knocked back less than a light one", "[com
         return getPelvisX(getRight(Fight)) - StartX;
     };
 
-    // The knight: more CON and heavy armor; the rogue: less of both.
-    const FighterConfig Knight = loadFighter("knight");
-    const FighterConfig Rogue = loadFighter("rogue");
+    // The knight: more CON and heavy armor; the rogue: less of both. Without
+    // their weapons: a weapon brings its moveset's stance, and a guard held
+    // in front (the sword stance) catches the kick on the forearm, and then
+    // the two would differ in more than mass.
+    const auto loadUnarmed = [](const std::string& Name) {
+        FighterConfig Config = loadFighter(Name);
+        std::erase_if(Config.Loadout.Items, [](const stats::EquipmentItem& Item) {
+            return Item.takesSlot(stats::EquipmentSlot::MainHand) || Item.takesSlot(stats::EquipmentSlot::OffHand);
+        });
+        return Config;
+    };
+    const FighterConfig Knight = loadUnarmed("knight");
+    const FighterConfig Rogue = loadUnarmed("rogue");
     REQUIRE(getTotalMass(Knight) > getTotalMass(Rogue) * 1.3f);
     const float HeavyDistance = measureKnockback(Knight);
     const float LightDistance = measureKnockback(Rogue);
