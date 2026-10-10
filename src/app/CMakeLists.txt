@@ -6,7 +6,7 @@ set(app_sources
     demo_script.cpp
 )
 if(FIGHTER_DEBUG)
-    list(APPEND app_sources debug_showcase.cpp)
+    list(APPEND app_sources debug_showcase.cpp pose_editor.cpp)
 endif()
 
 fighter_add_module(app_lib
@@ -20,6 +20,9 @@ fighter_add_module(app_lib
         fighter::ui
         SFML::Graphics
 )
+if(FIGHTER_DEBUG)
+    target_link_libraries(fighter_app_lib PRIVATE ImGui-SFML::ImGui-SFML)
+endif()
 
 add_executable(fighter_app main.cpp)
 target_link_libraries(fighter_app PRIVATE fighter::app_lib)
