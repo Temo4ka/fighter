@@ -65,6 +65,9 @@ private:
     std::string Status;         ///< The last message of save/reload, for the panel.
     float TimeSec = 0.0f;       ///< The clip time of the ghost.
     bool Playing = false;
+    /// How fast the preview plays the clip: real seconds times this are clip
+    /// seconds. Only the preview; the clip's times stay as they are.
+    float PlaySpeed = 0.25f;
     size_t SelectedKey = 0;
     size_t SelectedPelvisKey = 0;
     std::optional<BodyPart> Highlight;   ///< The part whose slider is under the mouse.

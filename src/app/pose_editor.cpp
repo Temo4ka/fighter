@@ -41,6 +41,10 @@ constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 constexpr float PanelColumnWidth = 690.0f;
 constexpr float FloorMargin = 90.0f;
 constexpr float HeadroomM = 1.95f;
+/// The preview speed: its range and the presets of the Timeline panel.
+constexpr float MinPlaySpeed = 0.05f;
+constexpr float MaxPlaySpeed = 1.0f;
+constexpr std::array PlaySpeedPresets = {0.1f, 0.25f, 0.5f, 1.0f};
 /// Frames before a screenshot is taken (the panels need a couple to lay out).
 constexpr int ScreenshotFrame = 3;
 
@@ -127,7 +131,12 @@ int PoseEditor::run() {
                 reload();
             }
         }
-        if (Playing) TimeSec = anim::advanceClipTime(Edit, TimeSec, Delta.asSeconds(), 1.0f);
+        // [ and ] halve and double the preview speed, as the sandbox's time scale.
+        if (!IO.WantCaptureKeyboard) {
+            if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) PlaySpeed = std::max(PlaySpeed * 0.5f, MinPlaySpeed);
+            if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, false)) PlaySpeed = std::min(PlaySpeed * 2.0f, MaxPlaySpeed);
+        }
+        if (Playing) TimeSec = anim::advanceClipTime(Edit, TimeSec, Delta.asSeconds() * PlaySpeed, 1.0f);
         // A one-shot clip plays over and over in the preview.
         if (Playing && !Edit.Loop && Edit.isFinishedAt(TimeSec)) TimeSec = 0.0f;
 
@@ -334,7 +343,14 @@ void PoseEditor::drawTimelinePanel() {
     ImGui::Begin("Timeline");
     ImGui::Checkbox("play", &Playing);
     ImGui::SameLine();
+    // The readout is in clip time; the speed only slows the preview down.
     ImGui::Text("%s", anim::describePlayback(Edit, TimeSec, 1.0f, anim::PoseTransition{}).c_str());
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderFloat("speed ([ ])", &PlaySpeed, MinPlaySpeed, MaxPlaySpeed, "%.2fx", ImGuiSliderFlags_Logarithmic);
+    for (const float Preset : PlaySpeedPresets) {
+        ImGui::SameLine();
+        if (ImGui::Button(std::format("{:g}x", Preset).c_str())) PlaySpeed = Preset;
+    }
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::SliderFloat("##time", &TimeSec, 0.0f, Edit.DurationSec, "%.3f s");
     // The keys as ticks under the slider.
