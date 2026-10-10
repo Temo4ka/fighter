@@ -1,10 +1,15 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
 
 #include "app/app.hpp"
 #include "app/check_data.hpp"
+#if FIGHTER_DEBUG
+#include "app/pose_editor.hpp"
+#endif
 #include "combat/move_measure.hpp"
 #include "core/log.hpp"
 
@@ -23,6 +28,7 @@
 //   --log <file>                duplicate the log to a file
 //   --stand <move>              the move stand: one fighter repeats the move in front of a dummy
 //   --weapon <item>             with --stand: the item (data/items/) held in the main hand
+//   --pose-editor <clip>        the pose editor for data/poses/<clip>.json (debug build), --weapon in hand
 //   --check-data                check every file of data/, print the problems, exit 0 if none
 //
 // Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
@@ -41,6 +47,7 @@ int main(int Argc, char** Argv) {
     bool BattleFlag = false;
     bool MenuFlag = false;
     bool CheckData = false;
+    std::optional<std::string> PoseEditorClip;
     for (int ArgIndex = 1; ArgIndex < Argc; ++ArgIndex) {
         const std::string_view Arg = Argv[ArgIndex];
         const bool HasValue = ArgIndex + 1 < Argc;
@@ -59,6 +66,10 @@ int main(int Argc, char** Argv) {
         }
         if (Arg == "--weapon" && HasValue) {
             Opts.StandWeapon = Argv[++ArgIndex];
+            continue;
+        }
+        if (Arg == "--pose-editor" && HasValue) {
+            PoseEditorClip = Argv[++ArgIndex];
             continue;
         }
         if (Arg == "--check-data") {
@@ -95,6 +106,16 @@ int main(int Argc, char** Argv) {
     }
 
     if (CheckData) return app::runDataCheck(Opts.Root, std::cout);
+
+    if (PoseEditorClip) {
+#if FIGHTER_DEBUG
+        app::PoseEditor Editor({.Root = Opts.Root, .Clip = *PoseEditorClip, .Weapon = Opts.StandWeapon});
+        return Editor.run();
+#else
+        log::error("the pose editor is in the debug build only");
+        return EXIT_FAILURE;
+#endif
+    }
 
     if (!Opts.StandWeapon.empty() && !Opts.StandMove) log::warn("--weapon is used with --stand only");
     if (Opts.StandMove) {
