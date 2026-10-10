@@ -18,6 +18,7 @@ add_executable(fighter_tests
     anim/test_playback.cpp
     anim/test_layers.cpp
     anim/test_clips_data.cpp
+    editor/test_arm_roles.cpp
     editor/test_pose_fk.cpp
     editor/test_clip_writer.cpp
     editor/test_clip_edit.cpp

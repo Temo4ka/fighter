@@ -26,6 +26,7 @@
 #include "anim/layers.hpp"
 #include "anim/playback.hpp"
 #include "core/log.hpp"
+#include "editor/arm_roles.hpp"
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
 #include "editor/pose_fk.hpp"
@@ -50,13 +51,6 @@ constexpr std::array<BodyPart, BodyPartCount> DrawOrder = {
     BodyPart::ForearmR,  BodyPart::UpperArmL, BodyPart::ForearmL,
 };
 
-/// The joints of the angle sliders, in the order of the key panel.
-constexpr std::array<BodyPart, BodyPartCount> JointOrder = {
-    BodyPart::Pelvis,    BodyPart::Torso,     BodyPart::Head,      BodyPart::UpperArmL, BodyPart::ForearmL,
-    BodyPart::UpperArmR, BodyPart::ForearmR,  BodyPart::ThighL,    BodyPart::ShinL,     BodyPart::FootL,
-    BodyPart::ThighR,    BodyPart::ShinR,     BodyPart::FootR,
-};
-
 /// Where the scene is on the screen: the floor point under the body, and the
 /// scale.
 struct View {
@@ -65,6 +59,10 @@ struct View {
 };
 
 bool isLegPart(BodyPart Part);
+/// The joints of the panels, the arms by role: weapon arm, then the other.
+std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool PlayedOtherHand);
+/// "Torso", or "weapon arm: forearm" (and the joint of the file) for an arm joint.
+std::string getJointLabel(BodyPart Joint, BodyPart MainHand, bool PlayedOtherHand);
 View makeView(sf::Vector2u Size);
 sf::Vector2f toScreen(const View& Scene, Vec2 Point);
 Vec2 toWorld(const editor::PosedPart& Posed, const rig::PartDef& Part, Vec2 Point, float OffsetX);
@@ -197,10 +195,11 @@ void PoseEditor::drawClipPanel() {
     ImGui::SetNextWindowPos({8.0f, 8.0f}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({362.0f, ImGui::GetIO().DisplaySize.y - 350.0f}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Clip");
+    const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
     ImGui::Text("%s%s", Opts.Clip.c_str(), Edited ? "  (unsaved)" : "");
     ImGui::Text("item: %s", Context.ItemName.empty() ? "(bare hands)" : Context.ItemName.c_str());
     ImGui::Text("stance: %s", Context.Stance.Name.c_str());
-    if (editor::isPlayedOtherHand(Edit, Context.WeaponHand)) {
+    if (Swapped) {
         ImGui::TextColored({1.0f, 0.8f, 0.3f, 1.0f}, "authored for the other hand: the ghost\nplays it with the arms swapped");
     }
 
@@ -269,11 +268,11 @@ void PoseEditor::drawClipPanel() {
     }
 
     if (ImGui::CollapsingHeader("joints in the clip")) {
-        for (const BodyPart Part : JointOrder) {
+        for (const BodyPart Part : getPanelOrder(Context.Rig.Weapon.Part, Swapped)) {
             const bool Leg = isLegPart(Part);
             bool Keyed = editor::isJointKeyed(Edit, Part);
             ImGui::BeginDisabled(Leg);
-            if (ImGui::Checkbox(std::string(getBodyPartName(Part)).c_str(), &Keyed)) {
+            if (ImGui::Checkbox(getJointLabel(Part, Context.Rig.Weapon.Part, Swapped).c_str(), &Keyed)) {
                 // A new joint starts where the ghost has it now.
                 const anim::Pose Now = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
                 editor::setJointKeyed(Edit, Part, Keyed, Keyed ? Now.getAngle(Part) : 0.0f);
@@ -282,7 +281,7 @@ void PoseEditor::drawClipPanel() {
             ImGui::EndDisabled();
         }
         bool Wrist = Edit.Keys.front().Target.HasWeapon;
-        if (ImGui::Checkbox("Weapon (wrist)", &Wrist)) {
+        if (ImGui::Checkbox("weapon arm: wrist", &Wrist)) {
             const anim::Pose Now = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
             editor::setWristKeyed(Edit, Wrist, Now.HasWeapon ? Now.WeaponAngle : 0.0f);
             markEdited();
@@ -409,35 +408,41 @@ void PoseEditor::drawKeyPanel() {
     ImGui::Begin("Key");
     anim::Keyframe& Key = Edit.Keys[SelectedKey];
     ImGui::Text("key %zu at %.3f s", SelectedKey, Key.TimeSec);
-    ImGui::TextDisabled("legs are shown, not edited");
+    ImGui::TextDisabled("arms by role; legs are shown, not edited");
+    if (editor::isPlayedOtherHand(Edit, Context.WeaponHand)) ImGui::TextDisabled("(the file stores them on the other side)");
     ImGui::Separator();
-    for (const BodyPart Part : JointOrder) {
+    const BodyPart MainHand = Context.Rig.Weapon.Part;
+    const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
+    for (const BodyPart Part : getPanelOrder(MainHand, Swapped)) {
         if (!Key.Target.hasJoint(Part)) continue;
         const bool Leg = isLegPart(Part);
         const editor::AngleRange Range = editor::getJointRange(Context.Rig, Part);
         float Angle = Key.Target.getAngle(Part);
         const bool Outside = Angle < Range.Lower - 1e-4f || Angle > Range.Upper + 1e-4f;
-        const std::string Label(getBodyPartName(Part));
+        const std::string Label = getJointLabel(Part, MainHand, Swapped);
         ImGui::BeginDisabled(Leg);
         if (Outside) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
-        ImGui::SetNextItemWidth(140.0f);
+        ImGui::SetNextItemWidth(120.0f);
         if (sliderAngle(Label.c_str(), Angle, Range)) {
             Key.Target.setAngle(Part, Angle);
             markEdited();
         }
         if (Outside) ImGui::PopStyleColor();
         ImGui::EndDisabled();
-        if (ImGui::IsItemHovered() || ImGui::IsItemActive()) Highlight = Part;
-    }
-    if (Key.Target.HasWeapon) {
-        const editor::AngleRange Wrist = editor::getWristRange(Context.Rig);
-        const float Limit = std::numbers::pi_v<float>;   // the file may not write more
-        const editor::AngleRange Range = {.Lower = std::max(Wrist.Lower, -Limit), .Upper = std::min(Wrist.Upper, Limit)};
-        float Angle = Key.Target.WeaponAngle;
-        ImGui::SetNextItemWidth(140.0f);
-        if (sliderAngle("Weapon (wrist)", Angle, Range)) {
-            Key.Target.setWeaponAngle(Angle);
-            markEdited();
+        if (ImGui::IsItemHovered() || ImGui::IsItemActive()) Highlight = editor::getGhostPart(Part, Swapped);
+        // The wrist belongs to the weapon arm: right after its forearm.
+        if (Part == editor::getRoleJoint(editor::ArmRole::Weapon, editor::ArmSegment::Forearm, MainHand, Swapped) &&
+            Key.Target.HasWeapon) {
+            const editor::AngleRange Wrist = editor::getWristRange(Context.Rig);
+            const float Limit = std::numbers::pi_v<float>;   // the file may not write more
+            const editor::AngleRange WristRange = {.Lower = std::max(Wrist.Lower, -Limit),
+                                                   .Upper = std::min(Wrist.Upper, Limit)};
+            float WristAngle = Key.Target.WeaponAngle;
+            ImGui::SetNextItemWidth(120.0f);
+            if (sliderAngle("weapon arm: wrist", WristAngle, WristRange)) {
+                Key.Target.setWeaponAngle(WristAngle);
+                markEdited();
+            }
         }
     }
     ImGui::End();
@@ -446,6 +451,32 @@ void PoseEditor::drawKeyPanel() {
 namespace {
 
 bool isLegPart(BodyPart Part) { return anim::getLayer(Part) == anim::Layer::Legs; }
+
+std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool PlayedOtherHand) {
+    using editor::ArmRole;
+    using editor::ArmSegment;
+    return {BodyPart::Pelvis,
+            BodyPart::Torso,
+            BodyPart::Head,
+            editor::getRoleJoint(ArmRole::Weapon, ArmSegment::Upper, MainHand, PlayedOtherHand),
+            editor::getRoleJoint(ArmRole::Weapon, ArmSegment::Forearm, MainHand, PlayedOtherHand),
+            editor::getRoleJoint(ArmRole::Other, ArmSegment::Upper, MainHand, PlayedOtherHand),
+            editor::getRoleJoint(ArmRole::Other, ArmSegment::Forearm, MainHand, PlayedOtherHand),
+            BodyPart::ThighL,
+            BodyPart::ShinL,
+            BodyPart::FootL,
+            BodyPart::ThighR,
+            BodyPart::ShinR,
+            BodyPart::FootR};
+}
+
+std::string getJointLabel(BodyPart Joint, BodyPart MainHand, bool PlayedOtherHand) {
+    editor::ArmSegment Segment = editor::ArmSegment::Upper;
+    const auto Role = editor::getJointRole(Joint, MainHand, PlayedOtherHand, &Segment);
+    if (!Role) return std::string(getBodyPartName(Joint));
+    return std::format("{} arm: {}", *Role == editor::ArmRole::Weapon ? "weapon" : "other",
+                       Segment == editor::ArmSegment::Upper ? "upper arm" : "forearm");
+}
 
 View makeView(sf::Vector2u Size) {
     const auto Height = static_cast<float>(Size.y);

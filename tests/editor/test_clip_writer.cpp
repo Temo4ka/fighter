@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <filesystem>
 #include <numbers>
 #include <string>
@@ -23,24 +22,6 @@ namespace {
 const std::filesystem::path PosesDir = std::filesystem::path(FIGHTER_DATA_DIR) / "poses";
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 
-/// Files that are laid out by hand, not as the writer lays them out: the
-/// columns of a pose are padded to line up, or a long pose is wrapped over
-/// several lines. The writer gives the same data on one line per key.
-constexpr std::array<std::string_view, 18> HandLaidOut = {
-    "block_high.json",  "block_low.json",   "block_mid.json",         "crouch.json",       "crouch_walk.json",
-    "flinch.json",      "heavy_punch.json", "heavy_punch_close.json", "jab.json",          "jab_close.json",
-    "kick.json",        "knockback.json",   "stagger.json",           "stance.json",       "stance_hammer.json",
-    "stance_shield.json", "stance_sword.json", "walk.json",
-};
-
-/// Files whose joints are in another order than the writer's: a weapon in
-/// the right hand with no striking phase to tell it (the right arm first), or
-/// the wrist after the legs.
-constexpr std::array<std::string_view, 5> OtherJointOrder = {
-    "block_high_greatsword.json", "block_low_hammer.json", "block_low_sword.json", "block_mid_greatsword.json",
-    "stance_greatsword.json",
-};
-
 std::vector<std::filesystem::path> getPoseFiles() {
     std::vector<std::filesystem::path> Files;
     for (const auto& Entry : std::filesystem::directory_iterator(PosesDir)) {
@@ -48,19 +29,6 @@ std::vector<std::filesystem::path> getPoseFiles() {
     }
     std::ranges::sort(Files);
     return Files;
-}
-
-template <size_t Size>
-bool isListed(const std::array<std::string_view, Size>& Names, const std::filesystem::path& File) {
-    return std::ranges::find(Names, File.filename().string()) != Names.end();
-}
-
-std::string withoutSpaces(const std::string& Text) {
-    std::string Result;
-    for (const char Letter : Text) {
-        if (!std::isspace(static_cast<unsigned char>(Letter))) Result += Letter;
-    }
-    return Result;
 }
 
 /// The same clip: every field, the keys with their angles within a hair.
@@ -107,29 +75,14 @@ anim::Clip makeClip() {
 
 } // namespace
 
-TEST_CASE("Every clip of data/poses is written back as it was or as the same data", "[editor]") {
-    int Identical = 0;
+TEST_CASE("Every clip of data/poses is written back byte for byte", "[editor]") {
     for (const auto& File : getPoseFiles()) {
         INFO(File.filename().string());
-        const std::string Original = readTextFile(File);
         const anim::Clip Loaded = anim::loadClip(File);
         const std::string Written = writeClip(Loaded);
-
-        if (isListed(HandLaidOut, File)) {
-            CHECK(Written != Original);
-            CHECK(withoutSpaces(Written) == withoutSpaces(Original));
-        } else if (isListed(OtherJointOrder, File)) {
-            CHECK(Written != Original);
-        } else {
-            CHECK(Written == Original);
-            ++Identical;
-        }
-        // Whatever the layout, the data is the same and writing is stable.
-        const anim::Clip Reloaded = anim::parseClip(Written, Loaded.Name);
-        checkSameClip(Loaded, Reloaded);
-        CHECK(writeClip(Reloaded) == Written);
+        CHECK(Written == readTextFile(File));
+        checkSameClip(Loaded, anim::parseClip(Written, Loaded.Name));
     }
-    CHECK(Identical > 0);
 }
 
 TEST_CASE("The writer prints whole angles without a decimal point", "[editor]") {
