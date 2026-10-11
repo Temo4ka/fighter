@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares PoseEditor, the window of the pose editor
-/// (fighter_app --pose-editor <clip> [--weapon <item>], debug build only).
+/// (fighter_app --pose-editor [<clip>] [--weapon <item>], debug build only).
 ///
 /// The editor edits the clips of data/poses/ with Dear ImGui panels over a
 /// scene (docs/DEVELOPMENT_PLAN.md, track "Редактор поз"). Step Р.1: the
@@ -19,6 +19,11 @@
 /// ghost, with a frame step and the worst joint error. All the logic is in
 /// the editor
 /// module (src/editor); this class only holds the state and draws the panels.
+/// Legs: the joints of the legs are edited like the others (sliders, keys,
+/// the mouse turns a leg part), which is how the weapon stances are edited.
+/// What is edited is chosen in the window itself (the "Open" panel: a
+/// fighter, a clip, an item, the move of the fact), the command line only
+/// makes the first choice.
 /// Controls are described in docs/TUNING.md.
 ///
 //===----------------------------------------------------------------------===//
@@ -27,18 +32,22 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "anim/clip.hpp"
 #include "core/body.hpp"
 #include "anim/pose.hpp"
 #include "core/vec2.hpp"
 #include "editor/arm_ik.hpp"
+#include "editor/catalog.hpp"
 #include "editor/ghost.hpp"
 #include "editor/physics_preview.hpp"
 #include "editor/pose_fk.hpp"
+#include "stats/equipment.hpp"
 
 namespace fighter::app {
 
@@ -46,7 +55,8 @@ class PoseEditor {
 public:
     struct Options {
         std::filesystem::path Root;   ///< Project root (assets/, data/).
-        std::string Clip;             ///< data/poses/<Clip>.json.
+        /// data/poses/<Clip>.json; empty: the general stance ("stance").
+        std::string Clip;
         std::string Weapon;           ///< data/items/<Weapon>.json; empty: bare hands.
         /// Save a frame (the clip at its first key after the first key was
         /// selected) and exit.
@@ -74,6 +84,29 @@ private:
         Vec2 From;              ///< Where the drag began, m, on the ghost.
         anim::Pose StartGhost;  ///< The ghost when it began: every frame edits from it.
     };
+
+    /// What is edited and shown with: the clip, the items in the hands and
+    /// the move the fact plays (empty: the first that can start).
+    struct Selection {
+        std::string Clip;
+        std::vector<stats::ItemRef> Items;
+        std::string Move;
+    };
+
+    /// Switches to \p Choice: loads the context and the clip, drops the edits
+    /// and restarts the fact. False (and the reason in Status) if something
+    /// cannot be read; then nothing has changed.
+    bool open(const Selection& Choice);
+    /// open(), or, with unsaved edits, asks first (Save / Discard / Cancel).
+    void requestOpen(Selection Choice);
+    /// Reads the lists of the Open panel and the users of the clip.
+    void refreshCatalog();
+    /// While the stance clip itself is edited the ghost's base follows it.
+    void syncStance();
+    void drawOpenPanel();
+    void drawUnsavedPopup();
+    /// The item that is the weapon in the main hand, for the fact; empty: none.
+    std::string findWeaponId() const;
 
     /// Reads the clip from its file; false (and the reason in Status) if it
     /// cannot be read. Drops the edits.
@@ -104,7 +137,23 @@ private:
 
     Options Opts;
     editor::GhostContext Context;
+    std::string ClipName;                          ///< Of the clip edited.
+    std::vector<stats::ItemRef> HandItems;         ///< In the hands of the ghost.
+    std::string MoveId;                            ///< Chosen for the fact; empty: the first that can.
     std::filesystem::path ClipPath;
+    /// The clip has leg keys in its file: keying legs in a clip that had
+    /// none changes what the clip is, and the Clip panel says so.
+    bool ClipHadLegs = false;
+    /// The Open panel's lists and who uses the clip as a stance.
+    std::vector<editor::FighterEntry> Fighters;
+    std::vector<editor::HandItemEntry> HandItemList;
+    std::vector<std::string> ClipList;
+    std::vector<editor::MoveCandidate> MoveList;   ///< The moves that play the clip.
+    editor::StanceUsers Users;
+    std::array<char, 64> ClipFilter{};
+    /// The choice waiting for the answer to "unsaved changes".
+    std::optional<Selection> Pending;
+    bool AskUnsaved = false;
     anim::Clip Edit;
     bool Edited = false;        ///< Unsaved changes.
     std::string Status;         ///< The last message of save/reload, for the panel.

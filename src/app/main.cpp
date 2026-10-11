@@ -28,7 +28,8 @@
 //   --log <file>                duplicate the log to a file
 //   --stand <move>              the move stand: one fighter repeats the move in front of a dummy
 //   --weapon <item>             with --stand: the item (data/items/) held in the main hand
-//   --pose-editor <clip>        the pose editor for data/poses/<clip>.json (debug build), --weapon in hand
+//   --pose-editor [<clip>]      the pose editor for data/poses/<clip>.json (debug build), --weapon in hand;
+//                               without a clip: the general stance (fighters, clips, items: the Open panel)
 //   --check-data                check every file of data/, print the problems, exit 0 if none
 //
 // Without any of the battle flags (--left, --right, --demo, --mode, --showcase,
@@ -68,8 +69,10 @@ int main(int Argc, char** Argv) {
             Opts.StandWeapon = Argv[++ArgIndex];
             continue;
         }
-        if (Arg == "--pose-editor" && HasValue) {
-            PoseEditorClip = Argv[++ArgIndex];
+        if (Arg == "--pose-editor") {
+            // The clip is optional: without it the editor opens the general stance.
+            const bool HasClip = HasValue && !std::string_view(Argv[ArgIndex + 1]).starts_with("--");
+            PoseEditorClip = HasClip ? Argv[++ArgIndex] : "";
             continue;
         }
         if (Arg == "--check-data") {
