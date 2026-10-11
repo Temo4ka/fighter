@@ -90,6 +90,15 @@ constexpr float DegreesPerRadian = 180.0f / std::numbers::pi_v<float>;
 
 std::vector<DataProblem> checkData(const fs::path& DataDir) { return Checker(DataDir).run(); }
 
+StrikeProblems findStrikeProblems(const anim::Clip& Clip, bool UsesWeapon) {
+    StrikeProblems Problems;
+    Problems.EmptyActive = Clip.ActiveEndSec <= Clip.ActiveBeginSec;
+    Problems.NoStrikers = Clip.Strikers.none();
+    Problems.WeaponNotHeld = !Problems.NoStrikers && UsesWeapon && !Clip.isStriker(BodyPart::ForearmL) &&
+                             !Clip.isStriker(BodyPart::ForearmR);
+    return Problems;
+}
+
 namespace {
 
 std::vector<DataProblem> Checker::run() {
@@ -254,12 +263,13 @@ void Checker::checkMoveFiles(const MoveLibrary& Library, const std::set<std::str
             if (!Library.findMove(Next)) add(File, std::format("field 'chain_to': there is no move '{}'", Next));
         }
         if (const anim::Clip* Clip = requireClip(File, "clip", Move.Clip)) {
-            if (Clip->ActiveEndSec <= Clip->ActiveBeginSec) {
+            const StrikeProblems Strike = findStrikeProblems(*Clip, Move.UsesWeapon);
+            if (Strike.EmptyActive) {
                 add(File, std::format("field 'clip': '{}' has an empty active phase, so the move cannot hit", Move.Clip));
             }
-            if (Clip->Strikers.none()) {
+            if (Strike.NoStrikers) {
                 add(File, std::format("field 'clip': '{}' has no striking parts", Move.Clip));
-            } else if (Move.UsesWeapon && !Clip->isStriker(BodyPart::ForearmL) && !Clip->isStriker(BodyPart::ForearmR)) {
+            } else if (Strike.WeaponNotHeld) {
                 add(File, std::format("field 'uses_weapon': the weapon is held by a forearm, but '{}' strikes with "
                                       "other parts only",
                                       Move.Clip));

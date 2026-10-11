@@ -53,6 +53,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -175,6 +176,10 @@ float getForwardDistance(Vec2 Origin, Vec2 Point, bool FacingRight);
 /// that is further from \p Pelvis, plus \p WeaponReachM further along the
 /// axis (0 for a part that holds no weapon).
 Vec2 getPartTip(const PartTransform& Part, Vec2 Pelvis, float WeaponReachM);
+
+/// The working end of the weapon that \p Part holds in \p Fighter (the far end
+/// of its body, FighterView::Weapons); nullopt if it holds none.
+std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part);
 
 /// One run of a move on a stand: the attacker's input and the recording.
 /// Each step: getAttackerCommands(), Battle::update(), observe(). The

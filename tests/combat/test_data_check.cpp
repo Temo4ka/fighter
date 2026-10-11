@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "anim/clip.hpp"
 #include "combat/data_check.hpp"
 #include "scenario.hpp"
 
@@ -196,4 +197,21 @@ TEST_CASE("checkData: wrist angles of clips and items are within the rig's wrist
     CHECK(hasProblem(Problems, "poses/odd_wrist.json", "key at t = 0.2 s: 'Weapon' 150 deg is outside the wrist limits"));
     CHECK(hasProblem(Problems, "items/extra.json", "item 'bent_blade': field 'weapon.angle_deg': 170 deg"));
     CHECK(Problems.size() == 2);
+}
+
+TEST_CASE("findStrikeProblems: empty active, no strikers and a weapon move without an arm", "[combat][data_check]") {
+    anim::Clip Clip;
+    Clip.DurationSec = 0.4f;
+    CHECK(findStrikeProblems(Clip, false).EmptyActive);
+    CHECK(findStrikeProblems(Clip, false).NoStrikers);
+    CHECK_FALSE(findStrikeProblems(Clip, true).WeaponNotHeld);   // reported as NoStrikers only
+
+    Clip.ActiveBeginSec = 0.1f;
+    Clip.ActiveEndSec = 0.2f;
+    Clip.Strikers.set(static_cast<size_t>(BodyPart::ShinR));
+    CHECK_FALSE(findStrikeProblems(Clip, false).any());
+    CHECK(findStrikeProblems(Clip, true).WeaponNotHeld);
+
+    Clip.Strikers.set(static_cast<size_t>(BodyPart::ForearmL));
+    CHECK_FALSE(findStrikeProblems(Clip, true).any());
 }

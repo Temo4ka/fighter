@@ -1,0 +1,6 @@
+{
+    "tip_floor_margin_m": 0.02,
+    "limit_margin_deg": 1.0,
+    "divergence_deg": 35.0,
+    "trajectory_step_sec": 0.0167
+}

@@ -35,6 +35,7 @@
 #include <filesystem>
 #include <vector>
 
+#include "anim/clip.hpp"
 #include "combat/moveset.hpp"
 
 namespace fighter::combat {
@@ -44,5 +45,19 @@ namespace fighter::combat {
 /// file of a problem is relative to \p DataDir. Empty if the data is sound.
 /// Does not throw for a data error.
 std::vector<DataProblem> checkData(const std::filesystem::path& DataDir);
+
+/// What is wrong with a clip as the clip of a move: the rules of "moves" above
+/// that look at the clip alone. checkData() and the pose editor's warnings
+/// both use them.
+struct StrikeProblems {
+    bool EmptyActive = false;      ///< The active phase is empty: the move cannot hit.
+    bool NoStrikers = false;       ///< No striking parts.
+    /// A move made with the weapon whose strikers include no forearm (the
+    /// weapon is held by a forearm).
+    bool WeaponNotHeld = false;
+    bool any() const { return EmptyActive || NoStrikers || WeaponNotHeld; }
+};
+
+StrikeProblems findStrikeProblems(const anim::Clip& Clip, bool UsesWeapon);
 
 } // namespace fighter::combat
