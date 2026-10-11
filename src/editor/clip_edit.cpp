@@ -1,9 +1,12 @@
 #include "editor/clip_edit.hpp"
 
 #include <algorithm>
+#include <bitset>
 #include <cmath>
 #include <iterator>
 #include <ranges>
+
+#include "anim/layers.hpp"
 
 namespace fighter::editor {
 namespace {
@@ -85,6 +88,27 @@ void setJointKeyed(anim::Clip& Edited, BodyPart Part, bool Keyed, float Angle) {
             Key.Target.Mask.reset(static_cast<size_t>(Part));
             Key.Target.Angles[static_cast<size_t>(Part)] = 0.0f;
         }
+    }
+}
+
+float setJointAngle(anim::Clip& Edited, size_t KeyIndex, BodyPart Part, float Angle, const rig::RigDef& Def) {
+    const AngleRange Range = getJointRange(Def, Part);
+    const float Clamped = std::clamp(Angle, Range.Lower, Range.Upper);
+    if (KeyIndex < Edited.Keys.size() && Edited.Keys[KeyIndex].Target.hasJoint(Part)) {
+        Edited.Keys[KeyIndex].Target.setAngle(Part, Clamped);
+    }
+    return Clamped;
+}
+
+bool isLegClip(const anim::Clip& Edited) { return anim::usesLegs(Edited); }
+
+void setLegsKeyed(anim::Clip& Edited, bool Keyed, const anim::Pose& Now, const rig::RigDef& Def) {
+    const std::bitset<BodyPartCount> Legs = anim::getLegJoints();
+    for (size_t Index = 0; Index < BodyPartCount; ++Index) {
+        if (!Legs.test(Index)) continue;
+        const auto Part = static_cast<BodyPart>(Index);
+        const AngleRange Range = getJointRange(Def, Part);
+        setJointKeyed(Edited, Part, Keyed, std::clamp(Now.getAngle(Part), Range.Lower, Range.Upper));
     }
 }
 

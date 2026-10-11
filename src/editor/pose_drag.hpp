@@ -15,7 +15,8 @@
 /// applyGhostEdit() writes its angles to the joints the clip file names
 /// (getGhostPart()). With a two-handed weapon (GhostContext::GripHand) every
 /// edit that moves the weapon re-solves the gripping arm so that its fist
-/// stays on the handle (getGripPoint()). Legs and the root are not edited.
+/// stays on the handle (getGripPoint()). The root is not edited; there is no
+/// leg IK, a leg is turned joint by joint.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -44,8 +45,9 @@ struct GhostEdit {
     bool Wrist = false;                     ///< The edit sets the wrist.
 };
 
-/// Can the mouse turn the joint of \p Part: an upper body joint (torso, head,
-/// arms), not the root and not a leg.
+/// Can the mouse turn the joint of \p Part: any joint of the rig (torso, head,
+/// arms, legs), not the root. A leg part turns about its own joint and takes
+/// the parts below it along (thigh: shin and foot).
 bool isDraggablePart(const rig::RigDef& Def, BodyPart Part);
 
 /// The distance from \p Point to the surface of \p Part placed at \p Posed,

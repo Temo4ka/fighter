@@ -25,6 +25,7 @@ add_executable(fighter_tests
     editor/test_clip_writer.cpp
     editor/test_clip_edit.cpp
     editor/test_ghost.cpp
+    editor/test_catalog.cpp
     editor/test_physics_preview.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp

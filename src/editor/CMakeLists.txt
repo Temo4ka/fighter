@@ -7,6 +7,7 @@ fighter_add_module(editor
         arm_roles.cpp
         clip_edit.cpp
         clip_writer.cpp
+        catalog.cpp
         ghost.cpp
         pose_drag.cpp
         physics_preview.cpp
@@ -15,8 +16,8 @@ fighter_add_module(editor
         fighter::core
         fighter::anim
         fighter::rig
+        fighter::stats    # items and fighters (the ghost context, the picker)
         fighter::combat   # the physics preview runs the move stand (combat/move_measure.hpp)
     PRIVATE_DEPS
         fighter::debug
-        fighter::stats
 )

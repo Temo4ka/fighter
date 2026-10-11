@@ -2,10 +2,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
 
 #include "anim/clip.hpp"
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
+#include "rig/rig_def.hpp"
 
 using namespace fighter;
 using namespace fighter::editor;
@@ -201,4 +203,53 @@ TEST_CASE("The wrist is keyed in every key or in none", "[editor][edit]") {
     setWristKeyed(Edited, false, 0.0f);
     for (const auto& Key : Edited.Keys) CHECK_FALSE(Key.Target.HasWeapon);
     checkValid(Edited);
+}
+
+TEST_CASE("setJointAngle keeps the angle within the limits of the rig's joint", "[editor][edit]") {
+    const rig::RigDef Def = rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json");
+    anim::Clip Clip = makeClip();
+    setLegsKeyed(Clip, true, anim::Pose{}, Def);
+    for (const BodyPart Leg : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR, BodyPart::ShinR,
+                               BodyPart::FootR}) {
+        const AngleRange Range = getJointRange(Def, Leg);
+        CHECK(setJointAngle(Clip, 1, Leg, 10.0f, Def) == Approx(Range.Upper));
+        CHECK(Clip.Keys[1].Target.getAngle(Leg) == Approx(Range.Upper));
+        CHECK(setJointAngle(Clip, 1, Leg, -10.0f, Def) == Approx(Range.Lower));
+        const float Inside = 0.5f * (Range.Lower + Range.Upper);
+        CHECK(setJointAngle(Clip, 1, Leg, Inside, Def) == Approx(Inside));
+        CHECK(Clip.Keys[0].Target.getAngle(Leg) == Approx(0.0f).margin(1.0f));   // the other keys stay
+    }
+    // A joint the clip does not key, and a key out of range, change nothing.
+    anim::Clip Bare = makeClip();
+    CHECK(setJointAngle(Bare, 1, BodyPart::ThighL, 0.1f, Def) == Approx(0.1f));
+    CHECK_FALSE(Bare.Keys[1].Target.hasJoint(BodyPart::ThighL));
+    CHECK(setJointAngle(Bare, 9, BodyPart::Torso, 0.1f, Def) == Approx(0.1f));
+}
+
+TEST_CASE("Keying the legs makes a clip a leg clip, unkeying takes it back", "[editor][edit]") {
+    const rig::RigDef Def = rig::loadRigDef(std::filesystem::path(FIGHTER_DATA_DIR) / "rigs" / "humanoid.json");
+    anim::Clip Clip = makeClip();
+    CHECK_FALSE(isLegClip(Clip));
+    anim::Pose Now;
+    Now.setAngle(BodyPart::ThighL, 0.4f);
+    Now.setAngle(BodyPart::ThighR, 9.0f);   // past the limit: kept within it
+    setLegsKeyed(Clip, true, Now, Def);
+    CHECK(isLegClip(Clip));
+    for (const BodyPart Leg : {BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR, BodyPart::ShinR,
+                               BodyPart::FootR}) {
+        CHECK(isJointKeyed(Clip, Leg));
+    }
+    for (const auto& Key : Clip.Keys) {
+        CHECK(Key.Target.getAngle(BodyPart::ThighL) == Approx(0.4f));
+        CHECK(Key.Target.getAngle(BodyPart::ThighR) == Approx(getJointRange(Def, BodyPart::ThighR).Upper));
+    }
+    checkValid(Clip);
+    // A leg already keyed keeps its angles.
+    Clip.Keys[1].Target.setAngle(BodyPart::ThighL, 0.2f);
+    setLegsKeyed(Clip, true, Now, Def);
+    CHECK(Clip.Keys[1].Target.getAngle(BodyPart::ThighL) == Approx(0.2f));
+    setLegsKeyed(Clip, false, Now, Def);
+    CHECK_FALSE(isLegClip(Clip));
+    CHECK(isJointKeyed(Clip, BodyPart::Torso));
+    checkValid(Clip);
 }

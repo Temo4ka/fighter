@@ -38,14 +38,13 @@ const PosedWeapon& getWeapon(const GhostContext& Context, const PosedBody& Body)
 
 } // namespace
 
-TEST_CASE("Only the joints of the upper body are dragged", "[editor][drag]") {
+TEST_CASE("Every joint but the root is dragged, the legs included", "[editor][drag]") {
     const rig::RigDef Def = rig::loadRigDef(DataDir / "rigs" / "humanoid.json");
-    for (const BodyPart Part : {BodyPart::Torso, BodyPart::Head, BodyPart::UpperArmL, BodyPart::ForearmR}) {
+    for (const BodyPart Part : {BodyPart::Torso, BodyPart::Head, BodyPart::UpperArmL, BodyPart::ForearmR,
+                                BodyPart::ThighL, BodyPart::ShinR, BodyPart::FootL}) {
         CHECK(isDraggablePart(Def, Part));
     }
-    for (const BodyPart Part : {BodyPart::Pelvis, BodyPart::ThighL, BodyPart::ShinR, BodyPart::FootL}) {
-        CHECK_FALSE(isDraggablePart(Def, Part));
-    }
+    CHECK_FALSE(isDraggablePart(Def, BodyPart::Pelvis));
 }
 
 TEST_CASE("The distance to a part is to its surface", "[editor][drag]") {
