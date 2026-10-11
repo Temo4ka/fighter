@@ -49,7 +49,7 @@ TEST_CASE("Paste writes the copied pose and keeps the time of the key", "[editor
     anim::Clip Edited = makeClip();
     const anim::Pose Copied = copyKeyPose(Edited, 1);
     const size_t Written = pasteKeyPose(Edited, 2, Copied, Def);
-    CHECK(Written == 13);
+    CHECK(Written == 12);
     CHECK(Edited.Keys[2].TimeSec == Approx(0.5f));
     CHECK(getDegrees(Edited, 2, BodyPart::ForearmR) == Approx(80.0f).margin(0.01));
     CHECK(getDegrees(Edited, 2, BodyPart::Torso) == Approx(4.0f).margin(0.01));

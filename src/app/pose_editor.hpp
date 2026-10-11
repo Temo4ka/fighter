@@ -28,6 +28,11 @@
 /// and without the dummy, and of a second clip), the paths of the striking
 /// tip for the ghost and the fact, the Warnings panel and a faint second
 /// clip to compare with (editor/metrics.hpp, trajectory.hpp, clip_check.hpp).
+/// Step Р.5: undo/redo of whole-clip snapshots (editor/clip_history.hpp, a
+/// step is committed when a drag or a slider is released), copy/paste and
+/// mirror of a key's pose and the onion skin (editor/pose_ops.hpp), the
+/// hotkeys with the Help panel, a new clip from a template
+/// (editor/new_clip.hpp).
 /// Controls are described in docs/TUNING.md.
 ///
 //===----------------------------------------------------------------------===//
@@ -49,6 +54,7 @@
 #include "editor/arm_ik.hpp"
 #include "editor/catalog.hpp"
 #include "editor/clip_check.hpp"
+#include "editor/clip_history.hpp"
 #include "editor/editor_config.hpp"
 #include "editor/ghost.hpp"
 #include "editor/physics_preview.hpp"
@@ -147,6 +153,27 @@ private:
     void stepFact(int Direction);
     void markEdited() { Edited = true; }
     void selectKey(size_t Index);
+    /// Commits the edits made so far as a step of the history, unless a drag
+    /// or a widget is in the middle of an edit; Edited follows the history.
+    void commitHistory();
+    /// Steps back / forward in the history. The status says what happened.
+    void undoEdit();
+    void redoEdit();
+    /// Puts the state \p Restored (from the history) in place of the edited
+    /// clip and keeps the selection and the time inside it.
+    void restoreClip(const anim::Clip& Restored, const char* What);
+    void copyKeyPose();
+    void pasteKeyPose();
+    void mirrorSelectedKey();
+    void mirrorWholeClip();
+    /// The key \p Direction (+1 / -1) after the selected one, if there is one.
+    void stepKey(int Direction);
+    void addKeyHere();
+    void deleteSelectedKey();
+    /// The clip \p Name as the template of a new clip (empty: the open clip as
+    /// edited, in memory); nullopt (and the reason in Status) if it cannot be read.
+    std::optional<anim::Clip> loadTemplate(const std::string& Name);
+    void drawHelpPanel();
     /// Hover, grab and drag with the mouse at \p Mouse (m, on the ghost:
     /// the pelvis offset taken out); \p PixelsPerMeter of the view.
     void updateMouse(Vec2 Mouse, float PixelsPerMeter);
@@ -174,7 +201,7 @@ private:
     std::optional<Selection> Pending;
     bool AskUnsaved = false;
     anim::Clip Edit;
-    bool Edited = false;        ///< Unsaved changes.
+    bool Edited = false;        ///< Unsaved changes (the history: not the saved state).
     std::string Status;         ///< The last message of save/reload, for the panel.
     float TimeSec = 0.0f;       ///< The clip time of the ghost.
     bool Playing = false;
@@ -195,6 +222,17 @@ private:
     /// any other way shows the frame of that time again.
     std::optional<size_t> FactStep;
     float FactStepTimeSec = 0.0f;
+    /// Step Р.5. Undo/redo, the copied pose, the onion skin, the new clip.
+    editor::ClipHistory History;
+    std::optional<anim::Pose> CopiedPose;
+    bool ShowOnion = true;
+    int OnionCount = 1;           ///< Keys shown on each side of the selected one.
+    bool ShowHelp = false;
+    /// The new clip to open (made from a template) once the unsaved changes
+    /// of the open clip are answered; its Name is the choice's clip.
+    std::optional<anim::Clip> PendingNewClip;
+    std::array<char, 64> NewClipName{};
+    std::string NewClipTemplate;  ///< Of the Open panel: "" is the open clip.
     /// Step Р.4. The thresholds (data/editor.json), read when a clip is opened.
     editor::EditorConfig Config;
     bool ShowGhostPath = true;

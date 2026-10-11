@@ -10,6 +10,7 @@
 #include <iterator>
 #include <optional>
 #include <stdexcept>
+#include <tuple>
 #include <format>
 #include <numbers>
 #include <ranges>
@@ -40,8 +41,10 @@
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
 #include "editor/metrics.hpp"
+#include "editor/new_clip.hpp"
 #include "editor/pose_drag.hpp"
 #include "editor/pose_fk.hpp"
+#include "editor/pose_ops.hpp"
 
 namespace fighter::app {
 namespace {
@@ -80,6 +83,32 @@ const sf::Color ComparePathColor(190, 190, 200, 110);
 const sf::Color ComparePathActive(230, 190, 120, 140);
 const sf::Color CompareFill(190, 190, 200, 30);
 const sf::Color CompareLine(200, 200, 210, 90);
+/// The onion skin: the keys before the selected one cool, those after warm.
+const sf::Color OnionPreviousFill(110, 150, 255, 26);
+const sf::Color OnionPreviousLine(130, 170, 255, 110);
+const sf::Color OnionNextFill(120, 230, 130, 26);
+const sf::Color OnionNextLine(140, 235, 150, 110);
+/// The Help panel: the keys and what they do.
+constexpr std::array<std::pair<const char*, const char*>, 18> HotkeyHelp = {{
+    {"Ctrl+S", "save the clip"},
+    {"F5 / Shift+F5", "reload from disk / drop unsaved edits"},
+    {"Ctrl+Z", "undo"},
+    {"Ctrl+Shift+Z, Ctrl+Y", "redo"},
+    {"Ctrl+C / Ctrl+V", "copy / paste the pose of the key"},
+    {"M", "mirror the key: left <-> right"},
+    {"Left / Right", "previous / next key"},
+    {"K or Insert", "add a key at the time"},
+    {"Delete", "delete the selected key"},
+    {"O", "onion skin on / off"},
+    {"Space", "play / pause"},
+    {", / .", "fact: one physics step back / forward"},
+    {"[ / ]", "preview speed halved / doubled"},
+    {"E", "IK elbow up / down (if the rig bends both ways)"},
+    {"F1", "this panel"},
+    {"mouse: part", "drag turns its joint"},
+    {"mouse: circle", "drag a fist (arm IK) or the blade tip"},
+    {"one drag, one slider drag", "one undo step"},
+}};
 /// Frames before a screenshot is taken (the panels need a couple to lay out).
 constexpr int ScreenshotFrame = 3;
 
@@ -182,7 +211,7 @@ void drawPath(sf::RenderTarget& Target, const View& Scene, const editor::TipPath
               sf::Color Active, float TimeSec);
 /// \p Body faintly, to lie under the main ghost.
 void drawFaintBody(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::PosedBody& Body,
-                   float OffsetX);
+                   float OffsetX, sf::Color Fill = CompareFill, sf::Color Line = CompareLine);
 /// The colour of the warnings of \p Source in the list.
 ImVec4 getWarningColor(editor::WarningSource Source);
 /// A part or a weapon of the fact as a capsule along its long axis (Y of its
@@ -246,6 +275,27 @@ int PoseEditor::run() {
             if (ImGui::IsKeyPressed(ImGuiKey_Period)) stepFact(1);
             if (ImGui::IsKeyPressed(ImGuiKey_Comma)) stepFact(-1);
         }
+        if (!IO.WantCaptureKeyboard) {
+            // Plain keys leave the combinations with Ctrl/Cmd (and Alt) alone.
+            const bool Plain = !Command && !IO.KeyAlt;
+            if (Command && ImGui::IsKeyPressed(ImGuiKey_Z)) {
+                if (IO.KeyShift) {
+                    redoEdit();
+                } else {
+                    undoEdit();
+                }
+            }
+            if (Command && ImGui::IsKeyPressed(ImGuiKey_Y)) redoEdit();
+            if (Command && ImGui::IsKeyPressed(ImGuiKey_C, false)) copyKeyPose();
+            if (Command && ImGui::IsKeyPressed(ImGuiKey_V, false)) pasteKeyPose();
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_M, false)) mirrorSelectedKey();
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_O, false)) ShowOnion = !ShowOnion;
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_F1, false)) ShowHelp = !ShowHelp;
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) stepKey(-1);
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_RightArrow)) stepKey(1);
+            if (Plain && (ImGui::IsKeyPressed(ImGuiKey_Insert, false) || ImGui::IsKeyPressed(ImGuiKey_K, false))) addKeyHere();
+            if (Plain && ImGui::IsKeyPressed(ImGuiKey_Delete, false)) deleteSelectedKey();
+        }
         if (Playing) TimeSec = anim::advanceClipTime(Edit, TimeSec, Delta.asSeconds() * PlaySpeed, 1.0f);
         // A one-shot clip plays over and over in the preview.
         if (Playing && !Edit.Loop && Edit.isFinishedAt(TimeSec)) TimeSec = 0.0f;
@@ -268,6 +318,7 @@ int PoseEditor::run() {
             Hovered = {};
             Dragging.reset();
         }
+        commitHistory();
         updateFact();
         // After the fact took the edit: these read the run it made.
         updateAnalysis();
@@ -284,6 +335,18 @@ int PoseEditor::run() {
                           anim::samplePelvisOffset(*CompareClip, CompareSec));
             if (ShowComparePath && ComparePath) {
                 drawPath(Window, Scene, *ComparePath, 0.0f, ComparePathColor, ComparePathActive, CompareSec);
+            }
+        }
+        if (ShowGhost && ShowOnion) {
+            const editor::OnionKeys Onion = editor::findOnionKeys(Edit, SelectedKey, static_cast<size_t>(OnionCount));
+            for (auto&& [Keys, Fill, Line] : {std::tuple{&Onion.Previous, OnionPreviousFill, OnionPreviousLine},
+                                              std::tuple{&Onion.Next, OnionNextFill, OnionNextLine}}) {
+                for (const size_t Key : *Keys) {
+                    const float KeySec = Edit.Keys[Key].TimeSec;
+                    const anim::Pose Around = editor::composeGhostPose(Context.Stance, Edit, KeySec, Context.WeaponHand);
+                    drawFaintBody(Window, Scene, Context.Rig, editor::poseBody(Context.Rig, Around, Context.Held),
+                                  anim::samplePelvisOffset(Edit, KeySec), Fill, Line);
+                }
             }
         }
         if (ShowGhost) drawBody(Window, Scene, Context.Rig, Body, OffsetX, Highlight);
@@ -318,10 +381,19 @@ bool PoseEditor::open(const Selection& Choice) {
     editor::GhostContext NewContext;
     anim::Clip NewClip;
     const std::filesystem::path NewPath = Opts.Root / "data" / "poses" / (Choice.Clip + ".json");
+    // A new clip (made from a template) has no file until it is saved.
+    std::optional<anim::Clip> Fresh = std::exchange(PendingNewClip, std::nullopt);
+    const bool IsNew = Fresh && Fresh->Name == Choice.Clip;
     try {
         NewContext = editor::loadGhostContext(Opts.Root, Choice.Items);
-        if (!std::filesystem::exists(NewPath)) throw std::runtime_error(std::format("no clip {}", NewPath.string()));
-        NewClip = anim::loadClip(NewPath);
+        if (IsNew) {
+            const std::string Problem = editor::findNewClipProblem(Opts.Root / "data", Choice.Clip);
+            if (!Problem.empty()) throw std::runtime_error(Problem);
+            NewClip = std::move(*Fresh);
+        } else {
+            if (!std::filesystem::exists(NewPath)) throw std::runtime_error(std::format("no clip {}", NewPath.string()));
+            NewClip = anim::loadClip(NewPath);
+        }
     } catch (const std::exception& Error) {
         Status = std::format("not opened: {}", Error.what());
         return false;
@@ -332,7 +404,12 @@ bool PoseEditor::open(const Selection& Choice) {
     ClipPath = NewPath;
     HandItems = Choice.Items;
     MoveId = Choice.Move;
-    Edited = false;
+    if (IsNew) {
+        History.resetUnsaved(Edit);
+    } else {
+        History.reset(Edit);
+    }
+    Edited = History.isDirty();
     ClipHadLegs = editor::isLegClip(Edit);
     TimeSec = 0.0f;
     Playing = false;
@@ -352,7 +429,8 @@ bool PoseEditor::open(const Selection& Choice) {
     syncStance();
     try {
         Config = editor::loadEditorConfigOrDefault(Opts.Root / "data");
-        Status = std::format("opened {}", ClipPath.filename().string());
+        Status = IsNew ? std::format("new clip {} (from a template): it is written when you save", ClipName)
+                       : std::format("opened {}", ClipPath.filename().string());
     } catch (const std::exception& Error) {
         Config = {};
         Status = std::format("opened {}, but the defaults of the checks are used: {}", ClipPath.filename().string(),
@@ -405,6 +483,7 @@ bool PoseEditor::reload() {
         Status = std::format("cannot read the clip: {}", Error.what());
         return false;
     }
+    History.reset(Edit);
     Edited = false;
     ClipHadLegs = editor::isLegClip(Edit);
     SelectedKey = std::min(SelectedKey, Edit.Keys.size() - 1);
@@ -421,8 +500,12 @@ bool PoseEditor::save() {
         Status = std::format("not saved: {}", Error.what());
         return false;
     }
+    // What was just written is the saved state, whatever was not committed yet.
+    History.commit(Edit);
+    History.markSaved();
     Edited = false;
     ClipHadLegs = editor::isLegClip(Edit);
+    if (!std::ranges::contains(ClipList, ClipName)) refreshCatalog();
     Status = std::format("saved {}", ClipPath.filename().string());
     return true;
 }
@@ -464,6 +547,130 @@ void PoseEditor::selectKey(size_t Index) {
     SelectedKey = Index;
     TimeSec = Edit.Keys[Index].TimeSec;
     Playing = false;
+}
+
+void PoseEditor::commitHistory() {
+    // A drag or a held widget is one step: it is recorded once it is over.
+    if (Dragging || ImGui::IsAnyItemActive()) return;
+    History.commit(Edit);
+    Edited = History.isDirty();
+}
+
+void PoseEditor::undoEdit() {
+    if (Dragging) return;
+    History.commit(Edit);
+    if (const anim::Clip* Previous = History.undo()) {
+        restoreClip(*Previous, "undo");
+    } else {
+        Status = "nothing to undo";
+    }
+}
+
+void PoseEditor::redoEdit() {
+    if (Dragging) return;
+    History.commit(Edit);
+    if (const anim::Clip* Next = History.redo()) {
+        restoreClip(*Next, "redo");
+    } else {
+        Status = "nothing to redo";
+    }
+}
+
+void PoseEditor::restoreClip(const anim::Clip& Restored, const char* What) {
+    Edit = Restored;
+    Edited = History.isDirty();
+    SelectedKey = std::min(SelectedKey, Edit.Keys.size() - 1);
+    SelectedPelvisKey = Edit.PelvisTrack.empty() ? 0 : std::min(SelectedPelvisKey, Edit.PelvisTrack.size() - 1);
+    TimeSec = std::min(TimeSec, Edit.DurationSec);
+    Status = std::format("{}{}", What, Edited ? "" : " (back to the saved state)");
+}
+
+void PoseEditor::copyKeyPose() {
+    CopiedPose = editor::copyKeyPose(Edit, SelectedKey);
+    Status = std::format("copied the pose of key {}", SelectedKey);
+}
+
+void PoseEditor::pasteKeyPose() {
+    if (!CopiedPose) {
+        Status = "nothing copied yet (Ctrl+C on a key)";
+        return;
+    }
+    const size_t Written = editor::pasteKeyPose(Edit, SelectedKey, *CopiedPose, Context.Rig);
+    Status = std::format("pasted {} values into key {} (its time stays)", Written, SelectedKey);
+    markEdited();
+}
+
+void PoseEditor::mirrorSelectedKey() {
+    const size_t Skipped = editor::mirrorKey(Edit, SelectedKey);
+    Status = Skipped == 0 ? std::format("mirrored key {}: left <-> right", SelectedKey)
+                          : std::format("mirrored key {}; {} pairs left alone (the clip keys one side only)", SelectedKey,
+                                        Skipped);
+    markEdited();
+}
+
+void PoseEditor::mirrorWholeClip() {
+    editor::mirrorClip(Edit);
+    Status = "mirrored the whole clip: arms, legs and strikers";
+    markEdited();
+}
+
+void PoseEditor::stepKey(int Direction) {
+    if (Direction < 0 && SelectedKey > 0) {
+        selectKey(SelectedKey - 1);
+    } else if (Direction > 0 && SelectedKey + 1 < Edit.Keys.size()) {
+        selectKey(SelectedKey + 1);
+    }
+}
+
+void PoseEditor::addKeyHere() {
+    if (const auto Added = editor::addKey(Edit, TimeSec)) {
+        selectKey(*Added);
+        markEdited();
+    } else {
+        Status = "no key can be added here (at 0, past the end, or too close to another)";
+    }
+}
+
+void PoseEditor::deleteSelectedKey() {
+    if (editor::deleteKey(Edit, SelectedKey)) {
+        selectKey(std::min(SelectedKey, Edit.Keys.size() - 1));
+        markEdited();
+    } else {
+        Status = "the first key and the only key cannot be deleted";
+    }
+}
+
+std::optional<anim::Clip> PoseEditor::loadTemplate(const std::string& Name) {
+    if (Name.empty() || Name == ClipName) return Edit;
+    try {
+        return anim::loadClip(Opts.Root / "data" / "poses" / (Name + ".json"));
+    } catch (const std::exception& Error) {
+        Status = std::format("cannot read the template: {}", Error.what());
+        return std::nullopt;
+    }
+}
+
+void PoseEditor::drawHelpPanel() {
+    if (!ShowHelp) return;
+    const ImVec2 Screen = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos({Screen.x - 420.0f * UiScale, Screen.y - 340.0f * UiScale}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Help", &ShowHelp, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::End();
+        return;
+    }
+    ImGui::TextDisabled("keys work unless a text field has the focus");
+    if (ImGui::BeginTable("keys", 2, ImGuiTableFlags_RowBg)) {
+        for (const auto& [Keys, Does] : HotkeyHelp) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(Keys);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(Does);
+        }
+        ImGui::EndTable();
+    }
+    ImGui::TextDisabled("Cmd instead of Ctrl on macOS");
+    ImGui::End();
 }
 
 void PoseEditor::updateMouse(Vec2 Mouse, float PixelsPerMeter) {
@@ -536,6 +743,7 @@ void PoseEditor::drawPanels() {
     drawTimelinePanel();
     drawKeyPanel();
     drawFactPanel();
+    drawHelpPanel();
     // Last: opening something else replaces the state the panels above drew.
     drawOpenPanel();
     drawUnsavedPopup();
@@ -571,6 +779,15 @@ void PoseEditor::drawClipPanel() {
             reload();
         }
     }
+    ImGui::BeginDisabled(!History.canUndo());
+    if (ImGui::Button("Undo (Ctrl+Z)")) undoEdit();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!History.canRedo());
+    if (ImGui::Button("Redo (Ctrl+Shift+Z)")) redoEdit();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::Checkbox("Help (F1)", &ShowHelp);
     if (!Problem.empty()) ImGui::TextColored({1.0f, 0.4f, 0.4f, 1.0f}, "%s", Problem.c_str());
     if (!ClipHadLegs && editor::isLegClip(Edit)) {
         ImGui::TextColored({1.0f, 0.8f, 0.3f, 1.0f},
@@ -617,6 +834,12 @@ void PoseEditor::drawClipPanel() {
         ImGui::PopID();
     }
 
+    if (ImGui::Button("mirror the whole clip (arms, legs, strikers)")) mirrorWholeClip();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("every key: left <-> right arms and legs, and the strikers.\n"
+                          "The clip then is the one the game plays for the other hand.\n"
+                          "One key: M in the Key panel.");
+    }
     if (ImGui::CollapsingHeader("strikers")) {
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Part = static_cast<BodyPart>(Index);
@@ -729,14 +952,7 @@ void PoseEditor::drawTimelinePanel() {
     }
     ImGui::Dummy({0.0f, 18.0f});
 
-    if (ImGui::Button("add key here")) {
-        if (const auto Added = editor::addKey(Edit, TimeSec)) {
-            selectKey(*Added);
-            markEdited();
-        } else {
-            Status = "no key can be added here (at 0, past the end, or too close to another)";
-        }
-    }
+    if (ImGui::Button("add key here (K)")) addKeyHere();
     ImGui::SameLine();
     if (ImGui::Button("duplicate")) {
         if (const auto Copy = editor::duplicateKey(Edit, SelectedKey)) {
@@ -747,14 +963,16 @@ void PoseEditor::drawTimelinePanel() {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("delete")) {
-        if (editor::deleteKey(Edit, SelectedKey)) {
-            selectKey(std::min(SelectedKey, Edit.Keys.size() - 1));
-            markEdited();
-        } else {
-            Status = "the first key and the only key cannot be deleted";
-        }
-    }
+    if (ImGui::Button("delete (Del)")) deleteSelectedKey();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(SelectedKey == 0);
+    if (ImGui::Button("<")) stepKey(-1);
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(SelectedKey + 1 >= Edit.Keys.size());
+    if (ImGui::Button(">")) stepKey(1);
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("previous / next key (Left / Right)");
     ImGui::Separator();
 
     for (auto&& [Index, Key] : std::views::zip(std::views::iota(size_t{0}), Edit.Keys)) {
@@ -797,6 +1015,21 @@ void PoseEditor::drawKeyPanel() {
         }
     }
     if (editor::isPlayedOtherHand(Edit, Context.WeaponHand)) ImGui::TextDisabled("(the file stores them on the other side)");
+    if (ImGui::Button("copy (Ctrl+C)")) copyKeyPose();
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!CopiedPose);
+    if (ImGui::Button("paste (Ctrl+V)")) pasteKeyPose();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("mirror L<->R (M)")) mirrorSelectedKey();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("swaps the left and right arm and leg joints of this key\n"
+                          "(the wrist and the strikers stay; the strikers: Clip panel)");
+    }
+    ImGui::Checkbox("onion skin (O)", &ShowOnion);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(60.0f);
+    ImGui::SliderInt("keys", &OnionCount, 1, 2);
     ImGui::Separator();
     const BodyPart MainHand = Context.Rig.Weapon.Part;
     const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
@@ -890,6 +1123,42 @@ void PoseEditor::drawOpenPanel() {
         }
         ImGui::EndListBox();
     }
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("New clip...")) {
+        ImGui::SetNextItemWidth(-90.0f);
+        ImGui::InputTextWithHint("name", "a-z, 0-9, _", NewClipName.data(), NewClipName.size());
+        // The template: the open clip, the stance of the items, or any stance.
+        std::vector<std::string> Templates = {""};
+        if (Context.StanceName != ClipName) Templates.push_back(Context.StanceName);
+        for (const std::string& Clip : ClipList) {
+            if (Clip.starts_with("stance") && Clip != ClipName && Clip != Context.StanceName) Templates.push_back(Clip);
+        }
+        if (!std::ranges::contains(Templates, NewClipTemplate)) NewClipTemplate.clear();
+        const std::string Shown = NewClipTemplate.empty() ? std::format("this clip ({})", ClipName)
+                                                          : NewClipTemplate;
+        ImGui::SetNextItemWidth(-90.0f);
+        if (ImGui::BeginCombo("template", Shown.c_str())) {
+            for (const std::string& Name : Templates) {
+                const std::string Label = Name.empty() ? std::format("this clip ({}), as edited", ClipName)
+                                                       : (Name == Context.StanceName ? Name + " (stance of the items)" : Name);
+                if (ImGui::Selectable(Label.c_str(), Name == NewClipTemplate)) NewClipTemplate = Name;
+            }
+            ImGui::EndCombo();
+        }
+        const std::string NewName = NewClipName.data();
+        const std::string Problem = editor::findNewClipProblem(Opts.Root / "data", NewName);
+        if (!NewName.empty() && !Problem.empty()) ImGui::TextColored({1.0f, 0.4f, 0.4f, 1.0f}, "%s", Problem.c_str());
+        ImGui::BeginDisabled(!Problem.empty());
+        if (ImGui::Button("Create")) {
+            if (std::optional<anim::Clip> Template = loadTemplate(NewClipTemplate)) {
+                PendingNewClip = editor::makeClipFromTemplate(*Template, NewName);
+                Chosen = Selection{.Clip = NewName, .Items = HandItems, .Move = {}};
+                NewClipName.fill('\0');
+            }
+        }
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("opens the copy unsaved: the file\ndata/poses/<name>.json is written\nonly when you save");
+    }
     ImGui::End();
     if (Chosen) requestOpen(std::move(*Chosen));
 }
@@ -914,6 +1183,7 @@ void PoseEditor::drawUnsavedPopup() {
     if (SaveIt || Discard || Cancel) {
         ImGui::CloseCurrentPopup();
         const std::optional<Selection> Choice = std::exchange(Pending, std::nullopt);
+        if (Cancel) PendingNewClip.reset();
         if (Choice && !Cancel && (Discard || save())) {
             Edited = false;
             open(*Choice);
@@ -1238,13 +1508,13 @@ void drawPath(sf::RenderTarget& Target, const View& Scene, const editor::TipPath
 }
 
 void drawFaintBody(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::PosedBody& Body,
-                   float OffsetX) {
+                   float OffsetX, sf::Color Fill, sf::Color Line) {
     for (const BodyPart Part : DrawOrder) {
-        drawPart(Target, Scene, Body.get(Part), Rig.getPart(Part), OffsetX, CompareFill, CompareLine);
+        drawPart(Target, Scene, Body.get(Part), Rig.getPart(Part), OffsetX, Fill, Line);
         for (const auto& Weapon : Body.Weapons) {
             if (Weapon.Holder != Part) continue;
             const Vec2 Shift = {OffsetX, 0.0f};
-            drawCapsule(Target, Scene, Weapon.Fist + Shift, Weapon.Tip + Shift, Weapon.Radius, CompareFill, CompareLine);
+            drawCapsule(Target, Scene, Weapon.Fist + Shift, Weapon.Tip + Shift, Weapon.Radius, Fill, Line);
         }
     }
 }
