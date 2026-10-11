@@ -14,7 +14,10 @@
 /// physics, with the held item; a time slider; sliders for the angles of the
 /// selected key; keys and clip fields; saving. Step Р.2: the mouse turns a
 /// joint by its part and moves the fist and the blade tip by handles (arm IK,
-/// editor/pose_drag.hpp). All the logic is in the editor
+/// editor/pose_drag.hpp). Step Р.3: the fact, the same clip played by the
+/// physics of the move stand (editor/physics_preview.hpp), drawn over the
+/// ghost, with a frame step and the worst joint error. All the logic is in
+/// the editor
 /// module (src/editor); this class only holds the state and draws the panels.
 /// Controls are described in docs/TUNING.md.
 ///
@@ -34,6 +37,7 @@
 #include "core/vec2.hpp"
 #include "editor/arm_ik.hpp"
 #include "editor/ghost.hpp"
+#include "editor/physics_preview.hpp"
 #include "editor/pose_fk.hpp"
 
 namespace fighter::app {
@@ -79,6 +83,16 @@ private:
     void drawClipPanel();
     void drawTimelinePanel();
     void drawKeyPanel();
+    void drawFactPanel();
+    /// Hands the clip to the fact layer, unless the mouse or a panel widget
+    /// is in the middle of an edit (the fact runs again once it is done).
+    void updateFact();
+    /// The frame of the fact shown now: the stepped one, or the one at the
+    /// clip time; nullptr if none.
+    const editor::FactFrame* findFactFrame();
+    /// One physics step of the fact forward (+1) or back (-1); the time
+    /// follows the frame's clip time.
+    void stepFact(int Direction);
     void markEdited() { Edited = true; }
     void selectKey(size_t Index);
     /// Hover, grab and drag with the mouse at \p Mouse (m, on the ghost:
@@ -105,6 +119,17 @@ private:
     Grab Hovered;                        ///< Under the mouse, or being dragged.
     std::optional<Drag> Dragging;
     editor::ElbowBend Bend = editor::ElbowBend::Down;   ///< Preferred by the arm IK.
+    /// The fact layer; empty until the context is loaded.
+    std::optional<editor::PhysicsPreview> Fact;
+    bool ShowGhost = true;
+    bool ShowFact = true;
+    /// The frame the frame step chose and the time it set; a time changed
+    /// any other way shows the frame of that time again.
+    std::optional<size_t> FactStep;
+    float FactStepTimeSec = 0.0f;
+    /// Where the ghost's pelvis is at the start of the clip, m along the
+    /// floor: the fact's pelvis starts there.
+    float GhostStartX = 0.0f;
 };
 
 } // namespace fighter::app

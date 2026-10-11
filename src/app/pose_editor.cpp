@@ -52,6 +52,10 @@ constexpr float HandleRadiusPx = 8.0f;
 constexpr float PartTolerancePx = 3.0f;
 /// The time slider is on a key when this close to it, s.
 constexpr float OnKeySec = 1e-5f;
+/// The fact layer: half transparent over the ghost.
+const sf::Color FactFill(240, 110, 200, 80);
+const sf::Color FactLine(255, 150, 225, 170);
+const sf::Color DummyFill(150, 150, 160, 60);
 /// Frames before a screenshot is taken (the panels need a couple to lay out).
 constexpr int ScreenshotFrame = 3;
 
@@ -135,6 +139,16 @@ void drawPart(sf::RenderTarget& Target, const View& Scene, const editor::PosedPa
 void drawBody(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::PosedBody& Body, float OffsetX,
               std::optional<BodyPart> Highlight);
 void drawFloor(sf::RenderTarget& Target, const View& Scene);
+/// The fact layer: the fighter of \p Frame by the shapes of \p Rig, its
+/// weapons and, if \p WithDummy, the dummy, half transparent, moved by
+/// \p ShiftX along the floor.
+void drawFact(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::FactFrame& Frame,
+              float ShiftX, bool WithDummy);
+const char* getAttackPhaseLabel(combat::AttackPhase Phase);
+/// A part or a weapon of the fact as a capsule along its long axis (Y of its
+/// frame, PartTransform::Size).
+void drawTransform(sf::RenderTarget& Target, const View& Scene, const PartTransform& Part, float ShiftX, sf::Color Fill,
+                   sf::Color Line);
 bool saveScreenshot(const sf::RenderWindow& Window, const std::filesystem::path& Path);
 bool sliderAngle(const char* Label, float& Radians, editor::AngleRange Range);
 bool dragSeconds(const char* Label, float& Seconds, float Speed = 0.005f);
@@ -160,6 +174,8 @@ int PoseEditor::run() {
         log::error("{}", Status);
         return EXIT_FAILURE;
     }
+    Fact.emplace(editor::PreviewSettings{
+        .DataDir = Opts.Root / "data", .ClipName = Opts.Clip, .WeaponId = Opts.Weapon, .WithDummy = false});
 
     sf::RenderWindow Window(sf::VideoMode(WindowSize), "Fighter pose editor");
     Window.setVerticalSyncEnabled(true);
@@ -195,6 +211,11 @@ int PoseEditor::run() {
             if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) PlaySpeed = std::max(PlaySpeed * 0.5f, MinPlaySpeed);
             if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, false)) PlaySpeed = std::min(PlaySpeed * 2.0f, MaxPlaySpeed);
         }
+        if (!IO.WantCaptureKeyboard) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) Playing = !Playing;
+            if (ImGui::IsKeyPressed(ImGuiKey_Period)) stepFact(1);
+            if (ImGui::IsKeyPressed(ImGuiKey_Comma)) stepFact(-1);
+        }
         if (Playing) TimeSec = anim::advanceClipTime(Edit, TimeSec, Delta.asSeconds() * PlaySpeed, 1.0f);
         // A one-shot clip plays over and over in the preview.
         if (Playing && !Edit.Loop && Edit.isFinishedAt(TimeSec)) TimeSec = 0.0f;
@@ -210,17 +231,26 @@ int PoseEditor::run() {
         drawPanels();
         // The ghost is drawn without the pelvis offset; the mouse is taken to it.
         const Vec2 Mouse = fromScreen(Scene, IO.MousePos) - Vec2{anim::samplePelvisOffset(Edit, TimeSec), 0.0f};
-        updateMouse(Mouse, Scene.PixelsPerMeter);
+        if (ShowGhost) {
+            updateMouse(Mouse, Scene.PixelsPerMeter);
+        } else {
+            Hovered = {};
+            Dragging.reset();
+        }
+        updateFact();
         const float OffsetX = anim::samplePelvisOffset(Edit, TimeSec);
         const anim::Pose Ghost = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
         const editor::PosedBody Body = editor::poseBody(Context.Rig, Ghost, Context.Held);
         if (!Highlight && Hovered.Kind == GrabKind::Part) Highlight = Hovered.Part;
-        drawBody(Window, Scene, Context.Rig, Body, OffsetX, Highlight);
+        if (ShowGhost) drawBody(Window, Scene, Context.Rig, Body, OffsetX, Highlight);
+        if (const editor::FactFrame* Shown = ShowFact ? findFactFrame() : nullptr) {
+            drawFact(Window, Scene, Context.Rig, *Shown, GhostStartX, Fact->isWithDummy());
+        }
         std::optional<HandlePoint> HoveredHandle;
         if (Hovered.Kind == GrabKind::Fist || Hovered.Kind == GrabKind::Tip) {
             HoveredHandle = HandlePoint{.Forearm = Hovered.Part, .Tip = Hovered.Kind == GrabKind::Tip, .Point = {}};
         }
-        drawHandles(Window, Scene, Context, Body, OffsetX, HoveredHandle);
+        if (ShowGhost) drawHandles(Window, Scene, Context, Body, OffsetX, HoveredHandle);
         ImGui::SFML::Render(Window);
         Window.display();
 
@@ -259,6 +289,39 @@ bool PoseEditor::save() {
     Edited = false;
     Status = std::format("saved {}", ClipPath.filename().string());
     return true;
+}
+
+void PoseEditor::updateFact() {
+    // A time set by the slider, playback or a key shows the frame of that time.
+    if (FactStep && (Playing || TimeSec != FactStepTimeSec)) FactStep.reset();
+    const anim::Pose Start = editor::composeGhostPose(Context.Stance, Edit, 0.0f, Context.WeaponHand);
+    GhostStartX = editor::poseBody(Context.Rig, Start, Context.Held).get(BodyPart::Pelvis).Position.X;
+    // An edit in progress (a drag, a slider held) runs once it is done: a run
+    // from the start takes a moment.
+    if (Dragging || ImGui::IsAnyItemActive()) return;
+    if (Fact->setClip(Edit)) FactStep.reset();
+}
+
+const editor::FactFrame* PoseEditor::findFactFrame() {
+    if (FactStep) return Fact->getFrame(*FactStep);
+    const std::optional<size_t> Index = Fact->findFrame(TimeSec);
+    return Index ? Fact->getFrame(*Index) : nullptr;
+}
+
+void PoseEditor::stepFact(int Direction) {
+    const std::optional<size_t> Current = FactStep ? FactStep : Fact->findFrame(TimeSec);
+    if (!Current) return;
+    if (Direction < 0 && *Current == 0) return;
+    const size_t Next = Direction < 0 ? *Current - 1 : *Current + 1;
+    const editor::FactFrame* Frame = Fact->getFrame(Next);
+    if (!Frame) {
+        Status = "the move ends here";
+        return;
+    }
+    Playing = false;
+    FactStep = Next;
+    TimeSec = std::min(Frame->ClipSec, Edit.DurationSec);
+    FactStepTimeSec = TimeSec;
 }
 
 void PoseEditor::selectKey(size_t Index) {
@@ -336,6 +399,7 @@ void PoseEditor::drawPanels() {
     drawClipPanel();
     drawTimelinePanel();
     drawKeyPanel();
+    drawFactPanel();
 }
 
 void PoseEditor::drawClipPanel() {
@@ -612,7 +676,104 @@ void PoseEditor::drawKeyPanel() {
     ImGui::End();
 }
 
+void PoseEditor::drawFactPanel() {
+    const ImVec2 Screen = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos({Screen.x - 378.0f, Screen.y - 298.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({370.0f, 290.0f}, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Fact");
+    ImGui::Checkbox("ghost", &ShowGhost);
+    ImGui::SameLine();
+    ImGui::Checkbox("fact", &ShowFact);
+    ImGui::SameLine();
+    bool WithDummy = Fact->isWithDummy();
+    if (ImGui::Checkbox("dummy", &WithDummy)) {
+        Fact->setWithDummy(WithDummy);
+        FactStep.reset();
+    }
+    if (ImGui::Button("< step (,)")) stepFact(-1);
+    ImGui::SameLine();
+    if (ImGui::Button("step > (.)")) stepFact(1);
+    ImGui::SameLine();
+    ImGui::TextDisabled("Space: play/pause");
+    if (const combat::StandSetup* Setup = Fact->getSetup()) {
+        ImGui::Text("move %s (%s), %s", Setup->MoveId.c_str(), Setup->InputText.c_str(),
+                    Setup->WeaponId.empty() ? "bare hands" : Setup->WeaponName.c_str());
+    }
+    if (!Fact->getProblem().empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{1.0f, 0.4f, 0.4f, 1.0f});
+        ImGui::TextWrapped("%s", Fact->getProblem().c_str());
+        ImGui::PopStyleColor();
+    }
+    const std::optional<size_t> Index = FactStep ? FactStep : Fact->findFrame(TimeSec);
+    const editor::FactFrame* Frame = Index ? Fact->getFrame(*Index) : nullptr;
+    if (!Frame) {
+        ImGui::End();
+        return;
+    }
+    ImGui::Text("step %zu of %zu%s, clip %.3f s, %s", *Index, Fact->getFrameCount(), Fact->isComplete() ? "" : "+",
+                Frame->ClipSec, getAttackPhaseLabel(Frame->Phase));
+    const editor::FactFrame* First = Fact->getFrame(0);
+    if (const editor::FactFrame* Second = Fact->getFrame(1); First && Second) {
+        const double Rate = (Second->ClipSec - First->ClipSec) / editor::PhysicsPreview::StepSec;
+        ImGui::TextDisabled("the clip runs at x%.2f of real time (speed, weapon)", Rate);
+    }
+    // The target at the frame's own clip time.
+    const anim::Pose Ghost = editor::composeGhostPose(Context.Stance, Edit, Frame->ClipSec, Context.WeaponHand);
+    const editor::PosedBody Target = editor::poseBody(Context.Rig, Ghost, Context.Held);
+    const std::vector<editor::JointError> Errors = editor::compareToTarget(Context.Rig, Target, Frame->Attacker);
+    const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
+    if (const editor::JointError* Worst = editor::findWorstJoint(Errors)) {
+        ImGui::Text("worst joint: %s %+.1f deg", getJointLabel(Worst->Part, Context.Rig.Weapon.Part, Swapped).c_str(),
+                    Worst->ErrorRad * DegreesPerRadian);
+    }
+    if (ImGui::CollapsingHeader("joints: fact - target")) {
+        for (const editor::JointError& Error : Errors) {
+            ImGui::Text("%-24s %+7.1f deg", getJointLabel(Error.Part, Context.Rig.Weapon.Part, Swapped).c_str(),
+                        Error.ErrorRad * DegreesPerRadian);
+        }
+    }
+    ImGui::End();
+}
+
 namespace {
+
+void drawFact(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::FactFrame& Frame,
+              float ShiftX, bool WithDummy) {
+    if (WithDummy) {
+        for (const PartTransform& Part : Frame.Dummy.Parts) drawTransform(Target, Scene, Part, ShiftX, DummyFill, FactLine);
+        for (const PartTransform& Weapon : Frame.Dummy.Weapons) {
+            drawTransform(Target, Scene, Weapon, ShiftX, DummyFill, FactLine);
+        }
+    }
+    const std::vector<PartTransform>& Parts = Frame.Attacker.Parts;
+    if (Parts.size() < BodyPartCount) return;
+    for (const BodyPart Part : DrawOrder) {
+        const PartTransform& Placed = Parts[static_cast<size_t>(Part)];
+        drawPart(Target, Scene, {.Position = Placed.Position, .Angle = Placed.Angle}, Rig.getPart(Part), ShiftX, FactFill,
+                 FactLine);
+        for (const PartTransform& Weapon : Frame.Attacker.Weapons) {
+            if (Weapon.Part == Part) drawTransform(Target, Scene, Weapon, ShiftX, FactFill, FactLine);
+        }
+    }
+}
+
+const char* getAttackPhaseLabel(combat::AttackPhase Phase) {
+    switch (Phase) {
+        case combat::AttackPhase::Startup: return "startup";
+        case combat::AttackPhase::Active: return "active";
+        case combat::AttackPhase::Recovery: return "recovery";
+        case combat::AttackPhase::None: break;
+    }
+    return "no attack";
+}
+
+void drawTransform(sf::RenderTarget& Target, const View& Scene, const PartTransform& Part, float ShiftX, sf::Color Fill,
+                   sf::Color Line) {
+    const float Radius = Part.Size.X * 0.5f;
+    const Vec2 Half = rotate({0.0f, 1.0f}, Part.Angle) * std::max(Part.Size.Y * 0.5f - Radius, 0.0f);
+    const Vec2 Center = Part.Position + Vec2{ShiftX, 0.0f};
+    drawCapsule(Target, Scene, Center - Half, Center + Half, Radius, Fill, Line);
+}
 
 bool isLegPart(BodyPart Part) { return anim::getLayer(Part) == anim::Layer::Legs; }
 

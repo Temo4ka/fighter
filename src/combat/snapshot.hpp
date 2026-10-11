@@ -61,6 +61,9 @@ struct FighterView {
     FighterState State = FighterState::Idle;
     std::string MoveId;               ///< The move being performed (data/moves/), empty if none.
     AttackPhase Phase = AttackPhase::None;
+    /// The clip time of the attack, s (anim::advanceClipTime: it runs at the
+    /// attack's rate and stops where a strike is stopped); 0 if none.
+    float AttackClipSec = 0.0f;
     BlockZone Block = BlockZone::Mid; ///< Meaningful while State is Blocking.
     /// The reaction being played while State is Reacting, otherwise None.
     ReactionLevel Reaction = ReactionLevel::None;

@@ -111,3 +111,21 @@ TEST_CASE("ClipLibrary: a clip played with the other hand", "[combat][clips][dat
         CHECK(&Both == &Mirrored);
     }
 }
+
+TEST_CASE("ClipLibrary: a clip text given instead of its file", "[combat][clips][data]") {
+    const MoveLibrary Library = MoveLibrary::load(DataDir);
+    // A different jab: the text is parsed, the file is not read.
+    const ClipTexts Overrides = {
+        {"jab", R"({"duration": 0.5, "keys": [{"t": 0.0, "pose": {"UpperArmL": 10}},
+                                               {"t": 0.5, "pose": {"UpperArmL": 20}}]})"}};
+    const ClipLibrary Clips = ClipLibrary::load(DataDir / "poses", Library, Overrides);
+    CHECK(Clips.get("jab").Name == "jab");
+    CHECK(Clips.get("jab").DurationSec == 0.5f);
+    CHECK(Clips.get("jab").Keys.size() == 2);
+    // Its copies are made from the text too.
+    CHECK(Clips.getOtherHand(Clips.get("jab")).Keys.size() == 2);
+
+    const ClipTexts Broken = {{"jab", R"({"duration": 0.5})"}};
+    CHECK_THROWS_WITH(ClipLibrary::load(DataDir / "poses", Library, Broken),
+                      ContainsSubstring("jab") && ContainsSubstring("not saved"));
+}

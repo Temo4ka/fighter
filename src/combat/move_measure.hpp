@@ -76,6 +76,9 @@ struct MeasureRequest {
     std::string WeaponId;
     bool WithDummy = true;                   ///< A dummy to hit; otherwise it stands far away.
     std::filesystem::path DataDir = "data";
+    /// Clips played instead of their files (BattleConfig::ClipOverrides):
+    /// the pose editor measures a clip it has not saved.
+    ClipTexts ClipOverrides;
 };
 
 /// A request resolved against the data: the battle, the input that starts the

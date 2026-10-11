@@ -27,6 +27,7 @@
 
 #include "anim/clip.hpp"
 #include "combat/commands.hpp"
+#include "combat/config.hpp"
 #include "combat/events.hpp"
 #include "combat/moves.hpp"
 #include "combat/moveset.hpp"
@@ -51,11 +52,14 @@ class ClipLibrary {
 public:
     /// Reads the clips of the state machine and of \p Moves (Clip and
     /// CloseClip) from \p PosesDir. Throws std::runtime_error that names the
-    /// file if one is missing or broken.
-    static ClipLibrary load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves);
+    /// file if one is missing or broken. A clip named in \p Overrides is
+    /// parsed from its text there instead of read from its file.
+    static ClipLibrary load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves,
+                            const ClipTexts& Overrides = {});
     /// The same for the moves of \p Library, and the block clips of its
     /// movesets ("block.clips"); an error names the moveset.
-    static ClipLibrary load(const std::filesystem::path& PosesDir, const MoveLibrary& Library);
+    static ClipLibrary load(const std::filesystem::path& PosesDir, const MoveLibrary& Library,
+                            const ClipTexts& Overrides = {});
 
     /// The clip loaded for \p Name. Throws std::out_of_range if it was not
     /// loaded.
@@ -86,7 +90,7 @@ public:
     bool isOtherHand(const anim::Clip& Source) const;
 
 private:
-    void add(const std::filesystem::path& PosesDir, std::string_view Name);
+    void add(const std::filesystem::path& PosesDir, std::string_view Name, const ClipTexts& Overrides);
 
     std::map<std::string, anim::Clip, std::less<>> Clips;
     /// Makes the copies of the clip \p Name: mirrored legs, swapped arms.

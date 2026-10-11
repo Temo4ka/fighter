@@ -8,27 +8,29 @@
 
 namespace fighter::combat {
 
-ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves) {
+ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, std::span<const MoveDef> Moves,
+                              const ClipTexts& Overrides) {
     ClipLibrary Library;
     for (const std::string_view Name : {clips::Stance, clips::Walk, clips::Crouch, clips::CrouchWalk, clips::BlockHigh,
                                         clips::BlockMid, clips::BlockLow, clips::Flinch, clips::Stagger,
                                         clips::Knockback}) {
-        Library.add(PosesDir, Name);
+        Library.add(PosesDir, Name, Overrides);
     }
     for (const MoveDef& Move : Moves) {
-        Library.add(PosesDir, Move.Clip);
-        if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip);
+        Library.add(PosesDir, Move.Clip, Overrides);
+        if (!Move.CloseClip.empty()) Library.add(PosesDir, Move.CloseClip, Overrides);
     }
     for (const auto& Entry : Library.Clips) Library.addCopies(Entry.first);
     return Library;
 }
 
-ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveLibrary& Library) {
-    ClipLibrary Clips = load(PosesDir, Library.getMoves());
+ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveLibrary& Library,
+                              const ClipTexts& Overrides) {
+    ClipLibrary Clips = load(PosesDir, Library.getMoves(), Overrides);
     for (const MoveSet& Set : Library.getSets()) {
         if (Set.Stance && !Clips.Clips.contains(*Set.Stance)) {
             try {
-                Clips.add(PosesDir, *Set.Stance);
+                Clips.add(PosesDir, *Set.Stance, Overrides);
             } catch (const std::exception& Error) {
                 throw std::runtime_error(std::format("movesets/{}.json: field 'stance': '{}': {}", Set.Id,
                                                      *Set.Stance, Error.what()));
@@ -38,7 +40,7 @@ ClipLibrary ClipLibrary::load(const std::filesystem::path& PosesDir, const MoveL
         for (const std::optional<std::string>& Name : Set.Block.Clips) {
             if (!Name || Name->empty() || Clips.Clips.contains(*Name)) continue;
             try {
-                Clips.add(PosesDir, *Name);
+                Clips.add(PosesDir, *Name, Overrides);
             } catch (const std::exception& Error) {
                 throw std::runtime_error(std::format("movesets/{}.json: block clip '{}': {}", Set.Id, *Name,
                                                      Error.what()));
@@ -128,8 +130,16 @@ void ClipLibrary::addCopies(const std::string& Name) {
     if (Legs) MirroredOtherHand.emplace(Name, anim::mirrorClipArms(Mirrored.find(Name)->second));
 }
 
-void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Name) {
+void ClipLibrary::add(const std::filesystem::path& PosesDir, std::string_view Name, const ClipTexts& Overrides) {
     if (Clips.contains(Name)) return;
+    if (const auto Override = Overrides.find(Name); Override != Overrides.end()) {
+        try {
+            Clips.emplace(std::string(Name), anim::parseClip(Override->second, std::string(Name)));
+        } catch (const std::exception& Error) {
+            throw std::runtime_error(std::format("clip '{}' (not saved): {}", Name, Error.what()));
+        }
+        return;
+    }
     const std::filesystem::path File = PosesDir / (std::string(Name) + ".json");
     std::error_code Error;
     if (!std::filesystem::exists(File, Error)) {

@@ -80,7 +80,7 @@ Battle::Battle(const BattleConfig& Config) : Cfg(Config) {
     const CombatTuning Tuning = loadCombatTuning(Cfg.DataDir / "combat.json");
 
     MoveLibrary Moves = MoveLibrary::load(Cfg.DataDir);
-    ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves);
+    ClipLibrary Clips = ClipLibrary::load(Cfg.DataDir / "poses", Moves, Cfg.ClipOverrides);
 
     Sim = std::make_unique<Simulation>(Simulation{
         .PhysWorld = physics::World({.Gravity = Cfg.Arena.Gravity,
