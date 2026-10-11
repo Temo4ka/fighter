@@ -116,6 +116,23 @@ public:
     /// (setClip(), setWithDummy()).
     const FactFrame* getFrame(size_t Index);
 
+    /// The measure of the whole move (what combat::measureMove() returns for
+    /// it, the edited clip played from memory), with the dummy of the
+    /// settings. Runs the move to its end if it has not; nullptr if it cannot
+    /// run. Valid until the cache is dropped.
+    const combat::MoveMeasure* getMeasure();
+    /// The measure with the dummy \p WithDummy: the one above, or, for the
+    /// other setting, that of a second run kept on the side (made on the
+    /// first request, dropped with the cache), so that the cost of the other
+    /// run is paid only when it is asked for.
+    const combat::MoveMeasure* getMeasureWith(bool WithDummy);
+    /// Does the move run with the weapon (MoveDef::UsesWeapon)? False if no
+    /// move was found.
+    bool isMoveUsingWeapon() const { return MoveUsesWeapon; }
+    /// Changes each time the cache is dropped (a clip, the dummy or the move
+    /// changed): what was computed from the frames is stale when it differs.
+    size_t getRevision() const { return Revision; }
+
     /// Why the fact cannot be shown (no move plays the clip, the clip is
     /// broken, the move did not start...); empty if it can.
     const std::string& getProblem() const { return Problem; }
@@ -146,6 +163,11 @@ private:
     /// clip (MoveDef::getClip()); nullopt: the stand's distance.
     std::optional<float> DistanceM;
     std::string ClipText;     ///< writeClip() of the clip set last; empty: none.
+    std::optional<anim::Clip> ClipCopy;   ///< The clip set last.
+    /// The run with the other dummy setting, made by getMeasureWith().
+    std::unique_ptr<PhysicsPreview> OtherDummy;
+    bool MoveUsesWeapon = false;
+    size_t Revision = 0;
     std::string Problem;
     std::string SetupProblem; ///< Of prepare(): stays until the settings change.
 

@@ -243,3 +243,50 @@ TEST_CASE("PhysicsPreview: the chosen move runs; a move that does not play the c
     CHECK(Preview.getProblem().empty());
     CHECK(Preview.getFrame(0) != nullptr);
 }
+
+TEST_CASE("PhysicsPreview: the measure of the clip in memory is that of measureMove of the file", "[editor][preview]") {
+    for (const bool WithDummy : {false, true}) {
+        PhysicsPreview Preview = makePreview("jab", WithDummy);
+        Preview.setClip(loadPose("jab"));
+        const combat::MoveMeasure* Measure = Preview.getMeasure();
+        REQUIRE(Measure != nullptr);
+        const combat::MoveMeasure Expected =
+            combat::measureMove({.MoveId = "jab", .WeaponId = {}, .WithDummy = WithDummy, .DataDir = DataDir, .ClipOverrides = {}});
+        CHECK(Measure->Finished);
+        CHECK(combat::describeMeasure(*Measure) == combat::describeMeasure(Expected));
+        CHECK(Measure->Hit == Expected.Hit);
+        CHECK(Measure->PelvisForwardM == Expected.PelvisForwardM);
+        // The frames are the same run: the measure did not need more of them.
+        CHECK(Preview.isComplete());
+    }
+}
+
+TEST_CASE("PhysicsPreview: the other dummy setting is measured on its own and dropped with the cache", "[editor][preview]") {
+    PhysicsPreview Preview = makePreview("jab", false);
+    Preview.setClip(loadPose("jab"));
+    const size_t Revision = Preview.getRevision();
+    const combat::MoveMeasure* Without = Preview.getMeasureWith(false);
+    REQUIRE(Without != nullptr);
+    const std::string WithoutText = combat::describeMeasure(*Without);
+    const combat::MoveMeasure* With = Preview.getMeasureWith(true);
+    REQUIRE(With != nullptr);
+    CHECK(With != Without);
+    CHECK(With->Hit);
+    CHECK_FALSE(Without->Hit);
+    CHECK(Preview.getRevision() == Revision);               // asking does not drop anything
+    CHECK_FALSE(Preview.isWithDummy());
+    CHECK(combat::describeMeasure(*Preview.getMeasure()) == WithoutText);
+    const std::string WithText = combat::describeMeasure(*With);
+    // An edit starts everything again.
+    anim::Clip Longer = loadPose("jab");
+    Longer.DurationSec += 0.1f;
+    CHECK(Preview.setClip(Longer));
+    CHECK(Preview.getRevision() != Revision);
+    CHECK(combat::describeMeasure(*Preview.getMeasureWith(true)) != WithText); // taken before the edit: With is gone
+}
+
+TEST_CASE("PhysicsPreview: a clip no move plays has no measure", "[editor][preview]") {
+    PhysicsPreview Preview = makePreview("stance");
+    CHECK(Preview.getMeasure() == nullptr);
+    CHECK_FALSE(Preview.isMoveUsingWeapon());
+}

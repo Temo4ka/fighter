@@ -8,11 +8,13 @@ fighter_add_module(editor
         clip_edit.cpp
         clip_writer.cpp
         catalog.cpp
+        clip_check.cpp
         editor_config.cpp
         ghost.cpp
         pose_drag.cpp
         physics_preview.cpp
         pose_fk.cpp
+        trajectory.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::anim
