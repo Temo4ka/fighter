@@ -43,6 +43,7 @@
 #pragma once
 
 #include <cstddef>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -103,7 +104,8 @@ public:
     /// (getProblem()) or has no frame.
     std::optional<size_t> findFrame(float ClipSec);
     /// Frame \p Index, simulated if needed; nullptr if the move ended before
-    /// it or cannot run.
+    /// it or cannot run. The frame stays valid until the cache is dropped
+    /// (setClip(), setWithDummy()).
     const FactFrame* getFrame(size_t Index);
 
     /// Why the fact cannot be shown (no move plays the clip, the clip is
@@ -143,7 +145,8 @@ private:
     std::optional<combat::MoveRun> Run;
     double ElapsedSec = 0.0;  ///< Of the run, the settling included.
     float OriginX = 0.0f;     ///< The fighter's pelvis when the move began, m.
-    std::vector<FactFrame> Frames;
+    /// A deque: a frame stays where it is while more are computed.
+    std::deque<FactFrame> Frames;
     bool Complete = false;
     size_t RunCount = 0;
 };
