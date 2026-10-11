@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <format>
@@ -22,6 +23,8 @@
 #include <SFML/Graphics/RectangleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/Vertex.hpp>
+#include <SFML/Graphics/VertexArray.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/VideoMode.hpp>
@@ -35,6 +38,7 @@
 #include "editor/arm_roles.hpp"
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
+#include "editor/metrics.hpp"
 #include "editor/pose_drag.hpp"
 #include "editor/pose_fk.hpp"
 
@@ -61,6 +65,16 @@ constexpr float OnKeySec = 1e-5f;
 const sf::Color FactFill(240, 110, 200, 80);
 const sf::Color FactLine(255, 150, 225, 170);
 const sf::Color DummyFill(150, 150, 160, 60);
+/// The paths of the striking tip: the ghost's, the fact's and the clip to
+/// compare with; each in its own colour with the active phase in another.
+const sf::Color GhostPathColor(120, 200, 255, 200);
+const sf::Color GhostPathActive(255, 140, 50, 255);
+const sf::Color FactPathColor(255, 150, 225, 200);
+const sf::Color FactPathActive(255, 235, 80, 255);
+const sf::Color ComparePathColor(190, 190, 200, 110);
+const sf::Color ComparePathActive(230, 190, 120, 140);
+const sf::Color CompareFill(190, 190, 200, 30);
+const sf::Color CompareLine(200, 200, 210, 90);
 /// Frames before a screenshot is taken (the panels need a couple to lay out).
 constexpr int ScreenshotFrame = 3;
 
@@ -155,6 +169,16 @@ void drawFloor(sf::RenderTarget& Target, const View& Scene);
 void drawFact(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::FactFrame& Frame,
               float ShiftX, bool WithDummy);
 const char* getAttackPhaseLabel(combat::AttackPhase Phase);
+/// The path of a striking tip as a line with a dot per sample, in the colour
+/// \p Active where the clip is in its active phase, moved by \p ShiftX along
+/// the floor, and a ring at the sample of \p TimeSec.
+void drawPath(sf::RenderTarget& Target, const View& Scene, const editor::TipPath& Path, float ShiftX, sf::Color Normal,
+              sf::Color Active, float TimeSec);
+/// \p Body faintly, to lie under the main ghost.
+void drawFaintBody(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::PosedBody& Body,
+                   float OffsetX);
+/// The colour of the warnings of \p Source in the list.
+ImVec4 getWarningColor(editor::WarningSource Source);
 /// A part or a weapon of the fact as a capsule along its long axis (Y of its
 /// frame, PartTransform::Size).
 void drawTransform(sf::RenderTarget& Target, const View& Scene, const PartTransform& Part, float ShiftX, sf::Color Fill,
@@ -238,13 +262,32 @@ int PoseEditor::run() {
             Dragging.reset();
         }
         updateFact();
+        // After the fact took the edit: these read the run it made.
+        updateAnalysis();
+        drawMetricsPanel();
+        drawWarningsPanel();
         const float OffsetX = anim::samplePelvisOffset(Edit, TimeSec);
         const anim::Pose Ghost = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
         const editor::PosedBody Body = editor::poseBody(Context.Rig, Ghost, Context.Held);
         if (!Highlight && Hovered.Kind == GrabKind::Part) Highlight = Hovered.Part;
+        if (CompareClip) {
+            const float CompareSec = std::min(TimeSec, CompareClip->DurationSec);
+            const anim::Pose Other = editor::composeGhostPose(Context.Stance, *CompareClip, CompareSec, Context.WeaponHand);
+            drawFaintBody(Window, Scene, Context.Rig, editor::poseBody(Context.Rig, Other, Context.Held),
+                          anim::samplePelvisOffset(*CompareClip, CompareSec));
+            if (ShowComparePath && ComparePath) {
+                drawPath(Window, Scene, *ComparePath, 0.0f, ComparePathColor, ComparePathActive, CompareSec);
+            }
+        }
         if (ShowGhost) drawBody(Window, Scene, Context.Rig, Body, OffsetX, Highlight);
+        if (ShowGhost && ShowGhostPath && GhostPath) {
+            drawPath(Window, Scene, *GhostPath, 0.0f, GhostPathColor, GhostPathActive, TimeSec);
+        }
         if (const editor::FactFrame* Shown = ShowFact ? findFactFrame() : nullptr) {
             drawFact(Window, Scene, Context.Rig, *Shown, GhostStartX, Fact->isWithDummy());
+        }
+        if (ShowFact && ShowFactPath && FactPath) {
+            drawPath(Window, Scene, *FactPath, GhostStartX, FactPathColor, FactPathActive, TimeSec);
         }
         std::optional<HandlePoint> HoveredHandle;
         if (Hovered.Kind == GrabKind::Fist || Hovered.Kind == GrabKind::Tip) {
@@ -300,7 +343,17 @@ bool PoseEditor::open(const Selection& Choice) {
                                          .MoveId = MoveId,
                                          .WithDummy = KeepDummy});
     syncStance();
-    Status = std::format("opened {}", ClipPath.filename().string());
+    try {
+        Config = editor::loadEditorConfigOrDefault(Opts.Root / "data");
+        Status = std::format("opened {}", ClipPath.filename().string());
+    } catch (const std::exception& Error) {
+        Config = {};
+        Status = std::format("opened {}, but the defaults of the checks are used: {}", ClipPath.filename().string(),
+                             Error.what());
+    }
+    setCompare({});
+    FactAnalysisKey.reset();
+    OtherMeasureRevision.reset();
     return true;
 }
 
@@ -874,8 +927,16 @@ void PoseEditor::drawFactPanel() {
     bool WithDummy = Fact->isWithDummy();
     if (ImGui::Checkbox("dummy", &WithDummy)) {
         Fact->setWithDummy(WithDummy);
+        if (CompareFact) CompareFact->setWithDummy(WithDummy);
         FactStep.reset();
     }
+    ImGui::Checkbox("ghost path", &ShowGhostPath);
+    ImGui::SameLine();
+    ImGui::Checkbox("fact path", &ShowFactPath);
+    ImGui::SameLine();
+    ImGui::Checkbox("metrics", &ShowMetrics);
+    ImGui::SameLine();
+    ImGui::Checkbox("warnings", &ShowWarnings);
     if (ImGui::Button("< step (,)")) stepFact(-1);
     ImGui::SameLine();
     if (ImGui::Button("step > (.)")) stepFact(1);
@@ -904,6 +965,21 @@ void PoseEditor::drawFactPanel() {
                 }
             }
             ImGui::EndCombo();
+        }
+    }
+    {
+        const std::string Shown = CompareName.empty() ? "(none)" : CompareName;
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::BeginCombo("compare with", Shown.c_str())) {
+            if (ImGui::Selectable("(none)", CompareName.empty())) setCompare({});
+            for (const std::string& Name : ClipList) {
+                if (Name != ClipName && ImGui::Selectable(Name.c_str(), Name == CompareName)) setCompare(Name);
+            }
+            ImGui::EndCombo();
+        }
+        if (CompareClip) {
+            ImGui::SameLine();
+            ImGui::Checkbox("its path", &ShowComparePath);
         }
     }
     if (const combat::StandSetup* Setup = Fact->getSetup()) {
@@ -946,6 +1022,157 @@ void PoseEditor::drawFactPanel() {
     ImGui::End();
 }
 
+void PoseEditor::jumpTo(float Seconds) {
+    TimeSec = std::clamp(Seconds, 0.0f, Edit.DurationSec);
+    Playing = false;
+    FactStep.reset();
+}
+
+bool PoseEditor::isWeaponTipped() const {
+    if (!Context.WeaponHand || !Fact) return false;
+    const combat::StandSetup* Setup = Fact->getSetup();
+    return Setup && Setup->WeaponReachM > 0.0f;
+}
+
+void PoseEditor::setCompare(const std::string& Name) {
+    CompareName.clear();
+    CompareClip.reset();
+    CompareFact.reset();
+    ComparePath.reset();
+    if (Name.empty()) return;
+    try {
+        anim::Clip Loaded = anim::loadClip(Opts.Root / "data" / "poses" / (Name + ".json"));
+        CompareFact.emplace(editor::PreviewSettings{.DataDir = Opts.Root / "data",
+                                                    .ClipName = Name,
+                                                    .WeaponId = findWeaponId(),
+                                                    .MoveId = {},
+                                                    .WithDummy = Fact && Fact->isWithDummy()});
+        CompareFact->setClip(Loaded);
+        CompareClip = std::move(Loaded);
+        CompareName = Name;
+    } catch (const std::exception& Error) {
+        CompareFact.reset();
+        Status = std::format("cannot read {} to compare with: {}", Name, Error.what());
+    }
+}
+
+void PoseEditor::updateAnalysis() {
+    const bool Weapon = isWeaponTipped();
+    GhostPath = editor::sampleGhostPath(Context, Edit, Weapon, Config.TrajectoryStepSec);
+    ComparePath.reset();
+    if (CompareClip && ShowComparePath) {
+        ComparePath = editor::sampleGhostPath(Context, *CompareClip, Weapon, Config.TrajectoryStepSec);
+    }
+    ClipWarnings = editor::findJointLimitWarnings(Context.Rig, Edit, Config);
+    std::ranges::move(editor::findStrikeWarnings(Edit, Fact->isMoveUsingWeapon()), std::back_inserter(ClipWarnings));
+    if (GhostPath) {
+        std::ranges::move(editor::findTipFloorWarnings(*GhostPath, editor::WarningSource::Ghost, Config),
+                          std::back_inserter(ClipWarnings));
+    }
+
+    // What runs the whole move happens once per change of the fact, and only
+    // for what is shown.
+    const bool CheckWanted = ShowWarnings && CheckFact;
+    const size_t Key = Fact->getRevision() * 8 + (Weapon ? 1u : 0u) + (ShowFactPath ? 2u : 0u) + (CheckWanted ? 4u : 0u);
+    if (FactAnalysisKey == Key) return;
+    FactAnalysisKey = Key;
+    FactPath.reset();
+    FactWarnings.clear();
+    if (!(ShowFactPath || CheckWanted) || !Fact->getProblem().empty() || !GhostPath) return;
+    FactPath = editor::sampleFactPath(*Fact, GhostPath->Part, Weapon);
+    if (FactPath) FactWarnings = editor::findTipFloorWarnings(*FactPath, editor::WarningSource::Fact, Config);
+    if (CheckWanted) {
+        std::ranges::move(editor::findDivergenceWarnings(Context, Edit, *Fact, Config), std::back_inserter(FactWarnings));
+    }
+}
+
+void PoseEditor::drawMetricsPanel() {
+    if (!ShowMetrics) return;
+    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f, 8.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({390.0f, 300.0f}, ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Metrics", &ShowMetrics)) {
+        ImGui::End();
+        return;
+    }
+    if (!Fact->getSetup()) {
+        ImGui::TextWrapped("%s", Fact->getProblem().c_str());
+        ImGui::End();
+        return;
+    }
+    const bool Dummy = Fact->isWithDummy();
+    const combat::MoveMeasure* Current = Fact->getMeasure();
+    // The other setting is a second run: made on request, kept until the fact changes.
+    const bool OtherKnown = OtherMeasureRevision == Fact->getRevision();
+    const combat::MoveMeasure* Other = OtherKnown ? Fact->getMeasureWith(!Dummy) : nullptr;
+    const combat::MoveMeasure* Compared = CompareFact ? CompareFact->getMeasure() : nullptr;
+
+    ImGui::TextDisabled("move %s, %s; one run is about 0.4 s in the debug build", Fact->getSetup()->MoveId.c_str(),
+                        Edited ? "with the unsaved edits" : "as saved");
+    const int Columns = CompareFact ? 4 : 3;
+    if (ImGui::BeginTable("metrics", Columns, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("");
+        ImGui::TableSetupColumn(Dummy ? "dummy" : "no dummy");
+        ImGui::TableSetupColumn(Dummy ? "no dummy" : "dummy");
+        if (CompareFact) ImGui::TableSetupColumn(CompareName.c_str());
+        ImGui::TableHeadersRow();
+        const std::vector<editor::MetricLine> Empty = editor::listMetrics(combat::MoveMeasure{});
+        const std::vector<editor::MetricLine> First = Current ? editor::listMetrics(*Current) : Empty;
+        const std::vector<editor::MetricLine> Second = Other ? editor::listMetrics(*Other) : Empty;
+        const std::vector<editor::MetricLine> Third = Compared ? editor::listMetrics(*Compared) : Empty;
+        for (size_t Row = 0; Row < Empty.size(); ++Row) {
+            // The "problem" row only when some run has one.
+            if (Row == 0 && First[0].Value == "-" && Second[0].Value == "-" && Third[0].Value == "-") continue;
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::TextUnformatted(Empty[Row].Label.c_str());
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextWrapped("%s", First[Row].Value.c_str());
+            ImGui::TableSetColumnIndex(2);
+            if (!Other && Row == 1) {
+                if (ImGui::SmallButton("measure")) OtherMeasureRevision = Fact->getRevision();
+            } else {
+                ImGui::TextWrapped("%s", Second[Row].Value.c_str());
+            }
+            if (CompareFact) {
+                ImGui::TableSetColumnIndex(3);
+                ImGui::TextWrapped("%s", Third[Row].Value.c_str());
+            }
+        }
+        ImGui::EndTable();
+    }
+    if (CompareFact && !Compared) {
+        ImGui::TextColored({1.0f, 0.5f, 0.4f, 1.0f}, "%s: %s", CompareName.c_str(), CompareFact->getProblem().c_str());
+    }
+    ImGui::End();
+}
+
+void PoseEditor::drawWarningsPanel() {
+    if (!ShowWarnings) return;
+    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f, 316.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({390.0f, 190.0f}, ImGuiCond_FirstUseEver);
+    const size_t Count = ClipWarnings.size() + FactWarnings.size();
+    const std::string Title = std::format("Warnings ({})###Warnings", Count);
+    if (!ImGui::Begin(Title.c_str(), &ShowWarnings)) {
+        ImGui::End();
+        return;
+    }
+    ImGui::Checkbox("check the fact (runs the move)", &CheckFact);
+    ImGui::SameLine();
+    ImGui::TextDisabled("thresholds: data/editor.json");
+    if (Count == 0) ImGui::TextDisabled("nothing to warn about");
+    int Id = 0;
+    for (const auto* List : {&ClipWarnings, &FactWarnings}) {
+        for (const editor::ClipWarning& Warning : *List) {
+            ImGui::PushID(Id++);
+            ImGui::PushStyleColor(ImGuiCol_Text, getWarningColor(Warning.Source));
+            if (ImGui::Selectable(Warning.Text.c_str())) jumpTo(Warning.TimeSec);
+            ImGui::PopStyleColor();
+            ImGui::PopID();
+        }
+    }
+    ImGui::End();
+}
+
 namespace {
 
 void drawFact(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::FactFrame& Frame,
@@ -966,6 +1193,62 @@ void drawFact(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Ri
             if (Weapon.Part == Part) drawTransform(Target, Scene, Weapon, ShiftX, FactFill, FactLine);
         }
     }
+}
+
+void drawPath(sf::RenderTarget& Target, const View& Scene, const editor::TipPath& Path, float ShiftX, sf::Color Normal,
+              sf::Color Active, float TimeSec) {
+    if (Path.Points.empty()) return;
+    sf::VertexArray Lines(sf::PrimitiveType::Lines);
+    const auto toPixel = [&](const editor::TipPoint& Point) {
+        return toScreen(Scene, Point.Tip + Vec2{ShiftX, 0.0f});
+    };
+    for (auto&& [From, To] : std::views::zip(Path.Points, Path.Points | std::views::drop(1))) {
+        const sf::Color Color = From.Active && To.Active ? Active : Normal;
+        Lines.append({toPixel(From), Color});
+        Lines.append({toPixel(To), Color});
+    }
+    Target.draw(Lines);
+    for (const editor::TipPoint& Point : Path.Points) {
+        const float Radius = Point.Active ? 3.0f : 2.0f;
+        sf::CircleShape Dot(Radius);
+        Dot.setOrigin({Radius, Radius});
+        Dot.setPosition(toPixel(Point));
+        Dot.setFillColor(Point.Active ? Active : Normal);
+        Target.draw(Dot);
+    }
+    // The sample of the shown time: the first at or after it.
+    const auto Now = std::ranges::find_if(
+        Path.Points, [TimeSec](const editor::TipPoint& Point) { return Point.TimeSec >= TimeSec - 1e-4f; });
+    if (Now != Path.Points.end()) {
+        sf::CircleShape Ring(6.0f);
+        Ring.setOrigin({6.0f, 6.0f});
+        Ring.setPosition(toPixel(*Now));
+        Ring.setFillColor(sf::Color::Transparent);
+        Ring.setOutlineThickness(2.0f);
+        Ring.setOutlineColor(Now->Active ? Active : Normal);
+        Target.draw(Ring);
+    }
+}
+
+void drawFaintBody(sf::RenderTarget& Target, const View& Scene, const rig::RigDef& Rig, const editor::PosedBody& Body,
+                   float OffsetX) {
+    for (const BodyPart Part : DrawOrder) {
+        drawPart(Target, Scene, Body.get(Part), Rig.getPart(Part), OffsetX, CompareFill, CompareLine);
+        for (const auto& Weapon : Body.Weapons) {
+            if (Weapon.Holder != Part) continue;
+            const Vec2 Shift = {OffsetX, 0.0f};
+            drawCapsule(Target, Scene, Weapon.Fist + Shift, Weapon.Tip + Shift, Weapon.Radius, CompareFill, CompareLine);
+        }
+    }
+}
+
+ImVec4 getWarningColor(editor::WarningSource Source) {
+    switch (Source) {
+        case editor::WarningSource::Clip: return {1.0f, 0.8f, 0.4f, 1.0f};
+        case editor::WarningSource::Ghost: return {0.5f, 0.8f, 1.0f, 1.0f};
+        case editor::WarningSource::Fact: return {1.0f, 0.6f, 0.9f, 1.0f};
+    }
+    return {1.0f, 1.0f, 1.0f, 1.0f};
 }
 
 const char* getAttackPhaseLabel(combat::AttackPhase Phase) {
