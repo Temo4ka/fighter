@@ -6,6 +6,7 @@
 #include <string>
 
 #include "combat/move_measure.hpp"
+#include "core/text_file.hpp"
 #include "scenario.hpp"
 
 using namespace fighter;
@@ -105,6 +106,21 @@ TEST_CASE("measureMove: the same request gives the same numbers", "[combat][meas
     CHECK(First.RecoverySec == Second.RecoverySec);
     CHECK(First.getReachM() == Second.getReachM());
     CHECK(First.Hit == Second.Hit);
+}
+
+TEST_CASE("measureMove: a clip text given instead of its file is played", "[combat][measure]") {
+    MeasureRequest Request = makeRequest("jab");
+    const MoveMeasure FromFile = measureMove(Request);
+    // The same text as the file: the same numbers.
+    Request.ClipOverrides = {{"jab", readTextFile(FIGHTER_DATA_DIR "/poses/jab.json")}};
+    const MoveMeasure SameText = measureMove(Request);
+    CHECK(SameText.StartupSec == FromFile.StartupSec);
+    CHECK(SameText.getReachM() == FromFile.getReachM());
+    // A longer clip: a longer move.
+    Request.ClipOverrides = {{"jab", R"({"duration": 1.0, "active": [0.5, 0.6], "strikers": ["ForearmL"],
+        "keys": [{"t": 0.0, "pose": {"UpperArmL": 10}}, {"t": 1.0, "pose": {"UpperArmL": 20}}]})"}};
+    const MoveMeasure Longer = measureMove(Request);
+    CHECK(Longer.getTotalSec() > FromFile.getTotalSec());
 }
 
 TEST_CASE("measureMove: the pelvis travel of a lunge, and the reach with it", "[combat][measure][lunge]") {

@@ -14,6 +14,8 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <map>
 #include <optional>
 #include <string>
 
@@ -21,6 +23,10 @@
 #include "stats/stats.hpp"
 
 namespace fighter::combat {
+
+/// The texts of clip files by clip name (data/poses/<name>.json), used
+/// instead of the files: the pose editor runs a clip it has not saved.
+using ClipTexts = std::map<std::string, std::string, std::less<>>;
 
 struct FighterConfig {
     std::string Name;                 ///< For the HUD, the log and the debug panel.
@@ -51,6 +57,10 @@ struct BattleConfig {
     /// reactions.json, balance.json). It is read when a Battle is created,
     /// so a new Battle picks up edited files (live tuning).
     std::filesystem::path DataDir = "data";
+    /// Clips played instead of their files in DataDir/poses (the pose
+    /// editor's physics preview); empty: every clip from its file. A text is
+    /// parsed like the file (anim::parseClip), an error names the clip.
+    ClipTexts ClipOverrides;
 };
 
 } // namespace fighter::combat

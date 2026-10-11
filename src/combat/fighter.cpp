@@ -323,6 +323,7 @@ void Fighter::fillView(FighterView& View) const {
     View.State = State;
     View.MoveId = getMoveId();
     View.Phase = AttackPhase::None;
+    View.AttackClipSec = getMove() ? AttackTime : 0.0f;
     if (getMove()) {
         View.Phase = AttackTime < AttackClip->ActiveBeginSec ? AttackPhase::Startup
                      : AttackClip->isActiveAt(AttackTime)     ? AttackPhase::Active

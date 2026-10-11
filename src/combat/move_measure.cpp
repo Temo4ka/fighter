@@ -126,11 +126,16 @@ StandSetup prepareStand(const MeasureRequest& Request) {
     Setup.ClipName = Move->getClip(Distance);
 
     for (const std::string& Name : {Move->Clip, Move->CloseClip}) {
-        if (!Name.empty()) addCandidates(Setup.Candidates, anim::loadClip(DataDir / "poses" / (Name + ".json")));
+        if (Name.empty()) continue;
+        const auto Override = Request.ClipOverrides.find(Name);
+        addCandidates(Setup.Candidates, Override != Request.ClipOverrides.end()
+                                            ? anim::parseClip(Override->second, Name)
+                                            : anim::loadClip(DataDir / "poses" / (Name + ".json")));
     }
 
     BattleConfig& Config = Setup.Config;
     Config.DataDir = DataDir;
+    Config.ClipOverrides = Request.ClipOverrides;
     Config.RoundTimeSec = StandRoundSec;
     Config.SpawnDistanceM = Distance;
     Config.Arena.HalfWidthM = std::max(MinArenaHalfWidth, Distance * 0.5f + ArenaMargin);
