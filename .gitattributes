@@ -1,0 +1,3 @@
+# The pose editor writes the clips byte for byte with LF line ends; a CRLF
+# checkout (Windows, core.autocrlf) would differ from what it saves.
+data/poses/*.json text eol=lf

@@ -5,6 +5,7 @@ fighter_add_module(combat
         clip_library.cpp
         data_check.cpp
         fighter.cpp
+        held_items.cpp
         leg_cycle.cpp
         leg_step.cpp
         move_input.cpp
