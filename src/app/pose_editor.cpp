@@ -905,8 +905,6 @@ void PoseEditor::drawFactPanel() {
             }
             ImGui::EndCombo();
         }
-    } else {
-        ImGui::TextDisabled("no move of data/moves plays this clip");
     }
     if (const combat::StandSetup* Setup = Fact->getSetup()) {
         ImGui::Text("move %s (%s), %s", Setup->MoveId.c_str(), Setup->InputText.c_str(),
