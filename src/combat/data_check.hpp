@@ -7,7 +7,7 @@
 /// \file
 /// This file declares checkData(), which loads every file of a data
 /// directory and checks the references between them (docs/DATA_FORMATS.md,
-/// "Проверка данных"), and collects all the problems it finds instead of
+/// section 2), and collects all the problems it finds instead of
 /// stopping at the first: `fighter_app --check-data` prints them.
 ///
 /// The files are read by the same loaders the battle uses, one file at a

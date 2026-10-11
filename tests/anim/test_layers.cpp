@@ -44,7 +44,7 @@ TEST_CASE("Layers: the legs are the thighs, shins and feet", "[anim][layers]") {
 }
 
 TEST_CASE("Layers: which clips of data/poses use the legs", "[anim][layers]") {
-    // The classification the layered walk plays by (docs/TUNING.md): the
+    // The classification the layered walk plays by (docs/MECHANICS.md, section 2.5): the
     // punches, the upper blocks and the reactions leave the legs alone.
     for (const char* Name : {"walk", "kick", "crouch", "crouch_walk", "block_low", "stance"}) {
         INFO(Name);

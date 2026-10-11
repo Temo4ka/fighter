@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares the public API of the combat module
-/// (docs/DEVELOPMENT_PLAN.md, section 4): Battle, which runs one fight. The
+/// (docs/ARCHITECTURE.md, section 1): Battle, which runs one fight. The
 /// configuration, the events and the result have headers of their own
 /// (config.hpp, events.hpp, result.hpp); this one includes them all.
 ///

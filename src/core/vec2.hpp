@@ -9,7 +9,7 @@
 /// the free functions that operate on it (dot, cross, perp, rotate, lerp).
 ///
 /// World space is measured in meters with the Y axis pointing up (see
-/// docs/DEVELOPMENT_PLAN.md, section 3.1). Components are float to match
+/// docs/ARCHITECTURE.md, section 2). Components are float to match
 /// Box2D and SFML without conversions.
 ///
 //===----------------------------------------------------------------------===//

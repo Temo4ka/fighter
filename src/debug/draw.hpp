@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares the debug drawing API that every module may call
-/// (docs/DEVELOPMENT_PLAN.md, section 3.5).
+/// (docs/ARCHITECTURE.md, section 5).
 ///
 /// Coordinates are in world space: meters, Y up. Primitives live until the
 /// start of the next simulation step.

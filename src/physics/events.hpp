@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the physics -> combat contract (docs/DEVELOPMENT_PLAN.md,
-/// section 4): HitEvent, emitted when one body part strikes another,
+/// This file defines the physics -> combat contract (docs/ARCHITECTURE.md,
+/// section 3): HitEvent, emitted when one body part strikes another,
 /// PartRef, which names a body part of a particular fighter, and
 /// PartOverlap, how deep parts of two fighters sink into each other.
 ///

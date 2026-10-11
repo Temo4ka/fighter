@@ -6,8 +6,8 @@
 ///
 /// \file
 /// This file declares the stats and equipment of a fighter and the function
-/// that turns them into physical parameters (docs/DEVELOPMENT_PLAN.md,
-/// section 4, agent E).
+/// that turns them into physical parameters (docs/MECHANICS.md,
+/// section 7).
 ///
 /// Pure logic: no SFML and no Box2D.
 ///

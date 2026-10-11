@@ -10,7 +10,7 @@
 /// part.
 ///
 /// It is private to src/physics/: it includes box2d.h, and Box2D types must
-/// not leak into other modules (docs/DEVELOPMENT_PLAN.md, section 3.1).
+/// not leak into other modules (docs/ARCHITECTURE.md, section 2).
 ///
 //===----------------------------------------------------------------------===//
 

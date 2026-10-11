@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file defines PlayerCommands, the input of one player for one
-/// simulation step (docs/DEVELOPMENT_PLAN.md, section 4 and task 2.0.2), and
+/// simulation step (docs/ARCHITECTURE.md, section 2), and
 /// the rules that read a block zone and crouching out of it (decisions O.1-O.3).
 ///
 /// It is button state ("is it held right now"), not events. A keyboard, a

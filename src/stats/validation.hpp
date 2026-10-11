@@ -70,7 +70,7 @@ inline constexpr float MinWeaponScale = 0.25f;
 inline constexpr float MaxWeaponScale = 4.0f;
 
 /// The total mass of a loadout must not exceed MaxLoadoutMassKg. Large mass
-/// ratios make the ragdoll jitter (docs/DEVELOPMENT_PLAN.md, section 9).
+/// ratios make the ragdoll jitter (docs/DEVELOPMENT_PLAN.md, section 10).
 inline constexpr float MaxLoadoutMassKg = 60.0f;
 
 /// Throws DataError if a stat is out of [MinStatValue, MaxStatValue].

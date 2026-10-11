@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file defines BattleConfig, what the game that starts a fight hands
-/// to it (docs/DEVELOPMENT_PLAN.md, task 2.0.4, decision O.6): both
+/// to it (docs/DEVELOPMENT_PLAN.md, decision O.6): both
 /// fighters' stats, equipment and starting HP, the arena and the round time.
 ///
 //===----------------------------------------------------------------------===//

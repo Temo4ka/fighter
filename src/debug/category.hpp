@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file defines the categories of debug primitives (Cat) and the side a
-/// primitive belongs to (Side), see docs/DEVELOPMENT_PLAN.md, section 3.5.
+/// primitive belongs to (Side), see docs/TOOLS.md, section 3.
 ///
 /// Each category has its own color (debug/palette.hpp) and its own toggle key
 /// in the debug build.

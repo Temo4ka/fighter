@@ -9,7 +9,7 @@
 /// bodies, shapes and joints, steps it and reports hits between body parts.
 ///
 /// Box2D types (b2WorldId, b2Vec2, ...) never leave src/physics/
-/// (docs/DEVELOPMENT_PLAN.md, section 3.1): the rest of the code sees only our
+/// (docs/ARCHITECTURE.md, section 2): the rest of the code sees only our
 /// types, so the engine can be replaced without touching the combat logic.
 ///
 /// No user callbacks run inside step(): hits are collected after the Box2D

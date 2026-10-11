@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares RenderList, the list of generic primitives a frame is
-/// made of (docs/DEVELOPMENT_PLAN.md, "6. C. Render"): sprites, capsules,
+/// made of (docs/ARCHITECTURE.md, section 2): sprites, capsules,
 /// rectangles, circles, bars and text, each on a layer.
 ///
 /// The list knows nothing about the game: buildRenderList() (scene.hpp) turns

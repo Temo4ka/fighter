@@ -208,7 +208,7 @@ Debug-сборка рисует вместо картинок хитбоксы, 
 
 Пути последнего законченного захода остаются на экране, пока следующий не начнёт двигаться.
 Досягаемость считается от таза в начале удара и включает выпад `pelvisX`; с оружием — от острия.
-Настройки стенда — `data/stand.json` ([DATA_FORMATS.md](DATA_FORMATS.md#standjson)).
+Настройки стенда — `data/stand.json` ([DATA_FORMATS.md](DATA_FORMATS.md#15-standjson--стенд-удара)).
 
 **Замер для тестов — `combat::measureMove()`.** Тот же удар без окна:
 `measureMove({.MoveId, .WeaponId, .WithDummy, .DataDir})`. Боец слева с оружием `WeaponId` в основной руке
@@ -418,7 +418,7 @@ FIGHTER_ROOT=$PWD ./build/debug/src/app/fighter_app --pose-editor sword_cut --we
 
 Предупреждения клипа и призрака считаются каждый кадр. Предупреждения факта — раз после правки, прогоном до конца
 удара (≈ 0,4 с в debug); галочка `check the fact (runs the move)` отключает это. Пороги — `data/editor.json`
-([TUNING.md](TUNING.md#13-редактор-поз), [DATA_FORMATS.md](DATA_FORMATS.md#editorjson)).
+([TUNING.md](TUNING.md#17-стенд-и-редактор-поз), [DATA_FORMATS.md](DATA_FORMATS.md#16-editorjson--пороги-редактора-поз)).
 
 ### 7.11. Сравнение
 

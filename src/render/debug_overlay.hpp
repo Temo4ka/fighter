@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares DebugOverlay, the debug layer of the debug build
-/// (docs/DEVELOPMENT_PLAN.md, section 3.5). It draws the primitives of
+/// (docs/ARCHITECTURE.md, section 5). It draws the primitives of
 /// debug::DrawList over the scene or instead of it, and the text panel.
 ///
 /// Built only with FIGHTER_DEBUG=ON.

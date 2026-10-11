@@ -75,7 +75,7 @@ float setJointAngle(anim::Clip& Edited, size_t KeyIndex, BodyPart Part, float An
 
 /// Does the clip key the legs (any of the six leg joints)? Such a clip is a
 /// "leg action": the game poses the legs from it instead of the walk cycle
-/// (docs/TUNING.md, 3b), and an idle stance is the clip the legs rest in.
+/// (docs/MECHANICS.md, section 2.5), and an idle stance is the clip the legs rest in.
 bool isLegClip(const anim::Clip& Edited);
 
 /// Adds all six leg joints to every key of the clip (setJointKeyed()), each

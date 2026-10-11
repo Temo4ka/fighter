@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares the paths of the striking tip that the pose editor
-/// draws (docs/DEVELOPMENT_PLAN.md, step Р.4): the tip of the striking part
+/// draws (docs/TOOLS.md, section 7.9): the tip of the striking part
 /// of the clip for the target (the ghost, sampled over the clip) and for the
 /// fact (the frames of editor/physics_preview.hpp), each point with the clip
 /// time and whether the clip's active phase is on, and findTipSpeed(), the

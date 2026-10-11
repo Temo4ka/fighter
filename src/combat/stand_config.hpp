@@ -7,7 +7,7 @@
 /// \file
 /// This file declares StandConfig, the settings of the move stand and of
 /// measureMove() (combat/move_measure.hpp), read from data/stand.json
-/// (docs/TUNING.md, "Стенд удара"). They set the test fighter and the
+/// (docs/TOOLS.md, section 5). They set the test fighter and the
 /// dummy, where the dummy stands and how long the run waits for what; none
 /// of them is a game rule.
 ///

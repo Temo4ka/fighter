@@ -6,8 +6,8 @@
 ///
 /// \file
 /// This file declares ReactionTable, the rules of data/reactions.json
-/// (docs/DATA_FORMATS.md; decisions O.2, O.4 and the reaction levels of
-/// docs/DEVELOPMENT_PLAN.md, agent D), and resolveHit(), which turns one
+/// (docs/DATA_FORMATS.md; decisions O.2, O.4 of docs/DEVELOPMENT_PLAN.md and the
+/// reaction levels of docs/MECHANICS.md, section 4.3), and resolveHit(), which turns one
 /// landed strike into its strength, damage, reaction level and block.
 ///
 ///   strength = impulse / victim mass x location[part] x (1 - armor[part])

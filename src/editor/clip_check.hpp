@@ -5,8 +5,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file declares the warnings of the pose editor (docs/DEVELOPMENT_PLAN.md,
-/// step Р.4): what is probably wrong with the clip being edited, found by
+/// This file declares the warnings of the pose editor (docs/TOOLS.md,
+/// section 7.10): what is probably wrong with the clip being edited, found by
 /// separate detectors that the window lists and that each give the clip time
 /// where the problem is, so that a click can jump to it.
 ///

@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares render::Camera, the only place in the project where
-/// world coordinates become pixels (docs/DEVELOPMENT_PLAN.md, section 3.1).
+/// world coordinates become pixels (docs/ARCHITECTURE.md, section 2).
 ///
 /// World: meters, Y up, (0, 0) is the arena center at floor level.
 /// Screen: pixels, Y down, (0, 0) is the top-left corner of the window.

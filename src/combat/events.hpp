@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file defines BattleEvent, the things that happened during one step of
-/// a fight (docs/DEVELOPMENT_PLAN.md, task 2.0.1): strikes started and
+/// a fight (docs/ARCHITECTURE.md, section 4): strikes started and
 /// landed, knockdowns, the end of the fight. Battle::getEvents() returns the
 /// events of the last update().
 ///

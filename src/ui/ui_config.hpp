@@ -7,7 +7,7 @@
 /// \file
 /// This file declares UiConfig, the parameters of the screens (timings,
 /// palette, type scale), and their loader. Described in docs/TUNING.md,
-/// section 13.
+/// section 16.
 ///
 //===----------------------------------------------------------------------===//
 
