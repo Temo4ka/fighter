@@ -7,7 +7,7 @@
 /// \file
 /// This file defines RenderSnapshot, the state of a fight as seen by the
 /// renderer, and interpolate(), which blends two snapshots for smooth drawing
-/// between physics steps (docs/DEVELOPMENT_PLAN.md, section 3.4).
+/// between physics steps (docs/ARCHITECTURE.md, section 2).
 ///
 /// The renderer reads only snapshots and knows nothing about physics. The AI
 /// reads them too: what the opponent does and where (task 2.0.1).

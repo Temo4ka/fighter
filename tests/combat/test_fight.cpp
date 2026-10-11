@@ -24,7 +24,7 @@ using namespace fighter::combat;
 using namespace fighter::combat::test;
 using Catch::Approx;
 
-// Scenario tests of the fight of task 2.3 (docs/DEVELOPMENT_PLAN.md, agent D):
+// Scenario tests of the fight (docs/MECHANICS.md, section 4):
 // reaction levels, blocks, stamina, chains, the end of the round. Tests that
 // depend on the thresholds bring their own reaction table, so tuning
 // data/reactions.json does not break them; the ones that check the shipped

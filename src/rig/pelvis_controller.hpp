@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares rig::PelvisController, the character controller of the
-/// hybrid body (docs/DEVELOPMENT_PLAN.md, task 1.5.1): where the pelvis of a
+/// hybrid body (docs/MECHANICS.md, section 1.2): where the pelvis of a
 /// standing fighter is along the arena. The pelvis is a kinematic body, so
 /// this controller, not a force, decides how it moves.
 ///

@@ -8,7 +8,7 @@
 /// This file declares writeClip(), the small writer of the pose editor that
 /// turns an anim::Clip back into the text of a data/poses/*.json file, in the
 /// look the files have, so that saving an edited clip gives a small diff
-/// (docs/DEVELOPMENT_PLAN.md, track "Редактор поз"). nlohmann::json::dump()
+/// (docs/TOOLS.md, section 7.15). nlohmann::json::dump()
 /// cannot do it: it sorts or spreads the keys as it likes.
 ///
 /// The look:

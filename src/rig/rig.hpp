@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares rig::Rig, the hybrid body of a fighter
-/// (docs/DEVELOPMENT_PLAN.md, phase 1.5): one rigid body per body part and
+/// (docs/MECHANICS.md, section 1): one rigid body per body part and
 /// revolute joints between them, split in two by the rig file:
 ///  - kinematic parts (the pelvis and the legs) are moved by code. The
 ///    pelvis follows the PelvisController (walking, knockback, a clip's

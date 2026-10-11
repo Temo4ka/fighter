@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file defines BattleResult, what a finished fight hands back to the
-/// game that started it (docs/DEVELOPMENT_PLAN.md, task 2.0.4, decision O.6):
+/// game that started it (docs/DEVELOPMENT_PLAN.md, decision O.6):
 /// the winner, the health left, the hits taken per body part and the strike
 /// statistics.
 ///

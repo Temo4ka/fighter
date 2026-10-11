@@ -6,7 +6,7 @@
 ///
 /// \file
 /// This file declares PhysicsPreview, the "fact" layer of the pose editor
-/// (docs/DEVELOPMENT_PLAN.md, track "Редактор поз", step Р.3): the clip being
+/// (docs/TOOLS.md, section 7.7): the clip being
 /// edited played by the real physics of the move stand, to be drawn over the
 /// ghost (the target), and compareToTarget(), how far the fact is from it.
 ///

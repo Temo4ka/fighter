@@ -6,8 +6,8 @@
 ///
 /// \file
 /// This file declares rig::ContactResolver, the one place that keeps two
-/// fighters from passing through each other (docs/ARCHITECTURE.md, "Контакт
-/// двух бойцов"). The battle owns one and calls its stages in this order
+/// fighters from passing through each other (docs/MECHANICS.md,
+/// section 5). The battle owns one and calls its stages in this order
 /// every step:
 ///  1. beforeStep(), after both rigs planned their pelvis motion and before
 ///     Rig::applyControl: the walls, a fighter lying on the floor and the

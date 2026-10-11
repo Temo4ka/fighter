@@ -120,7 +120,7 @@ private:
     /// "skins"; empty: its default_skin.
     std::array<std::string, 2> Skins;
     /// The events of each step go out through this signal (docs/ARCHITECTURE.md,
-    /// "События"); the second argument is the snapshot after the step.
+    /// section 4); the second argument is the snapshot after the step.
     Signal<const combat::BattleEvent&, const combat::RenderSnapshot&> BattleEvents;
     Connection RendererEvents;
 

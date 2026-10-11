@@ -7,7 +7,7 @@
 /// \file
 /// This file declares InputSystem, which turns keyboard events into
 /// PlayerCommands for two players sharing one keyboard
-/// (docs/DEVELOPMENT_PLAN.md, task 0.7).
+/// (README.md, controls; docs/ARCHITECTURE.md, section 2).
 ///
 /// The system keeps the "is the key held" state from press and release events
 /// and builds PlayerCommands from it once per simulation step. Bindings use

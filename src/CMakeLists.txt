@@ -1,5 +1,5 @@
 # The order only matters for readability: dependencies go top-down
-# (docs/DEVELOPMENT_PLAN.md, section 4).
+# (docs/ARCHITECTURE.md, section 1).
 add_subdirectory(core)
 add_subdirectory(debug)
 add_subdirectory(physics)

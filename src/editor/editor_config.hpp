@@ -7,7 +7,7 @@
 /// \file
 /// This file declares EditorConfig, the thresholds of the warnings and the
 /// sampling step of the trajectories of the pose editor, read from
-/// data/editor.json (docs/TUNING.md, section 15). They are checking aids, not
+/// data/editor.json (docs/TUNING.md, section 17). They are checking aids, not
 /// game rules: nothing in a battle reads them.
 ///
 /// \code

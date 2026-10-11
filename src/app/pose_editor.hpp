@@ -9,7 +9,7 @@
 /// (fighter_app --pose-editor [<clip>] [--weapon <item>], debug build only).
 ///
 /// The editor edits the clips of data/poses/ with Dear ImGui panels over a
-/// scene (docs/DEVELOPMENT_PLAN.md, track "Редактор поз"). Step Р.1: the
+/// scene (docs/TOOLS.md, section 7). Step Р.1: the
 /// ghost, the target pose of the clip posed by forward kinematics without
 /// physics, with the held item; a time slider; sliders for the angles of the
 /// selected key; keys and clip fields; saving. Step Р.2: the mouse turns a
@@ -33,7 +33,7 @@
 /// key's pose and the onion skin (editor/pose_ops.hpp), the
 /// hotkeys with the Help panel, a new clip from a template
 /// (editor/new_clip.hpp).
-/// Controls are described in docs/TUNING.md.
+/// Controls are described in docs/TOOLS.md, section 7.
 ///
 //===----------------------------------------------------------------------===//
 

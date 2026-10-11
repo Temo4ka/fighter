@@ -6,8 +6,8 @@
 ///
 /// \file
 /// This file declares FixedStepLoop, the accumulator that turns variable frame
-/// times into simulation steps of constant length (docs/DEVELOPMENT_PLAN.md,
-/// section 3.2).
+/// times into simulation steps of constant length (docs/ARCHITECTURE.md,
+/// section 2).
 ///
 /// Physics always receives the same dt, so the simulation does not depend on
 /// frame rate and is reproducible. The loop also implements the debug time
