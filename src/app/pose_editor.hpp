@@ -29,8 +29,8 @@
 /// tip for the ghost and the fact, the Warnings panel and a faint second
 /// clip to compare with (editor/metrics.hpp, trajectory.hpp, clip_check.hpp).
 /// Step Р.5: undo/redo of whole-clip snapshots (editor/clip_history.hpp, a
-/// step is committed when a drag or a slider is released), copy/paste and
-/// mirror of a key's pose and the onion skin (editor/pose_ops.hpp), the
+/// step is committed when a drag or a slider is released), copy/paste of a
+/// key's pose and the onion skin (editor/pose_ops.hpp), the
 /// hotkeys with the Help panel, a new clip from a template
 /// (editor/new_clip.hpp).
 /// Controls are described in docs/TUNING.md.
@@ -164,8 +164,6 @@ private:
     void restoreClip(const anim::Clip& Restored, const char* What);
     void copyKeyPose();
     void pasteKeyPose();
-    void mirrorSelectedKey();
-    void mirrorWholeClip();
     /// The key \p Direction (+1 / -1) after the selected one, if there is one.
     void stepKey(int Direction);
     void addKeyHere();

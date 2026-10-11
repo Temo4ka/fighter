@@ -4,7 +4,6 @@
 #include <filesystem>
 
 #include "anim/clip.hpp"
-#include "anim/layers.hpp"
 #include "editor/clip_history.hpp"
 #include "editor/pose_fk.hpp"
 #include "editor/clip_writer.hpp"
@@ -87,63 +86,6 @@ TEST_CASE("Paste keeps the angles within the limits", "[editor][pose_ops]") {
     CHECK(Edited.Keys[1].Target.WeaponAngle <= getWristRange(Def).Upper + 1e-5f);
     CHECK(pasteKeyPose(Edited, 9, Copied, Def) == 0);
     CHECK(copyKeyPose(Edited, 9).Mask.none());
-}
-
-TEST_CASE("Mirroring a key swaps the arms and the legs and keeps the wrist", "[editor][pose_ops]") {
-    anim::Clip Edited = makeClip();
-    CHECK(mirrorKey(Edited, 0) == 0);
-    CHECK(getDegrees(Edited, 0, BodyPart::UpperArmL) == Approx(30.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::UpperArmR) == Approx(10.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::ForearmL) == Approx(40.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::ForearmR) == Approx(20.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::ThighL) == Approx(-5.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::ThighR) == Approx(5.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::FootL) == Approx(9.0f).margin(0.01));
-    CHECK(getDegrees(Edited, 0, BodyPart::Torso) == Approx(3.0f).margin(0.01));
-    CHECK(Edited.Keys[0].Target.WeaponAngle == Approx(makeClip().Keys[0].Target.WeaponAngle));
-    // Other keys and the strikers are not touched.
-    CHECK(getDegrees(Edited, 1, BodyPart::ForearmR) == Approx(80.0f).margin(0.01));
-    CHECK(Edited.isStriker(BodyPart::ForearmR));
-    CHECK(findClipProblem(Edited).empty());
-}
-
-TEST_CASE("Mirroring a key twice is the identity", "[editor][pose_ops]") {
-    anim::Clip Edited = makeClip();
-    mirrorKey(Edited, 1);
-    CHECK_FALSE(isSameClip(Edited, makeClip()));
-    mirrorKey(Edited, 1);
-    CHECK(isSameClip(Edited, makeClip()));
-}
-
-TEST_CASE("Mirroring a key leaves a pair that only one side keys", "[editor][pose_ops]") {
-    anim::Clip Edited = anim::parseClip(R"({ "duration": 0.5, "keys": [
-        { "t": 0, "pose": { "ForearmL": 10, "UpperArmL": 20, "UpperArmR": 30 } } ] })", "one");
-    CHECK(mirrorKey(Edited, 0) == 1);
-    CHECK(getDegrees(Edited, 0, BodyPart::ForearmL) == Approx(10.0f).margin(0.01));
-    CHECK_FALSE(Edited.Keys[0].Target.hasJoint(BodyPart::ForearmR));
-    CHECK(getDegrees(Edited, 0, BodyPart::UpperArmL) == Approx(30.0f).margin(0.01));
-    CHECK(findClipProblem(Edited).empty());
-    CHECK(mirrorKey(Edited, 5) == 0);
-}
-
-TEST_CASE("Mirroring a clip swaps the strikers too and twice is the identity", "[editor][pose_ops]") {
-    anim::Clip Edited = makeClip();
-    mirrorClip(Edited);
-    CHECK(Edited.isStriker(BodyPart::ForearmL));
-    CHECK_FALSE(Edited.isStriker(BodyPart::ForearmR));
-    for (size_t Key = 0; Key < Edited.Keys.size(); ++Key) {
-        CHECK(getDegrees(Edited, Key, BodyPart::ForearmL) == Approx(getDegrees(makeClip(), Key, BodyPart::ForearmR)).margin(0.01));
-    }
-    CHECK(findClipProblem(Edited).empty());
-    mirrorClip(Edited);
-    CHECK(isSameClip(Edited, makeClip()));
-
-    // The clip that the game plays for the other hand has the arms of the mirror.
-    const anim::Clip Played = anim::mirrorClipArms(makeClip());
-    anim::Clip OnlyArms = makeClip();
-    mirrorClip(OnlyArms);
-    CHECK(OnlyArms.Strikers == Played.Strikers);
-    CHECK(OnlyArms.Keys[1].Target.getAngle(BodyPart::ForearmL) == Played.Keys[1].Target.getAngle(BodyPart::ForearmL));
 }
 
 TEST_CASE("Onion keys are the nearest neighbours on both sides", "[editor][pose_ops]") {

@@ -1,24 +1,10 @@
 #include "editor/pose_ops.hpp"
 
 #include <algorithm>
-#include <array>
-#include <utility>
 
-#include "anim/layers.hpp"
 #include "editor/clip_edit.hpp"
 
 namespace fighter::editor {
-namespace {
-
-/// The pairs of joints that mirroring swaps: arms, then legs.
-constexpr std::array MirrorPairs = {std::pair(BodyPart::UpperArmL, BodyPart::UpperArmR),
-                                    std::pair(BodyPart::ForearmL, BodyPart::ForearmR),
-                                    std::pair(BodyPart::ThighL, BodyPart::ThighR),
-                                    std::pair(BodyPart::ShinL, BodyPart::ShinR),
-                                    std::pair(BodyPart::FootL, BodyPart::FootR)};
-
-} // namespace
-
 anim::Pose copyKeyPose(const anim::Clip& Source, size_t Index) {
     if (Index >= Source.Keys.size()) return {};
     return Source.Keys[Index].Target;
@@ -40,30 +26,6 @@ size_t pasteKeyPose(anim::Clip& Edited, size_t Index, const anim::Pose& Copied, 
         ++Written;
     }
     return Written;
-}
-
-size_t mirrorKey(anim::Clip& Edited, size_t Index) {
-    if (Index >= Edited.Keys.size()) return 0;
-    anim::Pose& Target = Edited.Keys[Index].Target;
-    size_t Skipped = 0;
-    for (const auto& [Left, Right] : MirrorPairs) {
-        const bool HasLeft = Target.hasJoint(Left);
-        const bool HasRight = Target.hasJoint(Right);
-        if (HasLeft != HasRight) {
-            ++Skipped;
-            continue;
-        }
-        if (!HasLeft) continue;
-        const float LeftAngle = Target.getAngle(Left);
-        Target.setAngle(Left, Target.getAngle(Right));
-        Target.setAngle(Right, LeftAngle);
-    }
-    return Skipped;
-}
-
-void mirrorClip(anim::Clip& Edited) {
-    for (auto& Key : Edited.Keys) Key.Target = anim::mirrorLegs(anim::mirrorArms(Key.Target));
-    Edited.Strikers = anim::mirrorArmParts(Edited.Strikers);
 }
 
 OnionKeys findOnionKeys(const anim::Clip& Source, size_t Selected, size_t Count) {

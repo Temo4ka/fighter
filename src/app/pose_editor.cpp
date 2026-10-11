@@ -95,7 +95,6 @@ constexpr std::array<std::pair<const char*, const char*>, 18> HotkeyHelp = {{
     {"Ctrl+Z", "undo"},
     {"Ctrl+Shift+Z, Ctrl+Y", "redo"},
     {"Ctrl+C / Ctrl+V", "copy / paste the pose of the key"},
-    {"M", "mirror the key: left <-> right"},
     {"Left / Right", "previous / next key"},
     {"K or Insert", "add a key at the time"},
     {"Delete", "delete the selected key"},
@@ -288,7 +287,6 @@ int PoseEditor::run() {
             if (Command && ImGui::IsKeyPressed(ImGuiKey_Y)) redoEdit();
             if (Command && ImGui::IsKeyPressed(ImGuiKey_C, false)) copyKeyPose();
             if (Command && ImGui::IsKeyPressed(ImGuiKey_V, false)) pasteKeyPose();
-            if (Plain && ImGui::IsKeyPressed(ImGuiKey_M, false)) mirrorSelectedKey();
             if (Plain && ImGui::IsKeyPressed(ImGuiKey_O, false)) ShowOnion = !ShowOnion;
             if (Plain && ImGui::IsKeyPressed(ImGuiKey_F1, false)) ShowHelp = !ShowHelp;
             if (Plain && ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) stepKey(-1);
@@ -600,20 +598,6 @@ void PoseEditor::pasteKeyPose() {
     markEdited();
 }
 
-void PoseEditor::mirrorSelectedKey() {
-    const size_t Skipped = editor::mirrorKey(Edit, SelectedKey);
-    Status = Skipped == 0 ? std::format("mirrored key {}: left <-> right", SelectedKey)
-                          : std::format("mirrored key {}; {} pairs left alone (the clip keys one side only)", SelectedKey,
-                                        Skipped);
-    markEdited();
-}
-
-void PoseEditor::mirrorWholeClip() {
-    editor::mirrorClip(Edit);
-    Status = "mirrored the whole clip: arms, legs and strikers";
-    markEdited();
-}
-
 void PoseEditor::stepKey(int Direction) {
     if (Direction < 0 && SelectedKey > 0) {
         selectKey(SelectedKey - 1);
@@ -834,12 +818,6 @@ void PoseEditor::drawClipPanel() {
         ImGui::PopID();
     }
 
-    if (ImGui::Button("mirror the whole clip (arms, legs, strikers)")) mirrorWholeClip();
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("every key: left <-> right arms and legs, and the strikers.\n"
-                          "The clip then is the one the game plays for the other hand.\n"
-                          "One key: M in the Key panel.");
-    }
     if (ImGui::CollapsingHeader("strikers")) {
         for (size_t Index = 0; Index < BodyPartCount; ++Index) {
             const auto Part = static_cast<BodyPart>(Index);
@@ -1020,12 +998,6 @@ void PoseEditor::drawKeyPanel() {
     ImGui::BeginDisabled(!CopiedPose);
     if (ImGui::Button("paste (Ctrl+V)")) pasteKeyPose();
     ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("mirror (M)")) mirrorSelectedKey();
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("swaps the left and right arm and leg joints of this key\n"
-                          "(the wrist and the strikers stay; the strikers: Clip panel)");
-    }
     ImGui::Checkbox("onion skin (O)", &ShowOnion);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(60.0f);
