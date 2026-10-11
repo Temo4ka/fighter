@@ -1021,7 +1021,7 @@ void PoseEditor::drawKeyPanel() {
     if (ImGui::Button("paste (Ctrl+V)")) pasteKeyPose();
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("mirror L<->R (M)")) mirrorSelectedKey();
+    if (ImGui::Button("mirror (M)")) mirrorSelectedKey();
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("swaps the left and right arm and leg joints of this key\n"
                           "(the wrist and the strikers stay; the strikers: Clip panel)");
