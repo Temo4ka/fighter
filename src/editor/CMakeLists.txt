@@ -6,15 +6,18 @@ fighter_add_module(editor
         arm_ik.cpp
         arm_roles.cpp
         clip_edit.cpp
+        clip_history.cpp
         clip_writer.cpp
         catalog.cpp
         clip_check.cpp
         editor_config.cpp
         ghost.cpp
         metrics.cpp
+        new_clip.cpp
         pose_drag.cpp
         physics_preview.cpp
         pose_fk.cpp
+        pose_ops.cpp
         trajectory.cpp
     PUBLIC_DEPS
         fighter::core

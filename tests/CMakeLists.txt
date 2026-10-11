@@ -31,6 +31,9 @@ add_executable(fighter_tests
     editor/test_trajectory.cpp
     editor/test_metrics.cpp
     editor/test_clip_check.cpp
+    editor/test_clip_history.cpp
+    editor/test_pose_ops.cpp
+    editor/test_new_clip.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp
     stats/test_equipment.cpp
