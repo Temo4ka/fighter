@@ -1,6 +1,7 @@
 #include "editor/clip_check.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <numbers>
 
@@ -22,6 +23,9 @@ struct LimitHit {
 
 /// Is \p AngleRad within \p MarginDeg of a limit of \p Range, or past it?
 bool isAtLimit(float AngleRad, AngleRange Range, float MarginDeg);
+/// Is \p Part an elbow or a knee held straight: at its limit of 0? A straight
+/// arm or leg is a usual pose, not a slip past the limits.
+bool isStraightLimb(BodyPart Part, float AngleRad, AngleRange Range, float MarginDeg);
 
 } // namespace
 
@@ -56,6 +60,7 @@ std::vector<ClipWarning> findJointLimitWarnings(const rig::RigDef& Rig, const an
             const AngleRange Range = getJointRange(Rig, Joint.Child);
             const float Angle = Key.Target.getAngle(Joint.Child);
             if (!isAtLimit(Angle, Range, Config.LimitMarginDeg)) continue;
+            if (isStraightLimb(Joint.Child, Angle, Range, Config.LimitMarginDeg)) continue;
             Hits.push_back({.Name = std::string(getBodyPartName(Joint.Child)),
                             .AngleDeg = Angle * DegreesPerRadian,
                             .LowerDeg = Range.Lower * DegreesPerRadian,
@@ -150,6 +155,15 @@ namespace {
 bool isAtLimit(float AngleRad, AngleRange Range, float MarginDeg) {
     const float MarginRad = MarginDeg / DegreesPerRadian;
     return AngleRad <= Range.Lower + MarginRad || AngleRad >= Range.Upper - MarginRad;
+}
+
+bool isStraightLimb(BodyPart Part, float AngleRad, AngleRange Range, float MarginDeg) {
+    const bool BendsAtMiddle = Part == BodyPart::ForearmL || Part == BodyPart::ForearmR ||
+                               Part == BodyPart::ShinL || Part == BodyPart::ShinR;
+    if (!BendsAtMiddle) return false;
+    const float MarginRad = MarginDeg / DegreesPerRadian;
+    const float StraightBound = std::abs(Range.Lower) < std::abs(Range.Upper) ? Range.Lower : Range.Upper;
+    return std::abs(StraightBound) <= MarginRad && std::abs(AngleRad - StraightBound) <= MarginRad;
 }
 
 } // namespace

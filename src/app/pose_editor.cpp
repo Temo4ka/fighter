@@ -35,6 +35,7 @@
 #include "anim/playback.hpp"
 #include "combat/clip_library.hpp"
 #include "core/log.hpp"
+#include "render/assets.hpp"
 #include "editor/arm_roles.hpp"
 #include "editor/clip_edit.hpp"
 #include "editor/clip_writer.hpp"
@@ -49,9 +50,13 @@ constexpr sf::Vector2u WindowSize = {1600, 900};
 constexpr float DegreesPerRadian = 180.0f / std::numbers::pi_v<float>;
 constexpr float RadiansPerDegree = std::numbers::pi_v<float> / 180.0f;
 /// Room left on the left for the panels, px, and under and over the body.
-constexpr float PanelColumnWidth = 690.0f;
+// The panels and their text are drawn this much smaller than ImGui's
+// default, so they leave room for the figure.
+constexpr float UiScale = 0.85f;
+constexpr float UiFontPx = 12.0f;
+constexpr float PanelColumnWidth = 690.0f * UiScale;
 constexpr float FloorMargin = 90.0f;
-constexpr float HeadroomM = 1.95f;
+constexpr float HeadroomM = 2.3f;
 /// The preview speed: its range and the presets of the Timeline panel.
 constexpr float MinPlaySpeed = 0.05f;
 constexpr float MaxPlaySpeed = 1.0f;
@@ -103,6 +108,7 @@ std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool Played
 /// "Torso", or "weapon arm: forearm" (and the joint of the file) for an arm joint.
 std::string getJointLabel(BodyPart Joint, BodyPart MainHand, bool PlayedOtherHand);
 View makeView(sf::Vector2u Size);
+void useSmallerUi(const std::filesystem::path& Root);
 sf::Vector2f toScreen(const View& Scene, Vec2 Point);
 Vec2 fromScreen(const View& Scene, ImVec2 Pixel);
 /// The handles of the ghost: the fists that can be moved and the blade tip.
@@ -202,12 +208,13 @@ int PoseEditor::run() {
 
     sf::RenderWindow Window(sf::VideoMode(WindowSize), "Fighter pose editor");
     Window.setVerticalSyncEnabled(true);
-    if (!ImGui::SFML::Init(Window)) {
+    if (!ImGui::SFML::Init(Window, false)) {
         log::error("cannot start Dear ImGui");
         return EXIT_FAILURE;
     }
     // The layout of the panels is not saved between runs.
     ImGui::GetIO().IniFilename = nullptr;
+    useSmallerUi(Opts.Root);
 
     sf::Clock Clock;
     int Frame = 0;
@@ -535,8 +542,8 @@ void PoseEditor::drawPanels() {
 }
 
 void PoseEditor::drawClipPanel() {
-    ImGui::SetNextWindowPos({8.0f, 8.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({362.0f, ImGui::GetIO().DisplaySize.y - 350.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({8.0f * UiScale, 8.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({362.0f * UiScale, ImGui::GetIO().DisplaySize.y - 350.0f * UiScale}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Clip");
     const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
     ImGui::Text("%s%s", ClipName.c_str(), Edited ? "  (unsaved)" : "");
@@ -692,8 +699,8 @@ void PoseEditor::drawClipPanel() {
 
 void PoseEditor::drawTimelinePanel() {
     const ImVec2 Screen = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowPos({8.0f, Screen.y - 330.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({PanelColumnWidth - 16.0f, 322.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({8.0f * UiScale, Screen.y - 330.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({PanelColumnWidth - 16.0f * UiScale, 322.0f * UiScale}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Timeline");
     ImGui::Checkbox("play", &Playing);
     ImGui::SameLine();
@@ -773,8 +780,8 @@ void PoseEditor::drawTimelinePanel() {
 }
 
 void PoseEditor::drawKeyPanel() {
-    ImGui::SetNextWindowPos({378.0f, 8.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({304.0f, ImGui::GetIO().DisplaySize.y - 350.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({378.0f * UiScale, 8.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({304.0f * UiScale, ImGui::GetIO().DisplaySize.y - 350.0f * UiScale}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Key");
     anim::Keyframe& Key = Edit.Keys[SelectedKey];
     ImGui::Text("key %zu at %.3f s", SelectedKey, Key.TimeSec);
@@ -827,8 +834,8 @@ void PoseEditor::drawKeyPanel() {
 
 void PoseEditor::drawOpenPanel() {
     const ImVec2 Screen = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowPos({Screen.x - 298.0f, 8.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({290.0f, 400.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({Screen.x - 298.0f * UiScale, 8.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({290.0f * UiScale, 400.0f * UiScale}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Open");
     // The choice is made after the lists are drawn: opening replaces them.
     std::optional<Selection> Chosen;
@@ -917,8 +924,8 @@ void PoseEditor::drawUnsavedPopup() {
 
 void PoseEditor::drawFactPanel() {
     const ImVec2 Screen = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowPos({Screen.x - 378.0f, Screen.y - 298.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({370.0f, 290.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({Screen.x - 378.0f * UiScale, Screen.y - 298.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({370.0f * UiScale, 290.0f * UiScale}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Fact");
     ImGui::Checkbox("ghost", &ShowGhost);
     ImGui::SameLine();
@@ -1088,8 +1095,8 @@ void PoseEditor::updateAnalysis() {
 
 void PoseEditor::drawMetricsPanel() {
     if (!ShowMetrics) return;
-    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f, 8.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({390.0f, 300.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f * UiScale, 8.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({390.0f * UiScale, 300.0f * UiScale}, ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Metrics", &ShowMetrics)) {
         ImGui::End();
         return;
@@ -1148,8 +1155,8 @@ void PoseEditor::drawMetricsPanel() {
 
 void PoseEditor::drawWarningsPanel() {
     if (!ShowWarnings) return;
-    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f, 316.0f}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({390.0f, 190.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowPos({PanelColumnWidth + 6.0f * UiScale, 316.0f * UiScale}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({390.0f * UiScale, 190.0f * UiScale}, ImGuiCond_FirstUseEver);
     const size_t Count = ClipWarnings.size() + FactWarnings.size();
     const std::string Title = std::format("Warnings ({})###Warnings", Count);
     if (!ImGui::Begin(Title.c_str(), &ShowWarnings)) {
@@ -1313,6 +1320,19 @@ std::string getJointLabel(BodyPart Joint, BodyPart MainHand, bool PlayedOtherHan
     if (!Role) return std::string(getBodyPartName(Joint));
     return std::format("{} arm: {}", *Role == editor::ArmRole::Weapon ? "weapon" : "other",
                        Segment == editor::ArmSegment::Upper ? "upper arm" : "forearm");
+}
+
+/// The project's mono font at UiFontPx (the built-in one when the file is
+/// missing) and the ImGui sizes scaled by UiScale.
+void useSmallerUi(const std::filesystem::path& Root) {
+    ImGuiIO& IO = ImGui::GetIO();
+    const std::string FontPath = (Root / render::assets::MonoFontPath).string();
+    if (!IO.Fonts->AddFontFromFileTTF(FontPath.c_str(), UiFontPx)) {
+        log::warn("no font {}, the editor uses the built-in one", FontPath);
+        IO.Fonts->AddFontDefault();
+    }
+    if (!ImGui::SFML::UpdateFontTexture()) log::warn("cannot build the editor font texture");
+    ImGui::GetStyle().ScaleAllSizes(UiScale);
 }
 
 View makeView(sf::Vector2u Size) {

@@ -114,10 +114,14 @@ TEST_CASE("findJointLimitWarnings: a key at or past a limit, not one well inside
     CHECK(Warnings[0].Part == BodyPart::ForearmL);
     CHECK_THAT(Warnings[0].Text, ContainsSubstring("ForearmL"));
 
-    Clip.Keys[1].Target.setAngle(BodyPart::ForearmL, Elbow.Lower);   // exactly at it
+    Clip.Keys[1].Target.setAngle(BodyPart::ForearmL, Elbow.Upper);   // exactly at it
     CHECK(findJointLimitWarnings(Context.Rig, Clip, Config).size() == 1);
+    // A straight elbow sits at its limit of 0: a usual pose, no warning.
+    REQUIRE(Elbow.Lower == 0.0f);
+    Clip.Keys[1].Target.setAngle(BodyPart::ForearmL, Elbow.Lower);
+    CHECK(findJointLimitWarnings(Context.Rig, Clip, Config).empty());
     // Just inside, outside the margin (1 degree).
-    Clip.Keys[1].Target.setAngle(BodyPart::ForearmL, Elbow.Lower + 0.1f);
+    Clip.Keys[1].Target.setAngle(BodyPart::ForearmL, Elbow.Upper - 0.1f);
     CHECK(findJointLimitWarnings(Context.Rig, Clip, Config).empty());
     // A wider margin catches it.
     EditorConfig Wide;
