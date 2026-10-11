@@ -24,6 +24,10 @@
 /// What is edited is chosen in the window itself (the "Open" panel: a
 /// fighter, a clip, an item, the move of the fact), the command line only
 /// makes the first choice.
+/// Step Р.4: the Metrics panel (the move stand's measure of the clip, with
+/// and without the dummy, and of a second clip), the paths of the striking
+/// tip for the ghost and the fact, the Warnings panel and a faint second
+/// clip to compare with (editor/metrics.hpp, trajectory.hpp, clip_check.hpp).
 /// Controls are described in docs/TUNING.md.
 ///
 //===----------------------------------------------------------------------===//
@@ -44,8 +48,11 @@
 #include "core/vec2.hpp"
 #include "editor/arm_ik.hpp"
 #include "editor/catalog.hpp"
+#include "editor/clip_check.hpp"
+#include "editor/editor_config.hpp"
 #include "editor/ghost.hpp"
 #include "editor/physics_preview.hpp"
+#include "editor/trajectory.hpp"
 #include "editor/pose_fk.hpp"
 #include "stats/equipment.hpp"
 
@@ -117,6 +124,18 @@ private:
     void drawTimelinePanel();
     void drawKeyPanel();
     void drawFactPanel();
+    void drawMetricsPanel();
+    void drawWarningsPanel();
+    /// Recomputes the paths and the warnings that the edits and the fact
+    /// changed: the cheap ones every frame, those that run the whole move
+    /// once per change of the fact.
+    void updateAnalysis();
+    /// Loads \p Name of the clips as the clip to compare with ("" : none).
+    void setCompare(const std::string& Name);
+    /// Is the striking tip the weapon's? (A weapon move with a weapon held.)
+    bool isWeaponTipped() const;
+    /// Jumps the time to \p Seconds of the clip.
+    void jumpTo(float Seconds);
     /// Hands the clip to the fact layer, unless the mouse or a panel widget
     /// is in the middle of an edit (the fact runs again once it is done).
     void updateFact();
@@ -176,6 +195,31 @@ private:
     /// any other way shows the frame of that time again.
     std::optional<size_t> FactStep;
     float FactStepTimeSec = 0.0f;
+    /// Step Р.4. The thresholds (data/editor.json), read when a clip is opened.
+    editor::EditorConfig Config;
+    bool ShowGhostPath = true;
+    bool ShowFactPath = true;
+    bool ShowComparePath = true;
+    bool ShowMetrics = true;
+    bool ShowWarnings = true;
+    /// Run the whole move to look for the fact's warnings (about 0.4 s in
+    /// the debug build after each edit).
+    bool CheckFact = true;
+    std::optional<editor::TipPath> GhostPath;
+    std::optional<editor::TipPath> FactPath;
+    std::optional<editor::TipPath> ComparePath;
+    std::vector<editor::ClipWarning> ClipWarnings;   ///< Of the clip and the ghost.
+    std::vector<editor::ClipWarning> FactWarnings;   ///< Of the fact.
+    /// What the fact path and warnings were computed for: the preview's
+    /// revision and the toggles; none yet.
+    std::optional<size_t> FactAnalysisKey;
+    /// The measure with the other dummy setting was asked for (the
+    /// revision of the fact it was asked at).
+    std::optional<size_t> OtherMeasureRevision;
+    /// The clip to compare with, its ghost (faint), path and metrics.
+    std::string CompareName;
+    std::optional<anim::Clip> CompareClip;
+    std::optional<editor::PhysicsPreview> CompareFact;
     /// Where the ghost's pelvis is at the start of the clip, m along the
     /// floor: the fact's pelvis starts there.
     float GhostStartX = 0.0f;

@@ -48,9 +48,6 @@ std::optional<Resolved> resolveWeapon(const MoveLibrary& Library, const stats::I
 PlayerCommands makeCommands(const MoveInput& Input);
 BodyPart getMirroredPart(BodyPart Part);
 void addCandidates(std::vector<BodyPart>& Candidates, const anim::Clip& Source);
-/// The working end of the weapon \p Part holds in \p Fighter (the far end of
-/// its body, FighterView::Weapons); nullopt if it holds none.
-std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part);
 
 } // namespace
 
@@ -65,6 +62,12 @@ Vec2 getPartTip(const PartTransform& Part, Vec2 Pelvis, float WeaponReachM) {
     const Vec2 B = Part.Position - Half;
     const bool UseA = (A - Pelvis).getLengthSquared() >= (B - Pelvis).getLengthSquared();
     return (UseA ? A : B) + (UseA ? Axis : -Axis) * WeaponReachM;
+}
+
+std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part) {
+    const auto Found = std::ranges::find(Fighter.Weapons, Part, &PartTransform::Part);
+    if (Found == Fighter.Weapons.end()) return std::nullopt;
+    return Found->Position + rotate({0.0f, -1.0f}, Found->Angle) * (Found->Size.Y * 0.5f);
 }
 
 StandSetup prepareStand(const MeasureRequest& Request) {
@@ -461,12 +464,6 @@ void addCandidates(std::vector<BodyPart>& Candidates, const anim::Clip& Source) 
             if (std::ranges::find(Candidates, Each) == Candidates.end()) Candidates.push_back(Each);
         }
     }
-}
-
-std::optional<Vec2> findWeaponTip(const FighterView& Fighter, BodyPart Part) {
-    const auto Found = std::ranges::find(Fighter.Weapons, Part, &PartTransform::Part);
-    if (Found == Fighter.Weapons.end()) return std::nullopt;
-    return Found->Position + rotate({0.0f, -1.0f}, Found->Angle) * (Found->Size.Y * 0.5f);
 }
 
 } // namespace

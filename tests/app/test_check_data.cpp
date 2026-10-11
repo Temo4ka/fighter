@@ -30,3 +30,18 @@ TEST_CASE("runDataCheck: a broken file is printed with its name and exits non-ze
     CHECK(Out.str().find("1 problem") != std::string::npos);
     std::filesystem::remove_all(Root);
 }
+
+TEST_CASE("runDataCheck: a broken editor.json is reported with the file and the key", "[app][data_check]") {
+    const combat::test::ScratchData Data("cli_check_editor");
+    Data.write("editor.json", R"({"divergence_dg": 20})");
+    const std::filesystem::path Root = Data.getDir().string() + "_root";
+    std::filesystem::remove_all(Root);
+    std::filesystem::create_directories(Root);
+    std::filesystem::copy(Data.getDir(), Root / "data", std::filesystem::copy_options::recursive);
+
+    std::ostringstream Out;
+    CHECK(app::runDataCheck(Root, Out) != 0);
+    CHECK(Out.str().find("editor.json: ") != std::string::npos);
+    CHECK(Out.str().find("unknown field 'divergence_dg'") != std::string::npos);
+    std::filesystem::remove_all(Root);
+}

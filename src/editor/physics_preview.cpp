@@ -43,6 +43,7 @@ bool PhysicsPreview::setClip(const anim::Clip& Edited) {
     std::string Text = writeClip(Edited);
     if (Text == ClipText) return false;
     ClipText = std::move(Text);
+    ClipCopy = Edited;
     invalidate();
     return true;
 }
@@ -77,9 +78,27 @@ const FactFrame* PhysicsPreview::getFrame(size_t Index) {
     return Index < Frames.size() ? &Frames[Index] : nullptr;
 }
 
+const combat::MoveMeasure* PhysicsPreview::getMeasure() {
+    while (!Complete && computeNext()) {
+    }
+    return Run ? &Run->getMeasure() : nullptr;
+}
+
+const combat::MoveMeasure* PhysicsPreview::getMeasureWith(bool WithDummy) {
+    if (WithDummy == Settings.WithDummy) return getMeasure();
+    if (!OtherDummy) {
+        PreviewSettings Changed = Settings;
+        Changed.WithDummy = WithDummy;
+        OtherDummy = std::make_unique<PhysicsPreview>(std::move(Changed));
+        if (ClipCopy) OtherDummy->setClip(*ClipCopy);
+    }
+    return OtherDummy->getMeasure();
+}
+
 void PhysicsPreview::prepare() {
     invalidate();
     Setup.reset();
+    MoveUsesWeapon = false;
     DistanceM.reset();
     SetupProblem.clear();
     try {
@@ -99,6 +118,7 @@ void PhysicsPreview::prepare() {
                 Reason = Error.what();
                 continue;
             }
+            MoveUsesWeapon = Move.UsesWeapon;
             // At the stand's distance the move may choose its other clip.
             if (Setup->ClipName != Settings.ClipName) {
                 DistanceM = Far ? Move.CloseRangeM / CloseRangeShare : Move.CloseRangeM * CloseRangeShare;
@@ -116,6 +136,8 @@ void PhysicsPreview::prepare() {
 }
 
 void PhysicsPreview::invalidate() {
+    ++Revision;
+    OtherDummy.reset();
     Fight.reset();
     Run.reset();
     Frames.clear();
