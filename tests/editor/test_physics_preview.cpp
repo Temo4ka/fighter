@@ -223,3 +223,23 @@ TEST_CASE("compareToTarget: the fact at the start of the move is near the ghost"
     REQUIRE(Worst != nullptr);
     CHECK(std::abs(Worst->ErrorRad) < 0.5f);
 }
+
+TEST_CASE("PhysicsPreview: the chosen move runs; a move that does not play the clip is a problem", "[editor][preview]") {
+    PhysicsPreview Preview = makePreview("jab");
+    CHECK(Preview.setMove("jab"));
+    REQUIRE(Preview.getProblem().empty());
+    REQUIRE(Preview.getSetup() != nullptr);
+    CHECK(Preview.getSetup()->MoveId == "jab");
+    CHECK(Preview.getFrame(0) != nullptr);
+    CHECK_FALSE(Preview.setMove("jab"));
+
+    CHECK(Preview.setMove("cross"));
+    CHECK_FALSE(Preview.getProblem().empty());
+    CHECK(Preview.getSetup() == nullptr);
+    CHECK(Preview.getFrame(0) == nullptr);
+
+    // No choice: the first move that plays the clip again.
+    CHECK(Preview.setMove(""));
+    CHECK(Preview.getProblem().empty());
+    CHECK(Preview.getFrame(0) != nullptr);
+}

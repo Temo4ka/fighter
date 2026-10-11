@@ -23,7 +23,7 @@ bool isSet(const GhostEdit& Edit, BodyPart Part);
 } // namespace
 
 bool isDraggablePart(const rig::RigDef& Def, BodyPart Part) {
-    return Part != Def.Root && anim::getLayer(Part) != anim::Layer::Legs && findParent(Def, Part).has_value();
+    return Part != Def.Root && findParent(Def, Part).has_value();
 }
 
 float getDistanceToPart(const rig::PartDef& Part, const PosedPart& Posed, Vec2 Point) {

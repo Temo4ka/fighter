@@ -2,7 +2,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <stdexcept>
+#include <vector>
 
 #include "anim/clip.hpp"
 #include "anim/layers.hpp"
@@ -109,4 +111,22 @@ TEST_CASE("The ghost time wraps for a loop and holds for a one-shot clip", "[edi
     const anim::Clip Jab = loadPose("jab");
     const anim::Pose End = composeGhostPose(Stance, Jab, 5.0f, std::nullopt);
     CHECK(End.getAngle(BodyPart::ForearmL) == Approx(Jab.Keys.back().Target.getAngle(BodyPart::ForearmL)));
+}
+
+TEST_CASE("The ghost context of a sword and a shield stands in the pair set's stance", "[editor][ghost]") {
+    const std::vector<stats::ItemRef> Items = {{.Id = "short_sword", .Slot = std::nullopt},
+                                               {.Id = "wooden_shield", .Slot = std::nullopt}};
+    const GhostContext Context = loadGhostContext(DataDir.parent_path(), Items);
+    CHECK(Context.Held.size() == 2);
+    CHECK(Context.MoveSetId == "sword_shield");
+    CHECK(Context.StanceName == "stance_sword");
+    CHECK(Context.ItemName == "Short sword + Wooden shield");
+    CHECK(Context.Stance.Name == "stance_sword");
+    CHECK_THROWS(loadGhostContext(DataDir.parent_path(), std::vector<stats::ItemRef>{{.Id = "no_such_item", .Slot = std::nullopt}}));
+}
+
+TEST_CASE("A shield alone does not make a set: its holder stands in the general stance", "[editor][ghost]") {
+    const GhostContext Context = loadGhostContext(DataDir.parent_path(), "wooden_shield");
+    CHECK(Context.MoveSetId == "unarmed");
+    CHECK(Context.StanceName == "stance");
 }

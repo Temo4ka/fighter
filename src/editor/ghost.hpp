@@ -27,14 +27,17 @@
 
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 #include "anim/clip.hpp"
 #include "anim/pose.hpp"
+#include "combat/moveset.hpp"
 #include "core/body.hpp"
 #include "rig/rig.hpp"
 #include "rig/rig_def.hpp"
+#include "stats/equipment.hpp"
 
 namespace fighter::editor {
 
@@ -51,13 +54,31 @@ struct GhostContext {
     std::optional<BodyPart> GripHand;
     float GripM = 0.0f;
     anim::Clip Stance;                   ///< The idle stance of the held weapon's moveset.
+    std::string StanceName;              ///< Its file stem, data/poses/<StanceName>.json.
+    std::string MoveSetId;               ///< The moveset the stance comes from.
     std::string ItemName;                ///< Of the held item, for the panel; empty: none.
 };
+
+/// Which moveset a loadout plays with and the idle stance clip of it.
+struct StanceLookup {
+    std::string MoveSetId;
+    std::string StanceClip;
+};
+
+/// The moveset and the stance of a fighter holding \p Gear, found the way
+/// the game finds them (Fighter::setRules): MoveLibrary::selectSet() for the
+/// items of the hands (a shield alone does not make a set), then
+/// MoveLibrary::getStance() with the general "stance" clip as the default.
+StanceLookup findStance(const combat::MoveLibrary& Library, const stats::Loadout& Gear);
 
 /// Reads the rig (data/rigs/humanoid.json), the item \p ItemId of data/items
 /// (empty: bare hands) and the stance of its moveset under
 /// \p Root / "data". Throws std::runtime_error that names the file or the id.
 GhostContext loadGhostContext(const std::filesystem::path& Root, const std::string& ItemId);
+
+/// The same for the items in the hands of a fighter (a sword and a shield:
+/// the pair set's stance); no items: bare hands. Throws like the above.
+GhostContext loadGhostContext(const std::filesystem::path& Root, std::span<const stats::ItemRef> Items);
 
 /// The clip as the fighter plays it with the weapon in \p WeaponHand: the
 /// clip itself, or its copy with the arms swapped when its strikers are the

@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <optional>
+#include <stdexcept>
 #include <format>
 #include <numbers>
 #include <ranges>
@@ -26,6 +30,7 @@
 
 #include "anim/layers.hpp"
 #include "anim/playback.hpp"
+#include "combat/clip_library.hpp"
 #include "core/log.hpp"
 #include "editor/arm_roles.hpp"
 #include "editor/clip_edit.hpp"
@@ -74,6 +79,11 @@ struct View {
 };
 
 bool isLegPart(BodyPart Part);
+/// "stance_hammer - used by: Knight; moveset hammer".
+std::string describeStanceUsers(const std::string& Clip, const editor::StanceUsers& Users);
+/// Lower case copy, for the filter of the clip list.
+std::string toLower(std::string Text);
+std::string joinNames(const std::vector<std::string>& Names);
 /// The joints of the panels, the arms by role: weapon arm, then the other.
 std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool PlayedOtherHand);
 /// "Torso", or "weapon arm: forearm" (and the joint of the file) for an arm joint.
@@ -159,23 +169,12 @@ bool canBendElbowsBothWays(const rig::RigDef& Rig);
 PoseEditor::PoseEditor(Options Settings) : Opts(std::move(Settings)) {}
 
 int PoseEditor::run() {
-    ClipPath = Opts.Root / "data" / "poses" / (Opts.Clip + ".json");
-    try {
-        Context = editor::loadGhostContext(Opts.Root, Opts.Weapon);
-    } catch (const std::exception& Error) {
-        log::error("cannot start the pose editor: {}", Error.what());
+    Selection First{.Clip = Opts.Clip.empty() ? std::string(combat::clips::Stance) : Opts.Clip, .Items = {}, .Move = {}};
+    if (!Opts.Weapon.empty()) First.Items.push_back({.Id = Opts.Weapon, .Slot = std::nullopt});
+    if (!open(First)) {
+        log::error("cannot start the pose editor: {}", Status);
         return EXIT_FAILURE;
     }
-    if (!std::filesystem::exists(ClipPath)) {
-        log::error("no clip {}", ClipPath.string());
-        return EXIT_FAILURE;
-    }
-    if (!reload()) {
-        log::error("{}", Status);
-        return EXIT_FAILURE;
-    }
-    Fact.emplace(editor::PreviewSettings{
-        .DataDir = Opts.Root / "data", .ClipName = Opts.Clip, .WeaponId = Opts.Weapon, .WithDummy = false});
 
     sf::RenderWindow Window(sf::VideoMode(WindowSize), "Fighter pose editor");
     Window.setVerticalSyncEnabled(true);
@@ -225,6 +224,7 @@ int PoseEditor::run() {
         }
 
         Highlight.reset();
+        syncStance();
         Window.clear(sf::Color(40, 40, 46));
         const View Scene = makeView(Window.getSize());
         drawFloor(Window, Scene);
@@ -264,6 +264,80 @@ int PoseEditor::run() {
     return EXIT_SUCCESS;
 }
 
+bool PoseEditor::open(const Selection& Choice) {
+    editor::GhostContext NewContext;
+    anim::Clip NewClip;
+    const std::filesystem::path NewPath = Opts.Root / "data" / "poses" / (Choice.Clip + ".json");
+    try {
+        NewContext = editor::loadGhostContext(Opts.Root, Choice.Items);
+        if (!std::filesystem::exists(NewPath)) throw std::runtime_error(std::format("no clip {}", NewPath.string()));
+        NewClip = anim::loadClip(NewPath);
+    } catch (const std::exception& Error) {
+        Status = std::format("not opened: {}", Error.what());
+        return false;
+    }
+    Context = std::move(NewContext);
+    Edit = std::move(NewClip);
+    ClipName = Choice.Clip;
+    ClipPath = NewPath;
+    HandItems = Choice.Items;
+    MoveId = Choice.Move;
+    Edited = false;
+    ClipHadLegs = editor::isLegClip(Edit);
+    TimeSec = 0.0f;
+    Playing = false;
+    SelectedKey = 0;
+    SelectedPelvisKey = 0;
+    Highlight.reset();
+    Hovered = {};
+    Dragging.reset();
+    FactStep.reset();
+    refreshCatalog();
+    const bool KeepDummy = Fact && Fact->isWithDummy();
+    Fact.emplace(editor::PreviewSettings{.DataDir = Opts.Root / "data",
+                                         .ClipName = ClipName,
+                                         .WeaponId = findWeaponId(),
+                                         .MoveId = MoveId,
+                                         .WithDummy = KeepDummy});
+    syncStance();
+    Status = std::format("opened {}", ClipPath.filename().string());
+    return true;
+}
+
+void PoseEditor::requestOpen(Selection Choice) {
+    if (!Edited) {
+        open(Choice);
+        return;
+    }
+    Pending = std::move(Choice);
+    AskUnsaved = true;
+}
+
+void PoseEditor::refreshCatalog() {
+    const std::filesystem::path DataDir = Opts.Root / "data";
+    try {
+        Fighters = editor::listFighters(DataDir);
+        HandItemList = editor::listHandItems(DataDir);
+        ClipList = editor::listClips(DataDir);
+        MoveList = editor::findMovesPlayingClip(DataDir, ClipName);
+        Users = editor::findStanceUsers(DataDir, ClipName);
+    } catch (const std::exception& Error) {
+        Status = std::format("the lists of the Open panel are incomplete: {}", Error.what());
+    }
+}
+
+void PoseEditor::syncStance() {
+    if (ClipName == Context.StanceName) Context.Stance = Edit;
+}
+
+std::string PoseEditor::findWeaponId() const {
+    for (const stats::ItemRef& Item : HandItems) {
+        const auto Found = std::ranges::find(HandItemList, Item.Id, &editor::HandItemEntry::Id);
+        if (Found != HandItemList.end() && !Found->Shield) return Item.Id;
+    }
+    return {};
+}
+
 bool PoseEditor::reload() {
     try {
         Edit = anim::loadClip(ClipPath);
@@ -272,6 +346,7 @@ bool PoseEditor::reload() {
         return false;
     }
     Edited = false;
+    ClipHadLegs = editor::isLegClip(Edit);
     SelectedKey = std::min(SelectedKey, Edit.Keys.size() - 1);
     SelectedPelvisKey = 0;
     TimeSec = std::min(TimeSec, Edit.DurationSec);
@@ -287,6 +362,7 @@ bool PoseEditor::save() {
         return false;
     }
     Edited = false;
+    ClipHadLegs = editor::isLegClip(Edit);
     Status = std::format("saved {}", ClipPath.filename().string());
     return true;
 }
@@ -400,6 +476,9 @@ void PoseEditor::drawPanels() {
     drawTimelinePanel();
     drawKeyPanel();
     drawFactPanel();
+    // Last: opening something else replaces the state the panels above drew.
+    drawOpenPanel();
+    drawUnsavedPopup();
 }
 
 void PoseEditor::drawClipPanel() {
@@ -407,9 +486,15 @@ void PoseEditor::drawClipPanel() {
     ImGui::SetNextWindowSize({362.0f, ImGui::GetIO().DisplaySize.y - 350.0f}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Clip");
     const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
-    ImGui::Text("%s%s", Opts.Clip.c_str(), Edited ? "  (unsaved)" : "");
+    ImGui::Text("%s%s", ClipName.c_str(), Edited ? "  (unsaved)" : "");
     ImGui::Text("item: %s", Context.ItemName.empty() ? "(bare hands)" : Context.ItemName.c_str());
-    ImGui::Text("stance: %s", Context.Stance.Name.c_str());
+    ImGui::Text("stance: %s (moveset %s)", Context.StanceName.c_str(), Context.MoveSetId.c_str());
+    if (!Users.isEmpty()) {
+        ImGui::TextWrapped("%s", describeStanceUsers(ClipName, Users).c_str());
+    }
+    if (ClipName == Context.StanceName) {
+        ImGui::TextDisabled("the ghost's base stance is this clip:\nthe ghost follows the edits");
+    }
     if (Swapped) {
         ImGui::TextColored({1.0f, 0.8f, 0.3f, 1.0f}, "authored for the other hand: the ghost\nplays it with the arms swapped");
     }
@@ -427,6 +512,12 @@ void PoseEditor::drawClipPanel() {
         }
     }
     if (!Problem.empty()) ImGui::TextColored({1.0f, 0.4f, 0.4f, 1.0f}, "%s", Problem.c_str());
+    if (!ClipHadLegs && editor::isLegClip(Edit)) {
+        ImGui::TextColored({1.0f, 0.8f, 0.3f, 1.0f},
+                           "legs are keyed in a clip that had none: it\n"
+                           "becomes a leg action, the game poses the legs\n"
+                           "from it, not by the walk cycle (TUNING 3b)");
+    }
     ImGui::TextWrapped("%s", Status.c_str());
     ImGui::Separator();
 
@@ -480,16 +571,24 @@ void PoseEditor::drawClipPanel() {
 
     if (ImGui::CollapsingHeader("joints in the clip")) {
         for (const BodyPart Part : getPanelOrder(Context.Rig.Weapon.Part, Swapped)) {
-            const bool Leg = isLegPart(Part);
             bool Keyed = editor::isJointKeyed(Edit, Part);
-            ImGui::BeginDisabled(Leg);
             if (ImGui::Checkbox(getJointLabel(Part, Context.Rig.Weapon.Part, Swapped).c_str(), &Keyed)) {
                 // A new joint starts where the ghost has it now.
                 const anim::Pose Now = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
                 editor::setJointKeyed(Edit, Part, Keyed, Keyed ? Now.getAngle(Part) : 0.0f);
                 markEdited();
             }
-            ImGui::EndDisabled();
+            if (isLegPart(Part) && ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("a clip with leg keys is a leg action (TUNING 3b);\nan idle stance keys all six");
+            }
+        }
+        const bool AllLegs = std::ranges::all_of(
+            std::array{BodyPart::ThighL, BodyPart::ShinL, BodyPart::FootL, BodyPart::ThighR, BodyPart::ShinR, BodyPart::FootR},
+            [&](BodyPart Leg) { return editor::isJointKeyed(Edit, Leg); });
+        if (ImGui::Button(AllLegs ? "unkey all legs" : "key all legs")) {
+            const anim::Pose Now = editor::composeGhostPose(Context.Stance, Edit, TimeSec, Context.WeaponHand);
+            editor::setLegsKeyed(Edit, !AllLegs, Now, Context.Rig);
+            markEdited();
         }
         bool Wrist = Edit.Keys.front().Target.HasWeapon;
         if (ImGui::Checkbox("weapon arm: wrist", &Wrist)) {
@@ -626,8 +725,8 @@ void PoseEditor::drawKeyPanel() {
     ImGui::Begin("Key");
     anim::Keyframe& Key = Edit.Keys[SelectedKey];
     ImGui::Text("key %zu at %.3f s", SelectedKey, Key.TimeSec);
-    ImGui::TextDisabled("arms by role; legs are shown, not edited");
-    ImGui::TextDisabled("mouse: drag a part to turn its joint;\ndrag a circle: a fist (arm IK)\nor the blade tip (wrist)");
+    ImGui::TextDisabled("arms by role; legs: thigh, shin, foot");
+    ImGui::TextDisabled("mouse: drag a part to turn its joint\n(a leg part too, no leg IK);\ndrag a circle: a fist (arm IK)\nor the blade tip (wrist)");
     // An elbow that bends one way only (the humanoid) leaves nothing to choose.
     if (canBendElbowsBothWays(Context.Rig)) {
         bool ElbowUp = Bend == editor::ElbowBend::Up;
@@ -643,20 +742,17 @@ void PoseEditor::drawKeyPanel() {
     const bool Swapped = editor::isPlayedOtherHand(Edit, Context.WeaponHand);
     for (const BodyPart Part : getPanelOrder(MainHand, Swapped)) {
         if (!Key.Target.hasJoint(Part)) continue;
-        const bool Leg = isLegPart(Part);
         const editor::AngleRange Range = editor::getJointRange(Context.Rig, Part);
         float Angle = Key.Target.getAngle(Part);
         const bool Outside = Angle < Range.Lower - 1e-4f || Angle > Range.Upper + 1e-4f;
         const std::string Label = getJointLabel(Part, MainHand, Swapped);
-        ImGui::BeginDisabled(Leg);
         if (Outside) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
         ImGui::SetNextItemWidth(120.0f);
         if (sliderAngle(Label.c_str(), Angle, Range)) {
-            Key.Target.setAngle(Part, Angle);
+            editor::setJointAngle(Edit, SelectedKey, Part, Angle, Context.Rig);
             markEdited();
         }
         if (Outside) ImGui::PopStyleColor();
-        ImGui::EndDisabled();
         if (ImGui::IsItemHovered() || ImGui::IsItemActive()) Highlight = editor::getGhostPart(Part, Swapped);
         // The wrist belongs to the weapon arm: right after its forearm.
         if (Part == editor::getRoleJoint(editor::ArmRole::Weapon, editor::ArmSegment::Forearm, MainHand, Swapped) &&
@@ -674,6 +770,96 @@ void PoseEditor::drawKeyPanel() {
         }
     }
     ImGui::End();
+}
+
+void PoseEditor::drawOpenPanel() {
+    const ImVec2 Screen = ImGui::GetIO().DisplaySize;
+    ImGui::SetNextWindowPos({Screen.x - 298.0f, 8.0f}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({290.0f, 400.0f}, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Open");
+    // The choice is made after the lists are drawn: opening replaces them.
+    std::optional<Selection> Chosen;
+    // A fighter: its weapon in the hands and the stance of its moveset.
+    const auto Current = std::ranges::find_if(Fighters, [&](const editor::FighterEntry& Fighter) {
+        return Fighter.StanceClip == ClipName && Fighter.HandItems == HandItems;
+    });
+    ImGui::SetNextItemWidth(-90.0f);
+    if (ImGui::BeginCombo("fighter", Current == Fighters.end() ? "(choose)" : Current->Name.c_str())) {
+        for (const editor::FighterEntry& Fighter : Fighters) {
+            std::string Items;
+            for (const stats::ItemRef& Item : Fighter.HandItems) Items += (Items.empty() ? "" : " + ") + Item.Id;
+            const std::string Label = std::format("{}: {} -> {} -> {}", Fighter.Name, Items.empty() ? "bare hands" : Items,
+                                                  Fighter.MoveSetId, Fighter.StanceClip);
+            if (ImGui::Selectable(Label.c_str(), Current != Fighters.end() && Current->File == Fighter.File)) {
+                Chosen = Selection{.Clip = Fighter.StanceClip, .Items = Fighter.HandItems, .Move = {}};
+            }
+        }
+        ImGui::EndCombo();
+    }
+    // An item: what the hands hold, the clip stays.
+    std::string ItemLabel = "(bare hands)";
+    if (!HandItems.empty()) {
+        ItemLabel.clear();
+        for (const stats::ItemRef& Item : HandItems) ItemLabel += (ItemLabel.empty() ? "" : " + ") + Item.Id;
+    }
+    ImGui::SetNextItemWidth(-90.0f);
+    if (ImGui::BeginCombo("item", ItemLabel.c_str())) {
+        if (ImGui::Selectable("(bare hands)", HandItems.empty())) Chosen = Selection{.Clip = ClipName, .Items = {}, .Move = MoveId};
+        for (const editor::HandItemEntry& Item : HandItemList) {
+            const std::string Label = std::format("{} ({}){}{}", Item.Name, Item.Id, Item.Shield ? " shield" : "",
+                                                  Item.TwoHanded ? " 2h" : "");
+            const bool Selected = HandItems.size() == 1 && HandItems.front().Id == Item.Id;
+            if (ImGui::Selectable(Label.c_str(), Selected)) {
+                Chosen = Selection{.Clip = ClipName, .Items = {{.Id = Item.Id, .Slot = std::nullopt}}, .Move = MoveId};
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if (ImGui::Button("open the stance of these items")) {
+        Chosen = Selection{.Clip = Context.StanceName, .Items = HandItems, .Move = {}};
+    }
+    ImGui::Separator();
+    // A clip: a searchable list of data/poses.
+    ImGui::SetNextItemWidth(-90.0f);
+    ImGui::InputTextWithHint("clip", "type to filter", ClipFilter.data(), ClipFilter.size());
+    const std::string Filter = toLower(ClipFilter.data());
+    if (ImGui::BeginListBox("##clips", {-FLT_MIN, 12.0f * ImGui::GetTextLineHeightWithSpacing()})) {
+        for (const std::string& Clip : ClipList) {
+            if (!Filter.empty() && !toLower(Clip).contains(Filter)) continue;
+            if (ImGui::Selectable(Clip.c_str(), Clip == ClipName)) Chosen = Selection{.Clip = Clip, .Items = HandItems, .Move = {}};
+        }
+        ImGui::EndListBox();
+    }
+    ImGui::End();
+    if (Chosen) requestOpen(std::move(*Chosen));
+}
+
+void PoseEditor::drawUnsavedPopup() {
+    if (AskUnsaved) {
+        ImGui::OpenPopup("Unsaved changes");
+        AskUnsaved = false;
+    }
+    if (!ImGui::BeginPopupModal("Unsaved changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::Text("%s has unsaved changes.", ClipName.c_str());
+    if (Pending) ImGui::Text("Open %s?", Pending->Clip.c_str());
+    const std::string Problem = editor::findClipProblem(Edit);
+    if (!Problem.empty()) ImGui::TextColored({1.0f, 0.4f, 0.4f, 1.0f}, "cannot save: %s", Problem.c_str());
+    ImGui::BeginDisabled(!Problem.empty());
+    const bool SaveIt = ImGui::Button("Save");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    const bool Discard = ImGui::Button("Discard");
+    ImGui::SameLine();
+    const bool Cancel = ImGui::Button("Cancel");
+    if (SaveIt || Discard || Cancel) {
+        ImGui::CloseCurrentPopup();
+        const std::optional<Selection> Choice = std::exchange(Pending, std::nullopt);
+        if (Choice && !Cancel && (Discard || save())) {
+            Edited = false;
+            open(*Choice);
+        }
+    }
+    ImGui::EndPopup();
 }
 
 void PoseEditor::drawFactPanel() {
@@ -695,6 +881,31 @@ void PoseEditor::drawFactPanel() {
     if (ImGui::Button("step > (.)")) stepFact(1);
     ImGui::SameLine();
     ImGui::TextDisabled("Space: play/pause");
+    if (!MoveList.empty()) {
+        const auto describeMove = [](const editor::MoveCandidate& Move) {
+            return Move.Close ? std::format("{} (close clip)", Move.MoveId) : Move.MoveId;
+        };
+        std::string Shown = "(the first that can start)";
+        for (const editor::MoveCandidate& Move : MoveList) {
+            if (Move.MoveId == MoveId) Shown = describeMove(Move);
+        }
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::BeginCombo("move", Shown.c_str())) {
+            if (ImGui::Selectable("(the first that can start)", MoveId.empty())) {
+                MoveId.clear();
+                Fact->setMove(MoveId);
+                FactStep.reset();
+            }
+            for (const editor::MoveCandidate& Move : MoveList) {
+                if (ImGui::Selectable(describeMove(Move).c_str(), Move.MoveId == MoveId)) {
+                    MoveId = Move.MoveId;
+                    Fact->setMove(MoveId);
+                    FactStep.reset();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
     if (const combat::StandSetup* Setup = Fact->getSetup()) {
         ImGui::Text("move %s (%s), %s", Setup->MoveId.c_str(), Setup->InputText.c_str(),
                     Setup->WeaponId.empty() ? "bare hands" : Setup->WeaponName.c_str());
@@ -776,6 +987,24 @@ void drawTransform(sf::RenderTarget& Target, const View& Scene, const PartTransf
 }
 
 bool isLegPart(BodyPart Part) { return anim::getLayer(Part) == anim::Layer::Legs; }
+
+std::string joinNames(const std::vector<std::string>& Names) {
+    std::string Joined;
+    for (const std::string& Name : Names) Joined += (Joined.empty() ? "" : ", ") + Name;
+    return Joined;
+}
+
+std::string describeStanceUsers(const std::string& Clip, const editor::StanceUsers& Users) {
+    std::string Text = std::format("{} - used by: ", Clip);
+    Text += Users.Fighters.empty() ? "no fighter" : joinNames(Users.Fighters);
+    if (!Users.MoveSets.empty()) Text += std::format(" (moveset {})", joinNames(Users.MoveSets));
+    return Text;
+}
+
+std::string toLower(std::string Text) {
+    std::ranges::transform(Text, Text.begin(), [](unsigned char Char) { return static_cast<char>(std::tolower(Char)); });
+    return Text;
+}
 
 std::array<BodyPart, BodyPartCount> getPanelOrder(BodyPart MainHand, bool PlayedOtherHand) {
     using editor::ArmRole;
@@ -929,7 +1158,7 @@ bool saveScreenshot(const sf::RenderWindow& Window, const std::filesystem::path&
 bool sliderAngle(const char* Label, float& Radians, editor::AngleRange Range) {
     float Degrees = Radians * DegreesPerRadian;
     if (!ImGui::SliderFloat(Label, &Degrees, Range.Lower * DegreesPerRadian, Range.Upper * DegreesPerRadian,
-                            "%.1f deg")) {
+                            "%.1f deg", ImGuiSliderFlags_AlwaysClamp)) {
         return false;
     }
     Radians = Degrees * RadiansPerDegree;

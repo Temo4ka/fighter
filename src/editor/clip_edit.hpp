@@ -22,6 +22,8 @@
 #include <optional>
 
 #include "anim/clip.hpp"
+#include "anim/pose.hpp"
+#include "editor/pose_fk.hpp"
 
 namespace fighter::editor {
 
@@ -64,6 +66,22 @@ bool isJointKeyed(const anim::Clip& Edited, BodyPart Part);
 /// Adds the joint of \p Part to every key of the clip, at \p Angle (rad), or
 /// removes it from every key. Nothing changes if the clip already is that way.
 void setJointKeyed(anim::Clip& Edited, BodyPart Part, bool Keyed, float Angle);
+
+/// Sets the angle of the joint \p Part in the key \p KeyIndex, kept within
+/// the limits of the rig's joint (getJointRange()), and returns the angle it
+/// got. The joint must be keyed (isJointKeyed()); otherwise, and for a key
+/// out of range, nothing changes and \p Angle clamped is returned.
+float setJointAngle(anim::Clip& Edited, size_t KeyIndex, BodyPart Part, float Angle, const rig::RigDef& Def);
+
+/// Does the clip key the legs (any of the six leg joints)? Such a clip is a
+/// "leg action": the game poses the legs from it instead of the walk cycle
+/// (docs/TUNING.md, 3b), and an idle stance is the clip the legs rest in.
+bool isLegClip(const anim::Clip& Edited);
+
+/// Adds all six leg joints to every key of the clip (setJointKeyed()), each
+/// at its angle in \p Now (kept within the rig's limits by \p Def), or
+/// removes all of them. A joint already in the clip keeps its angles.
+void setLegsKeyed(anim::Clip& Edited, bool Keyed, const anim::Pose& Now, const rig::RigDef& Def);
 
 /// The same for the wrist of the held weapon (the key "Weapon").
 void setWristKeyed(anim::Clip& Edited, bool Keyed, float Angle);

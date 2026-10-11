@@ -11,8 +11,9 @@
 /// ghost (the target), and compareToTarget(), how far the fact is from it.
 ///
 /// The stand runs a move, not a clip (combat/move_measure.hpp), so the
-/// preview runs the first move of data/moves whose clip ("clip" or
-/// "close_clip") is the edited one and that the held weapon can start
+/// preview runs the move of data/moves chosen in PreviewSettings::MoveId, or
+/// else the first one whose clip ("clip" or "close_clip") is the edited one
+/// and that the held weapon can start
 /// (combat::prepareStand()). The move plays the edited clip from memory, not
 /// from its file: its text (editor::writeClip(), the text a save would
 /// write) is given to the battle instead of the file
@@ -70,6 +71,9 @@ struct PreviewSettings {
     /// The item in the main hand (data/items/); empty: bare hands, or the
     /// first item whose moveset has the move (combat::prepareStand()).
     std::string WeaponId;
+    /// The move to run (data/moves/<MoveId>.json), one that plays the clip;
+    /// empty: the first move that plays it and that the weapon can start.
+    std::string MoveId;
     bool WithDummy = false;   ///< The stand's dummy to hit; otherwise it stands far away.
 };
 
@@ -97,6 +101,10 @@ public:
     bool setClip(const anim::Clip& Edited);
     /// Switches the dummy; a change drops the cache. Returns whether it did.
     bool setWithDummy(bool Enabled);
+
+    /// Chooses the move to run (PreviewSettings::MoveId; empty: the first
+    /// that can); a change drops the cache. Returns whether it did.
+    bool setMove(const std::string& MoveId);
 
     /// The frame of the fact shown at clip time \p ClipSec: the first one
     /// whose clip time reached it, else the last of the move; frames are

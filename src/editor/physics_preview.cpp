@@ -54,6 +54,13 @@ bool PhysicsPreview::setWithDummy(bool Enabled) {
     return true;
 }
 
+bool PhysicsPreview::setMove(const std::string& MoveId) {
+    if (MoveId == Settings.MoveId) return false;
+    Settings.MoveId = MoveId;
+    prepare();
+    return true;
+}
+
 std::optional<size_t> PhysicsPreview::findFrame(float ClipSec) {
     for (size_t Index = 0;; ++Index) {
         const FactFrame* Frame = getFrame(Index);
@@ -79,6 +86,7 @@ void PhysicsPreview::prepare() {
         const combat::MoveLibrary Library = combat::MoveLibrary::load(Settings.DataDir);
         std::string Reason;
         for (const combat::MoveDef& Move : Library.getMoves()) {
+            if (!Settings.MoveId.empty() && Move.Id != Settings.MoveId) continue;
             const bool Far = Move.Clip == Settings.ClipName;
             if (!Far && Move.CloseClip != Settings.ClipName) continue;
             try {
