@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <ranges>
 
 namespace fighter::editor {
 namespace {
@@ -61,6 +62,14 @@ void setActive(anim::Clip& Edited, float BeginSec, float EndSec) {
     const float Begin = std::clamp(BeginSec, 0.0f, Edited.DurationSec);
     Edited.ActiveBeginSec = Begin;
     Edited.ActiveEndSec = std::clamp(EndSec, Begin, Edited.DurationSec);
+}
+
+size_t findNearestKey(const anim::Clip& Edited, float TimeSec) {
+    size_t Nearest = 0;
+    for (auto&& [Index, Key] : std::views::zip(std::views::iota(size_t{0}), Edited.Keys)) {
+        if (std::abs(Key.TimeSec - TimeSec) < std::abs(Edited.Keys[Nearest].TimeSec - TimeSec)) Nearest = Index;
+    }
+    return Nearest;
 }
 
 bool isJointKeyed(const anim::Clip& Edited, BodyPart Part) {

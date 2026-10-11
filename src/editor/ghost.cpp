@@ -32,6 +32,15 @@ GhostContext loadGhostContext(const std::filesystem::path& Root, const std::stri
     }
     Context.Held = combat::getHeldItems(Gear, Context.Rig.Weapon);
     if (Gear.findWeapon()) Context.WeaponHand = Context.Rig.Weapon.Part;
+    if (const stats::EquipmentItem* Main = Gear.findInSlot(stats::EquipmentSlot::MainHand);
+        Main && Main->TwoHanded && Context.WeaponHand) {
+        // As the battle sets up the grip (combat makeRigSetup, rig createGrip).
+        Context.GripHand = Context.Rig.Weapon.OffPart;
+        Context.GripM = Context.Rig.Weapon.Grip;
+        for (const auto& Item : Context.Held) {
+            if (Item.Part == *Context.WeaponHand && Item.GripM) Context.GripM = *Item.GripM;
+        }
+    }
 
     const combat::MoveSet& Set = Library.selectSet(Gear.getMoveSet(stats::EquipmentSlot::MainHand),
                                                    Gear.getMoveSet(stats::EquipmentSlot::OffHand), false);
