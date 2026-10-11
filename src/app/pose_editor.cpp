@@ -138,6 +138,7 @@ void drawFloor(sf::RenderTarget& Target, const View& Scene);
 bool saveScreenshot(const sf::RenderWindow& Window, const std::filesystem::path& Path);
 bool sliderAngle(const char* Label, float& Radians, editor::AngleRange Range);
 bool dragSeconds(const char* Label, float& Seconds, float Speed = 0.005f);
+bool canBendElbowsBothWays(const rig::RigDef& Rig);
 
 } // namespace
 
@@ -198,7 +199,7 @@ int PoseEditor::run() {
         // A one-shot clip plays over and over in the preview.
         if (Playing && !Edit.Loop && Edit.isFinishedAt(TimeSec)) TimeSec = 0.0f;
 
-        if (!IO.WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_E, false)) {
+        if (canBendElbowsBothWays(Context.Rig) && !IO.WantCaptureKeyboard && ImGui::IsKeyPressed(ImGuiKey_E, false)) {
             Bend = Bend == editor::ElbowBend::Down ? editor::ElbowBend::Up : editor::ElbowBend::Down;
         }
 
@@ -563,11 +564,14 @@ void PoseEditor::drawKeyPanel() {
     ImGui::Text("key %zu at %.3f s", SelectedKey, Key.TimeSec);
     ImGui::TextDisabled("arms by role; legs are shown, not edited");
     ImGui::TextDisabled("mouse: drag a part to turn its joint;\ndrag a circle: a fist (arm IK)\nor the blade tip (wrist)");
-    bool ElbowUp = Bend == editor::ElbowBend::Up;
-    if (ImGui::Checkbox("IK: elbow up (E)", &ElbowUp)) Bend = ElbowUp ? editor::ElbowBend::Up : editor::ElbowBend::Down;
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("the bend the arm IK prefers; a bend past the elbow limits\n"
-                          "falls back to the other one (the humanoid bends only down)");
+    // An elbow that bends one way only (the humanoid) leaves nothing to choose.
+    if (canBendElbowsBothWays(Context.Rig)) {
+        bool ElbowUp = Bend == editor::ElbowBend::Up;
+        if (ImGui::Checkbox("IK: elbow up (E)", &ElbowUp)) Bend = ElbowUp ? editor::ElbowBend::Up : editor::ElbowBend::Down;
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("the bend the arm IK prefers; a bend past the elbow limits\n"
+                              "falls back to the other one");
+        }
     }
     if (editor::isPlayedOtherHand(Edit, Context.WeaponHand)) ImGui::TextDisabled("(the file stores them on the other side)");
     ImGui::Separator();
@@ -773,6 +777,15 @@ bool sliderAngle(const char* Label, float& Radians, editor::AngleRange Range) {
 
 bool dragSeconds(const char* Label, float& Seconds, float Speed) {
     return ImGui::DragFloat(Label, &Seconds, Speed, 0.0f, 10.0f, "%.3f");
+}
+
+/// True if both elbows of \p Rig bend either way, so the arm IK has a bend to choose.
+bool canBendElbowsBothWays(const rig::RigDef& Rig) {
+    for (const BodyPart Forearm : {BodyPart::ForearmL, BodyPart::ForearmR}) {
+        const editor::AngleRange Range = editor::getJointRange(Rig, Forearm);
+        if (Range.Lower >= 0.0f || Range.Upper <= 0.0f) return false;
+    }
+    return true;
 }
 
 } // namespace
