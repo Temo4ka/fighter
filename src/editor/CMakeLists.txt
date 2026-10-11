@@ -11,6 +11,7 @@ fighter_add_module(editor
         clip_check.cpp
         editor_config.cpp
         ghost.cpp
+        metrics.cpp
         pose_drag.cpp
         physics_preview.cpp
         pose_fk.cpp

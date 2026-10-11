@@ -29,6 +29,7 @@ add_executable(fighter_tests
     editor/test_physics_preview.cpp
     editor/test_editor_config.cpp
     editor/test_trajectory.cpp
+    editor/test_metrics.cpp
     editor/test_clip_check.cpp
     stats/test_stats.cpp
     stats/test_balance.cpp
