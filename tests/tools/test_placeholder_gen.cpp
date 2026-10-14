@@ -12,6 +12,8 @@
 #include "rig/rig_def.hpp"
 #include "stats/loading.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter;
 using namespace fighter::tools;
 using Catch::Approx;
@@ -279,8 +281,8 @@ TEST_CASE("drawItemOverlay: a shield is its plate centered on the forearm", "[pl
 }
 
 TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json", "[placeholder]") {
-    const auto Out = std::filesystem::temp_directory_path() / "fighter_placeholder_gen_test";
-    std::filesystem::remove_all(Out);
+    const fighter::testutil::ScratchDir Scratch("placeholder_gen");
+    const std::filesystem::path& Out = Scratch.getPath();
 
     GenerateOptions Options;
     Options.DataDir = DataDir;
@@ -307,14 +309,12 @@ TEST_CASE("generatePlaceholders: writes every part and the items of visuals.json
     const auto Geometry = computePartGeometry(loadHumanoid().getPart(BodyPart::Torso));
     CHECK(Loaded.getSize().x == getImageSizePixels(Geometry.getImageSize().X, 64.0f));
     CHECK(Loaded.getSize().y == getImageSizePixels(Geometry.getImageSize().Y, 64.0f));
-
-    std::filesystem::remove_all(Out);
 }
 
 TEST_CASE("generatePlaceholders: an unknown rig is an error naming the file", "[placeholder]") {
     GenerateOptions Options;
     Options.DataDir = DataDir;
-    Options.OutDir = std::filesystem::temp_directory_path() / "fighter_placeholder_gen_missing";
+    Options.OutDir = fighter::testutil::makeScratchPath("placeholder_gen_missing");
     Options.RigName = "no_such_rig";
     CHECK_THROWS_WITH(generatePlaceholders(Options), Catch::Matchers::ContainsSubstring("no_such_rig.json"));
 }

@@ -8,6 +8,8 @@
 
 #include "combat/moves.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter::combat;
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::Equals;
@@ -92,16 +94,14 @@ TEST_CASE("Moves: parse rejects bad fields", "[combat][moves]") {
 }
 
 TEST_CASE("Moves: a chain to a missing move is an error", "[combat][moves]") {
-    const auto Dir = std::filesystem::temp_directory_path() / "fighter_test_moves";
-    std::filesystem::remove_all(Dir);
-    std::filesystem::create_directories(Dir);
+    const fighter::testutil::ScratchDir Scratch("moves");
+    const std::filesystem::path& Dir = Scratch.getPath();
     std::ofstream(Dir / "a.json") << R"({"clip": "jab", "damage": 1, "stamina": 1, "chain_to": ["b"]})";
     CHECK_THROWS_WITH(loadMoves(Dir), ContainsSubstring("a.json: field 'chain_to': there is no move 'b'"));
     std::ofstream(Dir / "b.json") << R"({"clip": "jab", "damage": 1, "stamina": 1})";
     const std::vector<MoveDef> Moves = loadMoves(Dir);
     CHECK(findMoveById(Moves, "b") != nullptr);
     CHECK(findMoveById(Moves, "c") == nullptr);
-    std::filesystem::remove_all(Dir);
 }
 
 TEST_CASE("Moves: every sample move has a height tag", "[combat][moves][data]") {

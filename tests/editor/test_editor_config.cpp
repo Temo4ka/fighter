@@ -6,6 +6,8 @@
 
 #include "editor/editor_config.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter::editor;
 using Catch::Matchers::ContainsSubstring;
 
@@ -42,8 +44,8 @@ TEST_CASE("loadEditorConfig: an error names the file; the real file is sound", "
 }
 
 TEST_CASE("loadEditorConfig: an unknown key of a file names the file and the key", "[editor][config]") {
-    const std::filesystem::path Dir = std::filesystem::temp_directory_path() / "fighter_editor_config_test";
-    std::filesystem::create_directories(Dir);
+    const fighter::testutil::ScratchDir Scratch("editor_config");
+    const std::filesystem::path& Dir = Scratch.getPath();
     const std::filesystem::path File = Dir / "editor.json";
     {
         std::ofstream Out(File);
@@ -51,5 +53,4 @@ TEST_CASE("loadEditorConfig: an unknown key of a file names the file and the key
     }
     CHECK_THROWS_WITH(loadEditorConfig(File), ContainsSubstring("editor.json") && ContainsSubstring("unknown field 'bogus_key'"));
     CHECK_THROWS_WITH(loadEditorConfigOrDefault(Dir), ContainsSubstring("bogus_key"));
-    std::filesystem::remove_all(Dir);
 }

@@ -2,7 +2,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <format>
@@ -19,6 +18,8 @@
 #include "stats/loading.hpp"
 #include "stats/stats.hpp"
 #include "stats/validation.hpp"
+
+#include "../scratch_dir.hpp"
 
 using namespace fighter;
 using namespace fighter::stats;
@@ -42,11 +43,7 @@ std::string makeItemFile(std::string_view Item) { return std::format(R"({{"items
 /// A temporary directory that is removed with everything in it.
 class TempDirectory {
 public:
-    TempDirectory() {
-        const auto Stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        Path = std::filesystem::temp_directory_path() / std::format("fighter_stats_test_{}", Stamp);
-        std::filesystem::create_directories(Path);
-    }
+    TempDirectory() : Path(fighter::testutil::makeScratchPath("stats")) { std::filesystem::create_directories(Path); }
     ~TempDirectory() {
         std::error_code Ignored;
         std::filesystem::remove_all(Path, Ignored);

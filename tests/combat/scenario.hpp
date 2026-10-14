@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -39,6 +38,8 @@
 #include "rig/rig_def.hpp"
 #include "stats/fighter_sheet.hpp"
 #include "stats/loading.hpp"
+
+#include "../scratch_dir.hpp"
 
 namespace fighter::combat::test {
 
@@ -141,15 +142,10 @@ inline bool isDown(const FighterView& View) {
 }
 
 /// A copy of the data directory that a test may edit; removed afterwards.
-/// The directory is unique to this copy (\p Name and a time stamp): the test
-/// runs of other builds and worktrees share the temporary directory, and a
-/// fixed name let one run delete or overwrite another one's data mid-test.
+/// The directory is unique to this copy (fighter::testutil::makeScratchPath()).
 class ScratchData {
 public:
-    explicit ScratchData(const std::string& Name)
-        : Dir(std::filesystem::temp_directory_path() /
-              std::format("fighter_test_{}_{}", Name, std::chrono::steady_clock::now().time_since_epoch().count())) {
-        std::filesystem::remove_all(Dir);
+    explicit ScratchData(const std::string& Name) : Dir(fighter::testutil::makeScratchPath(Name)) {
         std::filesystem::copy(FIGHTER_DATA_DIR, Dir, std::filesystem::copy_options::recursive);
     }
     ~ScratchData() {

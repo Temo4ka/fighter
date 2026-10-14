@@ -9,23 +9,21 @@
 #include "editor/clip_writer.hpp"
 #include "editor/new_clip.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter;
 using namespace fighter::editor;
 
 namespace {
 
-/// A scratch data directory with poses/taken.json; removed at the end.
+/// A scratch data directory with poses/taken.json, unique to the test.
 struct ScratchData {
-    std::filesystem::path Dir = std::filesystem::temp_directory_path() / "fighter_test_new_clip";
+    fighter::testutil::ScratchDir Scratch{"new_clip"};
+    const std::filesystem::path& Dir = Scratch.getPath();
 
     ScratchData() {
-        std::filesystem::remove_all(Dir);
         std::filesystem::create_directories(Dir / "poses");
         std::ofstream(Dir / "poses" / "taken.json") << "{}";
-    }
-    ~ScratchData() {
-        std::error_code Error;
-        std::filesystem::remove_all(Dir, Error);
     }
 };
 

@@ -11,28 +11,19 @@
 #include "ui/results_text.hpp"
 #include "ui/ui_config.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter;
 using namespace fighter::ui;
 
-namespace {
-
-std::filesystem::path makeTempDir(const std::string& Name) {
-    const std::filesystem::path Dir = std::filesystem::temp_directory_path() / ("fighter_ui_test_" + Name);
-    std::filesystem::remove_all(Dir);
-    std::filesystem::create_directories(Dir);
-    return Dir;
-}
-
-} // namespace
-
 TEST_CASE("listFighters: json stems, sorted, other files ignored", "[ui][data]") {
-    const std::filesystem::path Dir = makeTempDir("list");
+    const fighter::testutil::ScratchDir Scratch("ui_list");
+    const std::filesystem::path& Dir = Scratch.getPath();
     for (const char* Name : {"rogue.json", "knight.json", "notes.txt"}) std::ofstream(Dir / Name) << "{}";
     const std::vector<std::string> Names = listFighters(Dir);
     REQUIRE(Names.size() == 2);
     CHECK(Names[0] == "knight");
     CHECK(Names[1] == "rogue");
-    std::filesystem::remove_all(Dir);
 }
 
 TEST_CASE("listFighters: a missing directory is empty", "[ui][data]") {

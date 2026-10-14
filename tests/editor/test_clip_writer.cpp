@@ -13,6 +13,8 @@
 #include "core/text_file.hpp"
 #include "editor/clip_writer.hpp"
 
+#include "../scratch_dir.hpp"
+
 using namespace fighter;
 using namespace fighter::editor;
 using Catch::Approx;
@@ -158,8 +160,8 @@ TEST_CASE("findClipProblem names what a data file would not accept", "[editor]")
 }
 
 TEST_CASE("saveClip writes the file, and nothing for a clip the loader would refuse", "[editor]") {
-    const std::filesystem::path Dir = std::filesystem::temp_directory_path() / "fighter_test_save_clip";
-    std::filesystem::create_directories(Dir);
+    const fighter::testutil::ScratchDir Scratch("save_clip");
+    const std::filesystem::path& Dir = Scratch.getPath();
     const std::filesystem::path Path = Dir / "sample.json";
 
     anim::Clip Clip = makeClip();
@@ -172,5 +174,4 @@ TEST_CASE("saveClip writes the file, and nothing for a clip the loader would ref
     Clip.Keys[1].TimeSec = 0.9f;
     CHECK_THROWS_AS(saveClip(Clip, Path), std::runtime_error);
     CHECK(readTextFile(Path) == Before);
-    std::filesystem::remove_all(Dir);
 }
