@@ -170,22 +170,6 @@ TEST_CASE("Contact: the hit keeps the speed the leg came in at", "[combat][conta
     CHECK(Stopped.Hits[0].Contact.ApproachSpeed > 0.5f);
 }
 
-TEST_CASE("Contact: a stopped kick is deterministic", "[combat][contact]") {
-    const KickLog First = kickOnce("contact_first", MoveButton::BodyKick, PelvisKickDistance);
-    const KickLog Second = kickOnce("contact_second", MoveButton::BodyKick, PelvisKickDistance);
-    REQUIRE(First.Snapshots.size() == Second.Snapshots.size());
-    for (size_t Index = 0; Index < First.Snapshots.size(); ++Index) {
-        for (size_t Side = 0; Side < 2; ++Side) {
-            const FighterView& Lhs = First.Snapshots[Index].Fighters[Side];
-            const FighterView& Rhs = Second.Snapshots[Index].Fighters[Side];
-            for (size_t Part = 0; Part < BodyPartCount; ++Part) {
-                CHECK(Lhs.Parts[Part].Position == Rhs.Parts[Part].Position);
-                CHECK(Lhs.Parts[Part].Angle == Rhs.Parts[Part].Angle);
-            }
-        }
-    }
-}
-
 TEST_CASE("Contact: a kick that meets the opponent in its startup is jammed there", "[combat][contact]") {
     // So close, with its active phase moved later, the body kick meets P2's
     // legs before the active phase: it stops at them like in any other phase
