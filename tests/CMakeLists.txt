@@ -93,8 +93,29 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::placeholder_lib
 )
 fighter_target_options(fighter_tests)
-# Rigs and clips for the tests that build real fighters.
-target_compile_definitions(fighter_tests PRIVATE FIGHTER_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
+# The data the tests run on: data/ with the hand-tuned directories replaced by
+# the frozen copies in tests/data (fighters, items, moves, movesets, poses), so
+# that tuning data/ does not break the tests. Files that exist only in data/
+# (the rig, combat.json, a new file) come from data/. --check-data checks the
+# real data/.
+set(FIGHTER_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/data")
+set(FIGHTER_TEST_DATA_STAMP "${CMAKE_CURRENT_BINARY_DIR}/data.stamp")
+file(GLOB_RECURSE FIGHTER_TEST_DATA_SOURCES CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/data/*" "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
+file(GLOB FIGHTER_TEST_DATA_FROZEN LIST_DIRECTORIES true RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/data"
+    "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
+list(TRANSFORM FIGHTER_TEST_DATA_FROZEN PREPEND "${FIGHTER_TEST_DATA_DIR}/")
+add_custom_command(OUTPUT "${FIGHTER_TEST_DATA_STAMP}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${FIGHTER_TEST_DATA_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/data" "${FIGHTER_TEST_DATA_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${FIGHTER_TEST_DATA_FROZEN}
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/data" "${FIGHTER_TEST_DATA_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${FIGHTER_TEST_DATA_STAMP}"
+    DEPENDS ${FIGHTER_TEST_DATA_SOURCES}
+    COMMENT "Assembling the test data directory")
+add_custom_target(fighter_test_data DEPENDS "${FIGHTER_TEST_DATA_STAMP}")
+add_dependencies(fighter_tests fighter_test_data)
+target_compile_definitions(fighter_tests PRIVATE FIGHTER_DATA_DIR="${FIGHTER_TEST_DATA_DIR}")
 # Tests read the sample files in data/ from the source tree.
 target_compile_definitions(fighter_tests PRIVATE FIGHTER_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 

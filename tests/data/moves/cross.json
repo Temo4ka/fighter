@@ -1,0 +1,17 @@
+{
+    "clip": "cross",
+    "damage": 0.9,
+    "min_reaction": "Touch",
+    "stamina": 8,
+    "tags": [
+        "high",
+        "punch"
+    ],
+    "ai": {
+        "range_m": [
+            0.6,
+            1.0
+        ],
+        "role": "poke"
+    }
+}

@@ -31,7 +31,7 @@ TEST_CASE("listFighters: a missing directory is empty", "[ui][data]") {
 }
 
 TEST_CASE("listFighters: the shipped data has fighters", "[ui][data]") {
-    CHECK(listFighters(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data" / "fighters").size() >= 2);
+    CHECK(listFighters(std::filesystem::path(FIGHTER_DATA_DIR) / "fighters").size() >= 2);
 }
 
 TEST_CASE("parseUiConfig: reads the delay", "[ui][data]") {
@@ -142,7 +142,7 @@ TEST_CASE("easeToward: approaches without overshoot, zero time jumps", "[ui][dat
 }
 
 TEST_CASE("loadFighterCard: shipped fighter shows name, weapon and stats", "[ui][data]") {
-    const FighterCard Card = loadFighterCard(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data", "knight");
+    const FighterCard Card = loadFighterCard(FIGHTER_DATA_DIR, "knight");
     CHECK(Card.Error.empty());
     CHECK(Card.Name == "Knight");
     CHECK(Card.Strength == 14);
@@ -150,7 +150,7 @@ TEST_CASE("loadFighterCard: shipped fighter shows name, weapon and stats", "[ui]
 }
 
 TEST_CASE("loadFighterCard: a missing sheet gives an error card", "[ui][data]") {
-    const FighterCard Card = loadFighterCard(std::filesystem::path(FIGHTER_SOURCE_DIR) / "data", "nobody");
+    const FighterCard Card = loadFighterCard(FIGHTER_DATA_DIR, "nobody");
     CHECK_FALSE(Card.Error.empty());
     CHECK(Card.Name == "nobody");
 }

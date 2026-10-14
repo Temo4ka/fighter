@@ -1,0 +1,84 @@
+{
+    "items": [
+        {
+            "id": "leather_cap",
+            "name": "Leather cap",
+            "slot": "Head",
+            "covers": ["Head"],
+            "mass_kg": 0.8,
+            "armor": 0.1
+        },
+        {
+            "id": "iron_helmet",
+            "name": "Iron helmet",
+            "slot": "Head",
+            "covers": ["Head"],
+            "mass_kg": 2.5,
+            "armor": 0.3
+        },
+        {
+            "id": "leather_vest",
+            "name": "Leather vest",
+            "slot": "Body",
+            "covers": ["Torso"],
+            "mass_kg": 3.0,
+            "armor": 0.15
+        },
+        {
+            "id": "chainmail",
+            "name": "Chainmail",
+            "slot": "Body",
+            "covers": ["Torso", "Pelvis", "UpperArmL", "UpperArmR"],
+            "mass_kg": 10.0,
+            "armor": 0.35
+        },
+        {
+            "id": "leather_gloves",
+            "name": "Leather gloves",
+            "slot": "Hands",
+            "covers": ["ForearmL", "ForearmR"],
+            "mass_kg": 0.6,
+            "armor": 0.05
+        },
+        {
+            "id": "iron_gauntlets",
+            "name": "Iron gauntlets",
+            "slot": "Hands",
+            "covers": ["ForearmL", "ForearmR"],
+            "mass_kg": 2.4,
+            "armor": 0.25
+        },
+        {
+            "id": "cloth_trousers",
+            "name": "Cloth trousers",
+            "slot": "Legs",
+            "covers": ["ThighL", "ShinL", "ThighR", "ShinR"],
+            "mass_kg": 1.0,
+            "armor": 0.02
+        },
+        {
+            "id": "plate_greaves",
+            "name": "Plate greaves",
+            "slot": "Legs",
+            "covers": ["ThighL", "ShinL", "ThighR", "ShinR"],
+            "mass_kg": 6.0,
+            "armor": 0.3
+        },
+        {
+            "id": "soft_boots",
+            "name": "Soft boots",
+            "slot": "Feet",
+            "covers": ["FootL", "FootR"],
+            "mass_kg": 0.8,
+            "armor": 0.05
+        },
+        {
+            "id": "iron_boots",
+            "name": "Iron boots",
+            "slot": "Feet",
+            "covers": ["FootL", "FootR"],
+            "mass_kg": 2.2,
+            "armor": 0.25
+        }
+    ]
+}

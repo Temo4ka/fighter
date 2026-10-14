@@ -29,7 +29,7 @@ using Catch::Matchers::StartsWith;
 
 namespace {
 
-const std::filesystem::path DataDir = std::filesystem::path(FIGHTER_SOURCE_DIR) / "data";
+const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 
 std::string readBalanceText() {
     std::ifstream File(DataDir / "balance.json", std::ios::binary);

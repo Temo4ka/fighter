@@ -1,0 +1,18 @@
+{
+    "clip": "hammer_bash",
+    "uses_weapon": true,
+    "damage": 1.1,
+    "min_reaction": "Flinch",
+    "stamina": 12,
+    "tags": [
+        "mid",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.6,
+            0.9
+        ],
+        "role": "poke"
+    }
+}

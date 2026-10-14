@@ -1,0 +1,9 @@
+{
+  "loop": true,
+  "duration": 1.0,
+  "stiffness": 1.4,
+  "allowMove": true,
+  "keys": [
+    { "t": 0.0, "pose": { "Torso": -12, "Head": -4, "UpperArmL": 135, "ForearmL": 75, "UpperArmR": 40, "ForearmR": 135 } }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+    "clip": "greatsword_cut",
+    "uses_weapon": true,
+    "damage": 1.1,
+    "min_reaction": "Flinch",
+    "stamina": 12,
+    "tags": ["mid", "swing"],
+    "ai": {
+        "range_m": [0.7, 1.2],
+        "role": "poke"
+    }
+}

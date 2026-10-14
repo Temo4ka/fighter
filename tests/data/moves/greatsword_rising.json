@@ -1,0 +1,13 @@
+{
+    "clip": "greatsword_rising",
+    "uses_weapon": true,
+    "damage": 2.2,
+    "min_reaction": "Knockback",
+    "stamina": 28,
+    "tags": ["mid", "swing"],
+    "ai": {
+        "range_m": [0.7, 1.2],
+        "role": "heavy",
+        "weight": 0.4
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "clip": "shield_bash",
+    "damage": 0.8,
+    "min_reaction": "Flinch",
+    "stamina": 10,
+    "tags": [
+        "mid",
+        "bash"
+    ],
+    "ai": {
+        "range_m": [
+            0.0,
+            0.7
+        ],
+        "role": "anti_close"
+    }
+}

@@ -30,7 +30,7 @@ using Catch::Matchers::StartsWith;
 
 namespace {
 
-const std::filesystem::path DataDir = std::filesystem::path(FIGHTER_SOURCE_DIR) / "data";
+const std::filesystem::path DataDir = FIGHTER_DATA_DIR;
 
 constexpr std::string_view ValidItems = R"({"items": [
     {"id": "helmet", "name": "Iron helmet", "slot": "Head", "covers": ["Head"], "mass_kg": 2.5, "armor": 0.3},

@@ -1,0 +1,18 @@
+{
+    "clip": "sword_cut",
+    "uses_weapon": true,
+    "damage": 0.9,
+    "min_reaction": "Touch",
+    "stamina": 9,
+    "tags": [
+        "mid",
+        "swing"
+    ],
+    "ai": {
+        "range_m": [
+            0.7,
+            1.1
+        ],
+        "role": "poke"
+    }
+}

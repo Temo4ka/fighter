@@ -1,0 +1,16 @@
+{
+    "name": "Rogue",
+    "stats": {
+        "strength": 9,
+        "dexterity": 15,
+        "constitution": 9
+    },
+    "items": [
+        "leather_cap",
+        "leather_vest",
+        "leather_gloves",
+        "cloth_trousers",
+        "soft_boots",
+        "short_sword"
+    ]
+}
