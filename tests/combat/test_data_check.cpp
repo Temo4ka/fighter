@@ -36,7 +36,8 @@ std::string describe(const std::vector<DataProblem>& Problems) {
 /// The problems that are errors, not warnings.
 std::vector<DataProblem> getErrors(const std::vector<DataProblem>& Problems) {
     std::vector<DataProblem> Errors;
-    std::ranges::copy_if(Problems, std::back_inserter(Errors), [](const DataProblem& Problem) { return !Problem.Warning; });
+    std::ranges::copy_if(Problems, std::back_inserter(Errors),
+                         [](const DataProblem& Problem) { return !Problem.Warning; });
     return Errors;
 }
 
@@ -234,7 +235,8 @@ TEST_CASE("checkData: the state machine's clips keep to their layer", "[combat][
     // A reaction that sets a knee, a crouch without the legs.
     Data.write("poses/flinch.json", R"({ "duration": 0.3, "keys": [ { "t": 0, "pose": { "Torso": 0, "ShinL": -10 } },
         { "t": 0.3, "pose": { "Torso": 0, "ShinL": -10 } } ] })");
-    Data.write("poses/crouch.json", R"({ "duration": 1, "loop": true, "keys": [ { "t": 0, "pose": { "Torso": 5 } } ] })");
+    Data.write("poses/crouch.json",
+               R"({ "duration": 1, "loop": true, "keys": [ { "t": 0, "pose": { "Torso": 5 } } ] })");
     const auto Problems = checkData(Data.getDir());
     INFO(describe(Problems));
     CHECK(getErrors(Problems).empty());

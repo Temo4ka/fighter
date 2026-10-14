@@ -291,7 +291,8 @@ void Checker::checkStateClipLayers(const MoveLibrary& Library) {
     // docs/MECHANICS.md, section 2.5: a clip with a leg joint is an action
     // of the legs; without one it plays over the walk or the rest pose.
     std::set<std::string> WithLegs;
-    for (const std::string_view Name : {clips::Stance, clips::Walk, clips::Crouch, clips::CrouchWalk, clips::BlockLow}) {
+    for (const std::string_view Name :
+         {clips::Stance, clips::Walk, clips::Crouch, clips::CrouchWalk, clips::BlockLow}) {
         WithLegs.emplace(Name);
     }
     std::set<std::string> UpperOnly;
