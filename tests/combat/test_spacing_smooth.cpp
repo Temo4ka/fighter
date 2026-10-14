@@ -145,7 +145,7 @@ TEST_CASE("Spacing: walking into a fighter at the wall slows down without a jerk
     CHECK(getRight(Fight).AgainstWall);
 }
 
-TEST_CASE("Spacing: both at the walls, the walker is stopped smoothly", "[combat][spacing]") {
+TEST_CASE("Spacing: both at the walls, the walker is stopped smoothly", "[combat][spacing][slow]") {
     // The arena is so narrow that both stand at their walls when they meet.
     Battle Fight(makeDuel("knight", "rogue", 1.5f));
     const auto Logs = watch(Fight, {.MoveX = 1.0f}, {}, 4 * TicksPerSecond);

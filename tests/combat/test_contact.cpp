@@ -128,7 +128,7 @@ TEST_CASE("Contact: a body kick stops at the pelvis it hits", "[combat][contact]
     CHECK(Log.BackToStance);
 }
 
-TEST_CASE("Contact: a kick stops at the leg it hits", "[combat][contact]") {
+TEST_CASE("Contact: a kick stops at the leg it hits", "[combat][contact][slow]") {
     const KickLog Log = kickOnce("contact_leg", MoveButton::BodyKick, ThighKickDistance);
     REQUIRE(Log.Hits.size() == 1);
     CHECK(Log.Hits[0].MoveId == "body_kick");
@@ -170,7 +170,7 @@ TEST_CASE("Contact: the hit keeps the speed the leg came in at", "[combat][conta
     CHECK(Stopped.Hits[0].Contact.ApproachSpeed > 0.5f);
 }
 
-TEST_CASE("Contact: a kick that meets the opponent in its startup is jammed there", "[combat][contact]") {
+TEST_CASE("Contact: a kick that meets the opponent in its startup is jammed there", "[combat][contact][slow]") {
     // So close, with its active phase moved later, the body kick meets P2's
     // legs before the active phase: it stops at them like in any other phase
     // (nothing passes through) and the attack recovers from there.

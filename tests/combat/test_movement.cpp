@@ -309,7 +309,7 @@ TEST_CASE("Movement: a jab after a stop leaves the legs as they rest", "[combat]
     }
 }
 
-TEST_CASE("Movement: a kick after a stop steps into its pose and strikes on time", "[combat][movement]") {
+TEST_CASE("Movement: a kick after a stop steps into its pose and strikes on time", "[combat][movement][slow]") {
     // The reference: the kick from the stance at the start.
     Battle Standing(makeConfig());
     run(Standing, {}, {}, TicksPerSecond / 2);
@@ -338,7 +338,7 @@ TEST_CASE("Movement: a kick after a stop steps into its pose and strikes on time
 }
 
 TEST_CASE("Movement: with the right foot in front the kick plays mirrored and lands with it",
-          "[combat][movement]") {
+          "[combat][movement][slow]") {
     Battle Fight(makeConfig());
     REQUIRE(stopWithFront(Fight, makeConfig(), BodyPart::FootR));
     bringVictim(Fight, KickRange);
@@ -446,7 +446,7 @@ TEST_CASE("Movement: from the crouch a downward strike starts at once, a low blo
     CHECK(getLeft(Fight).Block == BlockZone::Low);
 }
 
-TEST_CASE("Movement: from the crouch other strikes stand up first", "[combat][movement]") {
+TEST_CASE("Movement: from the crouch other strikes stand up first", "[combat][movement][slow]") {
     // Down+Kick has no move of its own: it falls back to the body kick.
     for (const MoveButton Button : {MoveButton::Jab, MoveButton::HeavyPunch, MoveButton::BodyKick}) {
         INFO(getMoveButtonName(Button));
@@ -514,7 +514,7 @@ TEST_CASE("Movement: the debug panel shows the leg layer and the upper body", "[
 }
 
 
-TEST_CASE("Movement: every sword input starts its own strike", "[combat][movement]") {
+TEST_CASE("Movement: every sword input starts its own strike", "[combat][movement][slow]") {
     // The keys a player presses with a sword (data/movesets/sword.json).
     struct InputCase {
         PlayerCommands Cmd;

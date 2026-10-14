@@ -167,7 +167,7 @@ TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][f
     CHECK(getStrongest(PlainHits) == ReactionLevel::Touch);
 }
 
-TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat][fight]") {
+TEST_CASE("Fight: a heavy fighter reacts no stronger than a light one", "[combat][fight][slow]") {
     // The same kicks at a light and a heavy fighter; no knockdowns, so that
     // both stay on their feet for the whole series.
     ScratchData Data("heavy");
@@ -511,7 +511,7 @@ TEST_CASE("Fight: DEX speeds strikes up within the O.7 corridor", "[combat][figh
     CHECK(static_cast<float>(SlowTotal) / static_cast<float>(BaseTotal) <= 1.0f / 0.75f + 0.1f);
 }
 
-TEST_CASE("Fight: a fighter at the wall cannot retreat", "[combat][fight]") {
+TEST_CASE("Fight: a fighter at the wall cannot retreat", "[combat][fight][slow]") {
     Battle Fight(makeConfig());
     run(Fight, {.MoveX = -1.0f}, {}, 8 * TicksPerSecond);
     CHECK(getLeft(Fight).AgainstWall);

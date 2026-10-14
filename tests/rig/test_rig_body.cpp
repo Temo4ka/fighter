@@ -685,7 +685,7 @@ float measureJitter(Duel& Stage, const Rig& Body, int Steps) {
 
 } // namespace
 
-TEST_CASE("Scenario: twice the mass stands and walks and falls and gets up without jitter", "[rig][scenario]") {
+TEST_CASE("Scenario: twice the mass stands and walks and falls and gets up without jitter", "[rig][scenario][slow]") {
     for (const float MassScale : {1.0f, 2.0f}) {
         CAPTURE(MassScale);
         Duel Stage(-1.2f, 1.2f, MassScale);

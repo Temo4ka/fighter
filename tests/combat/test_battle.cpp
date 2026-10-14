@@ -175,7 +175,7 @@ TEST_CASE("Battle: releasing the key stops the fighter", "[combat][dod]") {
     CHECK(isUpright(getLeft(Fight)));
 }
 
-TEST_CASE("Battle: walking stops at the arena wall", "[combat]") {
+TEST_CASE("Battle: walking stops at the arena wall", "[combat][slow]") {
     Battle Fight(makeConfig());
     run(Fight, {.MoveX = -1.0f}, {.MoveX = 1.0f}, 10 * TicksPerSecond);
     const float HalfWidth = Fight.getConfig().Arena.HalfWidthM;

@@ -93,7 +93,8 @@ void stripWrists(const ScratchData& Data) {
 
 } // namespace
 
-TEST_CASE("Wrist: missing in a clip, the stance's, else the item's, else the rig's default", "[combat][wrist][data]") {
+TEST_CASE("Wrist: missing in a clip, the stance's, else the item's, else the rig's default",
+          "[combat][wrist][data][slow]") {
     // No stance sets it and the sword has no angle.
     ScratchData Bare("wrist_bare");
     stripWrists(Bare);

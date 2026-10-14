@@ -147,7 +147,7 @@ TEST_CASE("Hands: both hands hold a two-handed weapon", "[combat][hands][data]")
     CHECK(Other.Y < Main.Y);
 }
 
-TEST_CASE("Hands: the shield and the pair's block stop a jab in the middle guard", "[combat][hands][data]") {
+TEST_CASE("Hands: the shield and the pair's block stop a jab in the middle guard", "[combat][hands][data][slow]") {
     // The sword and shield guard (the shield in the off hand, the middle
     // guard covers the head too) stops the jab and lets little damage
     // through.
