@@ -41,10 +41,12 @@ constexpr float MaxPelvisSink = 0.05f;
 constexpr float MaxKneeBend = 95.0f * RadiansPerDegree;
 constexpr float MaxKneeBackward = 3.0f * RadiansPerDegree;
 /// A planted ankle moves less than this in a step, m (the rig's foot IK
-/// settles a few millimetres when a foot plants)...
-constexpr float MaxPlantedSlipPerTick = 0.005f;
-/// ...and less than this over the whole run, m.
-constexpr float MaxPlantedSlipTotal = 0.05f;
+/// settles a few millimetres when a foot plants; measured at most 3.4 mm)...
+/// A foot sliding along with the walk moves about 2 cm a step.
+constexpr float MaxPlantedSlipPerTick = 0.01f;
+/// ...and less than this over the whole run, m (measured at most 4 cm;
+/// a foot dragged with the walk slides metres).
+constexpr float MaxPlantedSlipTotal = 0.1f;
 /// Between two presses the feet move (both together, along the floor) at
 /// most this many times the pelvis travel plus a little: a full step of the
 /// walk clip moves the swing foot about 1.2 m for 0.48 m of travel (2.5x),

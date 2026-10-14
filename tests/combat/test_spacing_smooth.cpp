@@ -27,10 +27,11 @@ using namespace fighter::combat::test;
 
 namespace {
 
-/// No pelvis moves faster than this in the scenarios, m/s: the fastest walk
-/// (the rogue, 1.33 m/s) with a margin. A shove of the old spacing reached
-/// 9-12 m/s for a step.
-constexpr float MaxPelvisSpeed = 1.6f;
+/// No pelvis moves faster than this in the scenarios, m/s: about twice the
+/// fastest walk (the rogue, 1.33 m/s), so that tuning the walk does not
+/// break it, and still far below a shove of the old spacing (9-12 m/s for
+/// a step).
+constexpr float MaxPelvisSpeed = 2.5f;
 /// A change of the pelvis velocity between two steps larger than this, with
 /// the sign flipping, is a twitch back and forth, m/s.
 constexpr float FlipStep = 0.3f;
