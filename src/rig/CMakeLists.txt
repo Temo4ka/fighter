@@ -5,6 +5,7 @@ fighter_add_module(rig
         spacing.cpp
         contact.cpp
         pelvis_controller.cpp
+        pelvis_reaction.cpp
     PUBLIC_DEPS
         fighter::core
         fighter::debug
