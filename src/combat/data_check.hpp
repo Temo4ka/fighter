@@ -24,7 +24,18 @@
 ///     poses/, the clip has an active phase and striking parts, and a move
 ///     made with the weapon strikes with the arm that holds it;
 ///   - the clips the state machine plays (stance, walk, the blocks and
-///     reactions) exist, and so do the clips of the movesets' blocks.
+///     reactions) exist, and so do the clips of the movesets' blocks;
+///   - the joint angles of the clips are within the rig's joint limits.
+///
+/// Warnings (DataProblem::Warning) are likely mistakes that the game still
+/// plays, so that tuning may break them for a while:
+///
+///   - a clip asks an arm joint for much more speed than the motors have;
+///   - a clip the state machine plays as a pose of the legs (stance, walk,
+///     crouch, low block) sets no leg joint, or one it plays over the walk
+///     (upper blocks, reactions) sets one;
+///   - an attack of a moveset does not start or end in the guard of the
+///     set's stance.
 ///
 /// The file is internal to the combat module.
 ///

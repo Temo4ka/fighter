@@ -18,8 +18,9 @@
 
 namespace fighter::app {
 
-/// Checks \p Root / "data" and prints one line per problem ("file: detail")
-/// and a summary to \p Out. Returns 0 if the data is sound, 1 otherwise.
+/// Checks \p Root / "data" and prints one line per problem ("file: detail",
+/// a warning as "warning: file: detail") and a summary to \p Out. Returns 0
+/// if the data has no errors (warnings allowed), 1 otherwise.
 int runDataCheck(const std::filesystem::path& Root, std::ostream& Out);
 
 } // namespace fighter::app

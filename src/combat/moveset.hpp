@@ -113,10 +113,13 @@ inline constexpr std::string_view UnarmedMoveSetId = "unarmed";
 
 /// One thing wrong in the data: the file (relative to the data directory,
 /// for example "movesets/sword.json") and what is wrong in it, naming the
-/// field and the value.
+/// field and the value. A warning is a likely mistake that the game still
+/// plays (an attack that does not start in its stance); an error is data the
+/// game refuses or silently changes.
 struct DataProblem {
     std::string File;
     std::string Detail;
+    bool Warning = false;
 
     /// "File: Detail".
     std::string format() const { return File + ": " + Detail; }

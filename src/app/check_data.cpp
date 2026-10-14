@@ -1,7 +1,10 @@
 #include "app/check_data.hpp"
 
+#include <cstddef>
 #include <exception>
+#include <format>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "combat/data_check.hpp"
@@ -19,12 +22,19 @@ int runDataCheck(const std::filesystem::path& Root, std::ostream& Out) {
     } catch (const std::exception& Error) {
         Problems.push_back({.File = "editor.json", .Detail = Error.what()});
     }
-    for (const combat::DataProblem& Problem : Problems) Out << Problem.format() << '\n';
-    if (Problems.empty()) {
-        Out << "data check: " << DataDir.string() << " is sound\n";
+    size_t Errors = 0;
+    for (const combat::DataProblem& Problem : Problems) {
+        if (!Problem.Warning) ++Errors;
+        Out << (Problem.Warning ? "warning: " : "") << Problem.format() << '\n';
+    }
+    const size_t Warnings = Problems.size() - Errors;
+    const std::string WarningText =
+        Warnings == 0 ? "" : std::format(", {} {}", Warnings, Warnings == 1 ? "warning" : "warnings");
+    if (Errors == 0) {
+        Out << "data check: " << DataDir.string() << " is sound" << WarningText << '\n';
         return 0;
     }
-    Out << "data check: " << Problems.size() << (Problems.size() == 1 ? " problem" : " problems") << " in "
+    Out << "data check: " << Errors << (Errors == 1 ? " problem" : " problems") << WarningText << " in "
         << DataDir.string() << '\n';
     return 1;
 }

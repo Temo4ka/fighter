@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <exception>
 #include <format>
 #include <map>
@@ -14,6 +15,7 @@
 #include <utility>
 
 #include "anim/clip.hpp"
+#include "anim/layers.hpp"
 #include "combat/clip_library.hpp"
 #include "combat/move_input.hpp"
 #include "combat/moves.hpp"
@@ -47,6 +49,9 @@ private:
     const anim::Clip* requireClip(const std::string& File, const std::string& Field, const std::string& Name);
 
     void add(std::string File, std::string Detail) { Problems.push_back({std::move(File), std::move(Detail)}); }
+    void warn(std::string File, std::string Detail) {
+        Problems.push_back({.File = std::move(File), .Detail = std::move(Detail), .Warning = true});
+    }
     /// Reports \p Error as a problem of \p File, without the path the
     /// loaders put in front of the message.
     void addError(const std::string& File, const std::exception& Error);
@@ -76,6 +81,15 @@ private:
     /// Is \p Degrees outside the wrist limits of a rig? Reports it to \p File
     /// with \p What in front and returns true.
     bool checkWristAngle(const std::string& File, const std::string& What, float Degrees);
+    /// The joint angles of the loaded clips within the joint limits of every
+    /// rig, and no faster than the arm motors turn (a warning).
+    void checkClipJoints();
+    /// The clips the state machine plays as a pose of the legs set the legs,
+    /// those it plays over the walk do not (warnings).
+    void checkStateClipLayers(const MoveLibrary& Library);
+    /// Each attack of a moveset starts and ends in the guard of the set's
+    /// stance (a warning).
+    void checkAttackEdges(const MoveLibrary& Library, const std::set<std::string>& Stubs);
 
     fs::path DataDir;
     std::vector<DataProblem> Problems;
@@ -85,6 +99,15 @@ private:
 };
 
 constexpr float DegreesPerRadian = 180.0f / std::numbers::pi_v<float>;
+/// A clip angle off a joint limit by rounding only is not outside it, rad.
+constexpr float JointLimitSlack = 1e-4f;
+/// A clip may ask an arm joint for this many times the motors' speed
+/// (maxJointSpeed) before the arm visibly lags behind it.
+constexpr float JointSpeedAllowance = 1.5f;
+/// The first and the last key of an attack are this close to the stance's
+/// guard, rad (0.5 deg): an attack layered over the stance does not jump
+/// when it starts or ends.
+constexpr float StanceEdgeTolerance = 0.5f / DegreesPerRadian;
 
 } // namespace
 
@@ -106,6 +129,7 @@ std::vector<DataProblem> Checker::run() {
     checkRigs();
     checkMovesAndSets();
     checkClipWrists();
+    checkClipJoints();
     return std::move(Problems);
 }
 
@@ -215,6 +239,150 @@ void Checker::checkClipWrists() {
     }
 }
 
+void Checker::checkClipJoints() {
+    for (const auto& [Name, Clip] : Clips) {
+        if (!Clip) continue;
+        const std::string File = std::format("poses/{}.json", Name);
+        for (const auto& [RigFile, Def] : Rigs) {
+            // One report of each kind per clip and rig is enough.
+            bool Reported = false;
+            for (const anim::Keyframe& Key : Clip->Keys) {
+                for (const rig::JointDef& Joint : Def.Joints) {
+                    if (Reported || !Key.Target.hasJoint(Joint.Child)) continue;
+                    const float Angle = Key.Target.getAngle(Joint.Child);
+                    if (Angle >= Joint.LowerAngle - JointLimitSlack && Angle <= Joint.UpperAngle + JointLimitSlack) {
+                        continue;
+                    }
+                    add(File, std::format("key at t = {:g} s: '{}' {:g} deg is outside the joint limits [{:g}, {:g}] "
+                                          "of {}; the rig clamps it",
+                                          Key.TimeSec, getBodyPartName(Joint.Child), Angle * DegreesPerRadian,
+                                          Joint.LowerAngle * DegreesPerRadian, Joint.UpperAngle * DegreesPerRadian,
+                                          RigFile));
+                    Reported = true;
+                }
+            }
+            // The legs are posed directly, without motors; a loop has no
+            // fast swing to lag behind.
+            if (Clip->Loop) continue;
+            const float Limit = Def.Control.MaxJointSpeed * JointSpeedAllowance;
+            Reported = false;
+            for (size_t Index = 1; Index < Clip->Keys.size() && !Reported; ++Index) {
+                const anim::Keyframe& Before = Clip->Keys[Index - 1];
+                const anim::Keyframe& After = Clip->Keys[Index];
+                const float Span = After.TimeSec - Before.TimeSec;
+                if (Span <= 0.0f) continue;
+                for (size_t Part = 0; Part < BodyPartCount && !Reported; ++Part) {
+                    const auto Joint = static_cast<BodyPart>(Part);
+                    if (!After.Target.hasJoint(Joint) || anim::getLayer(Joint) == anim::Layer::Legs) continue;
+                    const float Speed = std::abs(After.Target.Angles[Part] - Before.Target.Angles[Part]) / Span;
+                    if (Speed <= Limit) continue;
+                    warn(File, std::format("key at t = {:g} s: '{}' turns at {:.1f} rad/s, more than {:g} x the "
+                                           "motors' maxJointSpeed ({:g} rad/s) of {}: the arm lags behind",
+                                           After.TimeSec, getBodyPartName(Joint), Speed, JointSpeedAllowance,
+                                           Def.Control.MaxJointSpeed, RigFile));
+                    Reported = true;
+                }
+            }
+        }
+    }
+}
+
+void Checker::checkStateClipLayers(const MoveLibrary& Library) {
+    // docs/MECHANICS.md, section 2.5: a clip with a leg joint is an action
+    // of the legs; without one it plays over the walk or the rest pose.
+    std::set<std::string> WithLegs;
+    for (const std::string_view Name : {clips::Stance, clips::Walk, clips::Crouch, clips::CrouchWalk, clips::BlockLow}) {
+        WithLegs.emplace(Name);
+    }
+    std::set<std::string> UpperOnly;
+    for (const std::string_view Name :
+         {clips::BlockHigh, clips::BlockMid, clips::Flinch, clips::Stagger, clips::Knockback}) {
+        UpperOnly.emplace(Name);
+    }
+    for (const MoveSet& Set : Library.getSets()) {
+        if (Set.Stance) WithLegs.insert(*Set.Stance);
+        for (const BlockZone Zone : {BlockZone::High, BlockZone::Mid, BlockZone::Low}) {
+            const std::optional<std::string>& Name = Set.Block.Clips[static_cast<size_t>(Zone)];
+            if (!Name || Name->empty()) continue;
+            (Zone == BlockZone::Low ? WithLegs : UpperOnly).insert(*Name);
+        }
+    }
+    std::string Why;
+    for (const std::string& Name : WithLegs) {
+        const anim::Clip* Clip = findClip(Name, Why);
+        if (Clip && !anim::usesLegs(*Clip)) {
+            warn(std::format("poses/{}.json", Name), "the state machine plays it as a pose of the legs, but it sets "
+                                                     "no leg joint: the legs walk or rest under it");
+        }
+    }
+    for (const std::string& Name : UpperOnly) {
+        const anim::Clip* Clip = findClip(Name, Why);
+        if (Clip && anim::usesLegs(*Clip)) {
+            warn(std::format("poses/{}.json", Name), "the state machine plays it over the walk, but it sets leg "
+                                                     "joints: it becomes an action of the legs");
+        }
+    }
+}
+
+void Checker::checkAttackEdges(const MoveLibrary& Library, const std::set<std::string>& Stubs) {
+    // A weapon is held by the main hand; a clip authored for the other arm
+    // plays with the arms swapped (Fighter::chooseStrikeWeapon).
+    std::optional<BodyPart> MainHand;
+    if (!Rigs.empty()) MainHand = Rigs.front().second.Weapon.Part;
+    std::set<std::string> Seen;
+    std::string Why;
+    for (const MoveSet& Set : Library.getSets()) {
+        if (Stubs.contains("movesets/" + Set.Id)) continue;
+        // MoveLibrary::getStance() would go round parents in a circle.
+        std::set<std::string> Visited;
+        std::optional<std::string> StanceName;
+        for (const MoveSet* Current = &Set; Current && Visited.insert(Current->Id).second;
+             Current = Current->Inherit.empty() ? nullptr : Library.findSet(Current->Inherit)) {
+            if (Current->Stance) {
+                StanceName = *Current->Stance;
+                break;
+            }
+            if (Current->Inherit.empty()) StanceName = std::string(clips::Stance);
+        }
+        if (!StanceName) continue;
+        const anim::Clip* Stance = findClip(*StanceName, Why);
+        if (!Stance || Stance->Keys.empty()) continue;
+        for (const MoveSetEntry& Entry : Set.Entries) {
+            const MoveDef* Move = Library.findMove(Entry.MoveId);
+            const anim::Clip* Attack = Move ? findClip(Move->Clip, Why) : nullptr;
+            if (!Attack || Attack->Keys.empty()) continue;
+            const bool OtherHand = Move->UsesWeapon && MainHand && !Attack->isStriker(*MainHand) &&
+                                   Attack->isStriker(anim::getMirroredArmPart(*MainHand));
+            if (!Seen.insert(std::format("{}|{}|{}", Move->Clip, *StanceName, OtherHand)).second) continue;
+            const anim::Pose& Authored = Stance->Keys.front().Target;
+            const anim::Pose Guard = OtherHand ? anim::mirrorArms(Authored) : Authored;
+            // The legs step into an action's pose (legStep), so only the
+            // upper body has to match.
+            for (const bool First : {true, false}) {
+                const anim::Keyframe& Edge = First ? Attack->Keys.front() : Attack->Keys.back();
+                std::optional<BodyPart> Worst;
+                float WorstOff = StanceEdgeTolerance;
+                for (size_t Part = 0; Part < BodyPartCount; ++Part) {
+                    const auto Joint = static_cast<BodyPart>(Part);
+                    if (!Edge.Target.hasJoint(Joint) || !Guard.hasJoint(Joint)) continue;
+                    if (anim::getLayer(Joint) == anim::Layer::Legs) continue;
+                    const float Off = std::abs(Edge.Target.Angles[Part] - Guard.Angles[Part]);
+                    if (Off <= WorstOff) continue;
+                    WorstOff = Off;
+                    Worst = Joint;
+                }
+                if (!Worst) continue;
+                warn(std::format("poses/{}.json", Move->Clip),
+                     std::format("the {} key (t = {:g} s) is {:.1f} deg off the guard of the stance '{}' (moveset "
+                                 "'{}'{}) in '{}': the body jumps when the attack {}",
+                                 First ? "first" : "last", Edge.TimeSec, WorstOff * DegreesPerRadian, *StanceName,
+                                 Set.Id, OtherHand ? ", arms swapped" : "", getBodyPartName(*Worst),
+                                 First ? "starts" : "ends"));
+            }
+        }
+    }
+}
+
 void Checker::checkMovesAndSets() {
     // Files that cannot be read stay in the library as empty stubs, so that
     // the references to them are not reported again as missing.
@@ -252,6 +420,8 @@ void Checker::checkMovesAndSets() {
     checkMoveFiles(Library, Stubs);
     checkMoveSetFiles(Library, Stubs);
     checkStateClips();
+    checkStateClipLayers(Library);
+    checkAttackEdges(Library, Stubs);
     checkItemsAndFighters(KnownSets);
 }
 

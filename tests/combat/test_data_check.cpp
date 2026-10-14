@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -28,23 +29,37 @@ std::string moveJson(const std::string& Extra) {
 
 std::string describe(const std::vector<DataProblem>& Problems) {
     std::string Text;
-    for (const DataProblem& Problem : Problems) Text += Problem.format() + "\n";
+    for (const DataProblem& Problem : Problems) Text += (Problem.Warning ? "warning: " : "") + Problem.format() + "\n";
     return Text;
+}
+
+/// The problems that are errors, not warnings.
+std::vector<DataProblem> getErrors(const std::vector<DataProblem>& Problems) {
+    std::vector<DataProblem> Errors;
+    std::ranges::copy_if(Problems, std::back_inserter(Errors), [](const DataProblem& Problem) { return !Problem.Warning; });
+    return Errors;
+}
+
+/// Is there a warning (not an error) of \p File that mentions \p Text?
+bool hasWarning(const std::vector<DataProblem>& Problems, const std::string& File, const std::string& Text) {
+    return std::ranges::any_of(Problems, [&](const DataProblem& Problem) {
+        return Problem.Warning && Problem.File == File && Problem.Detail.find(Text) != std::string::npos;
+    });
 }
 
 } // namespace
 
-TEST_CASE("checkData: the real data directory has no problems", "[combat][data_check]") {
+TEST_CASE("checkData: the test data directory has no errors", "[combat][data_check]") {
     const std::vector<DataProblem> Problems = checkData(FIGHTER_DATA_DIR);
     INFO(describe(Problems));
-    CHECK(Problems.empty());
+    CHECK(getErrors(Problems).empty());
 }
 
 TEST_CASE("checkData: a move names a missing move, clip or close clip", "[combat][data_check]") {
     const test::ScratchData Data("check_moves");
     Data.write("moves/bad_chain.json", moveJson(R"("clip": "jab", "chain_to": ["no_such_move"])"));
     Data.write("moves/bad_clip.json", moveJson(R"("clip": "no_such_clip", "close_clip": "no_close_clip", "close_range_m": 0.5)"));
-    const auto Problems = checkData(Data.getDir());
+    const auto Problems = getErrors(checkData(Data.getDir()));
     INFO(describe(Problems));
     CHECK(hasProblem(Problems, "moves/bad_chain.json", "field 'chain_to': there is no move 'no_such_move'"));
     CHECK(hasProblem(Problems, "moves/bad_clip.json", "field 'clip': clip 'no_such_clip'"));
@@ -157,7 +172,7 @@ TEST_CASE("checkData: collects the problems of every file, also broken ones", "[
     Data.write("movesets/typo.json", R"({"moves": {}, "mvoes": {}})");
     Data.write("fighters/broken.json", R"({"name": "X"})");
     std::filesystem::remove(Data.getDir() / "reactions.json");
-    const auto Problems = checkData(Data.getDir());
+    const auto Problems = getErrors(checkData(Data.getDir()));
     INFO(describe(Problems));
     CHECK(hasProblem(Problems, "moves/broken.json", ""));
     CHECK(hasProblem(Problems, "movesets/typo.json", "unknown field 'mvoes'"));
@@ -192,11 +207,59 @@ TEST_CASE("checkData: wrist angles of clips and items are within the rig's wrist
     Data.write("items/extra.json", R"({"items": [
         {"id": "bent_blade", "slot": "MainHand", "mass_kg": 1.0,
          "weapon": {"reach_m": 0.5, "speed_scale": 1, "power_scale": 1, "angle_deg": 170, "width_m": 0.04}}]})");
-    const auto Problems = checkData(Data.getDir());
+    const auto Problems = getErrors(checkData(Data.getDir()));
     INFO(describe(Problems));
     CHECK(hasProblem(Problems, "poses/odd_wrist.json", "key at t = 0.2 s: 'Weapon' 150 deg is outside the wrist limits"));
     CHECK(hasProblem(Problems, "items/extra.json", "item 'bent_blade': field 'weapon.angle_deg': 170 deg"));
     CHECK(Problems.size() == 2);
+}
+
+TEST_CASE("checkData: clip joints within the rig's limits; too fast for the motors is a warning",
+          "[combat][data_check]") {
+    const test::ScratchData Data("check_joints");
+    Data.write("poses/odd_joints.json", R"({ "duration": 0.5, "keys": [
+        { "t": 0, "pose": { "UpperArmL": 40, "ShinR": 30 } },
+        { "t": 0.02, "pose": { "UpperArmL": 120, "ShinR": 30 } } ] })");
+    Data.write("movesets/odd_joints.json", R"({"stance": "odd_joints"})");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    // The knee bends only backwards.
+    CHECK(hasProblem(getErrors(Problems), "poses/odd_joints.json",
+                     "key at t = 0 s: 'ShinR' 30 deg is outside the joint limits"));
+    CHECK(hasWarning(Problems, "poses/odd_joints.json", "key at t = 0.02 s: 'UpperArmL' turns at"));
+}
+
+TEST_CASE("checkData: the state machine's clips keep to their layer", "[combat][data_check]") {
+    const test::ScratchData Data("check_layers");
+    // A reaction that sets a knee, a crouch without the legs.
+    Data.write("poses/flinch.json", R"({ "duration": 0.3, "keys": [ { "t": 0, "pose": { "Torso": 0, "ShinL": -10 } },
+        { "t": 0.3, "pose": { "Torso": 0, "ShinL": -10 } } ] })");
+    Data.write("poses/crouch.json", R"({ "duration": 1, "loop": true, "keys": [ { "t": 0, "pose": { "Torso": 5 } } ] })");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(getErrors(Problems).empty());
+    CHECK(hasWarning(Problems, "poses/flinch.json", "it sets leg joints"));
+    CHECK(hasWarning(Problems, "poses/crouch.json", "it sets no leg joint"));
+}
+
+TEST_CASE("checkData: an attack that does not start or end in its stance's guard is a warning",
+          "[combat][data_check]") {
+    const test::ScratchData Data("check_attack_edges");
+    Data.write("poses/stance_odd.json", R"({ "duration": 1, "loop": true, "keys": [ { "t": 0, "pose": {
+        "UpperArmL": 30, "ForearmL": 60, "ThighL": 10, "ShinL": -10, "ThighR": -10, "ShinR": -10 } } ] })");
+    Data.write("poses/odd_strike.json", R"({ "duration": 0.6, "active": [0.2, 0.3], "strikers": ["ForearmL"],
+        "keys": [ { "t": 0, "pose": { "UpperArmL": 30, "ForearmL": 60 } },
+                  { "t": 0.25, "pose": { "UpperArmL": 80, "ForearmL": 10 } },
+                  { "t": 0.6, "pose": { "UpperArmL": 30, "ForearmL": 45 } } ] })");
+    Data.write("moves/odd_strike.json", moveJson(R"("clip": "odd_strike")"));
+    Data.write("movesets/odd.json", R"({"stance": "stance_odd", "moves": {"Light": "odd_strike"}})");
+    const auto Problems = checkData(Data.getDir());
+    INFO(describe(Problems));
+    CHECK(getErrors(Problems).empty());
+    CHECK(hasWarning(Problems, "poses/odd_strike.json",
+                     "the last key (t = 0.6 s) is 15.0 deg off the guard of the stance 'stance_odd' (moveset 'odd') "
+                     "in 'ForearmL'"));
+    CHECK_FALSE(hasWarning(Problems, "poses/odd_strike.json", "the first key"));
 }
 
 TEST_CASE("findStrikeProblems: empty active, no strikers and a weapon move without an arm", "[combat][data_check]") {
