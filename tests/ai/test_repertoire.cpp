@@ -53,8 +53,9 @@ TEST_CASE("buildRepertoire: a child set overrides the input of its parent", "[ai
     }
     REQUIRE(Heavy);
     CHECK(Heavy->MoveId == "sword_slash");
-    // The parent's jab is still there on its own input.
-    CHECK(findAttack(Moves, "jab"));
+    // The parent's kick is still there on its own input; its jab is overridden.
+    CHECK(findAttack(Moves, "body_kick"));
+    CHECK_FALSE(findAttack(Moves, "jab"));
     // No two lines on one input.
     for (const AiMove& Attack : Moves.Attacks) {
         CHECK(std::ranges::count(Moves.Attacks, Attack.Input, &AiMove::Input) == 1);
