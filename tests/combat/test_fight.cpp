@@ -157,6 +157,10 @@ TEST_CASE("Fight: a series of light hits raises the reaction level", "[combat][f
 
     ScratchData Data("series");
     Data.write("reactions.json", makeReactionsJson(Spec));
+    // The jabs land at the edge of their reach: the pelvis tilt of each jab
+    // (rig::PelvisReaction) carries the guard back and softens the next one.
+    // This test is about the buildup, so the guard stays where it is.
+    Data.replace("rigs/humanoid.json", "\"pelvisTiltPerStrength\": 0.7", "\"pelvisTiltPerStrength\": 0");
     Battle Fight(Data.makeConfig());
     const std::vector<StrikeLanded> Hits = strike(Fight, Jabs, 6 * TicksPerSecond);
     REQUIRE(Hits.size() >= 4);
