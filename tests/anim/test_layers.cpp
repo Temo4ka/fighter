@@ -2,7 +2,6 @@
 
 #include <bitset>
 #include <cstddef>
-#include <filesystem>
 #include <initializer_list>
 #include <string>
 
@@ -14,8 +13,6 @@ using namespace fighter;
 using namespace fighter::anim;
 
 namespace {
-
-const std::filesystem::path PosesDir = std::filesystem::path(FIGHTER_DATA_DIR) / "poses";
 
 constexpr const char* KickJson = R"({
     "duration": 1.0,
@@ -43,18 +40,15 @@ TEST_CASE("Layers: the legs are the thighs, shins and feet", "[anim][layers]") {
     CHECK(getLayer(BodyPart::ForearmL) == Layer::Upper);
 }
 
-TEST_CASE("Layers: which clips of data/poses use the legs", "[anim][layers]") {
-    // The classification the layered walk plays by (docs/MECHANICS.md, section 2.5): the
-    // punches, the upper blocks and the reactions leave the legs alone.
-    for (const char* Name : {"walk", "kick", "crouch", "crouch_walk", "block_low", "stance"}) {
-        INFO(Name);
-        CHECK(usesLegs(loadClip(PosesDir / (std::string(Name) + ".json"))));
-    }
-    for (const char* Name : {"jab", "jab_close", "heavy_punch", "heavy_punch_close", "sword_slash", "hammer_smash",
-                             "block_high", "block_mid", "flinch", "stagger", "knockback"}) {
-        INFO(Name);
-        CHECK_FALSE(usesLegs(loadClip(PosesDir / (std::string(Name) + ".json"))));
-    }
+TEST_CASE("Layers: a clip with a leg joint is an action of the legs", "[anim][layers]") {
+    // The classification the layered walk plays by (docs/MECHANICS.md, section 2.5);
+    // --check-data checks the clips of the state machine against it.
+    CHECK(usesLegs(parseClip(KickJson, "kick")));
+    const Clip Punch = parseClip(R"({ "duration": 0.5, "keys": [
+        { "t": 0.0, "pose": { "Torso": 4, "UpperArmL": 30, "ForearmL": 90 } },
+        { "t": 0.3, "pose": { "Torso": 8, "UpperArmL": 85, "ForearmL": 10 } } ] })",
+                                 "punch");
+    CHECK_FALSE(usesLegs(Punch));
 }
 
 TEST_CASE("Layers: selectJoints and joinLayers keep each layer's joints", "[anim][layers]") {
