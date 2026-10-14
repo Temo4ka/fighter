@@ -35,7 +35,7 @@
 cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug                # все тесты
-ctest --preset debug-fast -j8       # без долгих сценарных (тег [slow], около 25 тестов по 10–60 с)
+ctest --preset debug-fast -j8       # без долгих сценарных (тег [slow], около 35 тестов по 3–35 с)
 ./build/debug/src/app/fighter_app   # песочница
 ```
 
