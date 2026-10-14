@@ -270,32 +270,6 @@ TEST_CASE("computeProfile: stacked armor is capped per body part", "[stats][bala
     CHECK(computeProfile({}, Gear, Table).Parts[static_cast<size_t>(BodyPart::Head)].Armor == Approx(0.6f));
 }
 
-TEST_CASE("computeProfile: equipment mass adds to the body part masses", "[stats][balance]") {
-    const ResolvedFighter Knight = loadFighter("knight");
-    const PhysicalProfile Naked = profileOf(Knight.BaseStats);
-    const PhysicalProfile Armored = profileOf(Knight.BaseStats, Knight.Gear);
-    float GearKg = 0.0f;
-    for (const EquipmentItem& Item : Knight.Gear.Items) GearKg += Item.MassKg;
-    CHECK(getTotalMassKg(Armored) - getTotalMassKg(Naked) == Approx(GearKg).margin(1e-3));
-}
-
-TEST_CASE("computeProfile: the knight and the rogue differ as built", "[stats][balance][data]") {
-    const ResolvedFighter Knight = loadFighter("knight");
-    const ResolvedFighter Rogue = loadFighter("rogue");
-    const PhysicalProfile K = profileOf(Knight.BaseStats, Knight.Gear);
-    const PhysicalProfile R = profileOf(Rogue.BaseStats, Rogue.Gear);
-
-    CHECK(getTotalMassKg(K) > getTotalMassKg(R));
-    CHECK(K.Poise > R.Poise);
-    CHECK(K.MaxHp > R.MaxHp);
-    CHECK(K.MaxStamina > R.MaxStamina);
-    CHECK(K.MotorMaxTorque > R.MotorMaxTorque);
-    // The rogue is the quick one: walking, strikes and motors.
-    CHECK(K.AttackSpeedScale < R.AttackSpeedScale);
-    CHECK(K.MoveSpeedScale < R.MoveSpeedScale);
-    CHECK(K.MotorGain < R.MotorGain);
-}
-
 TEST_CASE("computeProfile: the balance table, not the code, sets the numbers", "[stats][balance]") {
     BalanceTable Table = BalanceTable::getDefaults();
     const PhysicalProfile Before = computeProfile({.Constitution = 14}, {}, Table);

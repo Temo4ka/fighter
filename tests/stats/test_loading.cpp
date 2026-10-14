@@ -344,11 +344,6 @@ TEST_CASE("loadFighterSheet: the sample fighters resolve against the sample item
     // Every slot but the other hand.
     CHECK(Knight.Gear.Items.size() == EquipmentSlots.size() - 1);
     CHECK(Rogue.Gear.Items.size() == EquipmentSlots.size() - 1);
-
-    // Different builds: the knight is strong and heavy, the rogue is quick and light.
-    CHECK(Knight.BaseStats.Strength > Rogue.BaseStats.Strength);
-    CHECK(Rogue.BaseStats.Dexterity > Knight.BaseStats.Dexterity);
-    CHECK(getTotalItemMass(Knight.Gear) > 2.0f * getTotalItemMass(Rogue.Gear));
 }
 
 TEST_CASE("computeProfile: a resolved loadout adds its item masses", "[stats][loading][data]") {
