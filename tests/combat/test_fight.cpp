@@ -17,7 +17,12 @@
 #include "combat/battle.hpp"
 #include "combat/moves.hpp"
 #include "combat/tuning.hpp"
+#include "debug/draw.hpp"
 #include "scenario.hpp"
+
+#if FIGHTER_DEBUG
+#include "debug/draw_list.hpp"
+#endif
 
 using namespace fighter;
 using namespace fighter::combat;
@@ -540,4 +545,39 @@ TEST_CASE("Fight: a fighter on the floor is not hit", "[combat][fight]") {
     strike(Fight, {.Range = KickRange, .WaitForVictim = false, .OnTick = Watch}, 4 * TicksPerSecond);
     CHECK(Fell);
     CHECK_FALSE(HitOnFloor);
+}
+
+TEST_CASE("Fight: a landed kick makes the victim's pelvis give way", "[combat][fight]") {
+    // The kick that lands excites the victim's pelvis reaction with its
+    // strength (rig::PelvisReaction); the debug log tells it. The victim
+    // lowers its pelvis while it gives way, then comes back.
+    ScratchData Data("pelvis_gives_way");
+    Data.write("reactions.json", makeReactionsJson(makeNoKnockdowns()));
+    Battle Fight(Data.makeConfig());
+    float RestY = 0.0f;
+    float LowestY = 0.0f;
+    bool Landed = false;
+    const auto Watch = [&](const Battle& Current) {
+        const float PelvisY = getPart(getRight(Current), BodyPart::Pelvis).Position.Y;
+        if (!Landed) {
+            RestY = PelvisY;
+            LowestY = PelvisY;
+        }
+        LowestY = std::min(LowestY, PelvisY);
+    };
+    const std::vector<StrikeLanded> Kick = strike(Fight, {.MaxLanded = 1, .OnTick = Watch}, 3 * TicksPerSecond);
+    REQUIRE(Kick.size() == 1);
+    Landed = true;
+#if FIGHTER_DEBUG
+    const auto& Events = debug::getDrawList().getEvents();
+    CHECK(std::ranges::any_of(Events, [](const std::string& Line) {
+        return Line.starts_with("P2 pelvis gives way");
+    }));
+#endif
+    run(Fight, {}, {}, TicksPerSecond / 2);
+    for (int Tick = 0; Tick < TicksPerSecond / 2; ++Tick) {
+        Fight.update({}, {}, Dt);
+        Watch(Fight);
+    }
+    CHECK(LowestY < RestY);
 }
