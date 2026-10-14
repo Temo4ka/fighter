@@ -45,3 +45,18 @@ TEST_CASE("runDataCheck: a broken editor.json is reported with the file and the 
     CHECK(Out.str().find("unknown field 'divergence_dg'") != std::string::npos);
     std::filesystem::remove_all(Root);
 }
+
+TEST_CASE("runDataCheck: a broken ai.json is reported with the file and the key", "[app][data_check][ai]") {
+    const combat::test::ScratchData Data("cli_check_ai");
+    Data.write("ai.json", R"({"blockChence": 0.5})");
+    const std::filesystem::path Root = Data.getDir().string() + "_root";
+    std::filesystem::remove_all(Root);
+    std::filesystem::create_directories(Root);
+    std::filesystem::copy(Data.getDir(), Root / "data", std::filesystem::copy_options::recursive);
+
+    std::ostringstream Out;
+    CHECK(app::runDataCheck(Root, Out) != 0);
+    CHECK(Out.str().find("ai.json: ") != std::string::npos);
+    CHECK(Out.str().find("unknown parameter 'blockChence'") != std::string::npos);
+    std::filesystem::remove_all(Root);
+}

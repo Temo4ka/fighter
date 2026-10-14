@@ -4,6 +4,7 @@
 #include <ostream>
 #include <vector>
 
+#include "ai/ai_config.hpp"
 #include "combat/data_check.hpp"
 #include "editor/editor_config.hpp"
 
@@ -18,6 +19,12 @@ int runDataCheck(const std::filesystem::path& Root, std::ostream& Out) {
         editor::loadEditorConfigOrDefault(DataDir);
     } catch (const std::exception& Error) {
         Problems.push_back({.File = "editor.json", .Detail = Error.what()});
+    }
+    // The AI's parameters are read by the sandbox, not by a battle.
+    try {
+        ai::loadAiConfig(DataDir / "ai.json");
+    } catch (const std::exception& Error) {
+        Problems.push_back({.File = "ai.json", .Detail = Error.what()});
     }
     for (const combat::DataProblem& Problem : Problems) Out << Problem.format() << '\n';
     if (Problems.empty()) {

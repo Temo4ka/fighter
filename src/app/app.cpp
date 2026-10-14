@@ -17,7 +17,9 @@
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/VideoMode.hpp>
 
+#include "ai/ai_controller.hpp"
 #include "core/log.hpp"
+#include "combat/moveset.hpp"
 #include "debug/draw.hpp"
 #include "render/assets.hpp"
 #include "stats/describe.hpp"
@@ -198,6 +200,10 @@ void App::onKeyPressed(sf::Keyboard::Scancode Key) {
         return;
     }
 #endif
+    if (Key == sf::Keyboard::Scan::Tab) {
+        toggleP2Controller();
+        return;
+    }
     Input.onKey(Key, true);
 }
 
@@ -211,8 +217,11 @@ void App::stepSimulation(double Dt) {
         const DemoInput Scripted = getDemoInput(*Opts.Demo, Loop.getTick(), Previous);
         CurrentBattle->update(Scripted.Left, Scripted.Right, Dt);
     } else {
-        CurrentBattle->update(Input.getCommands(0), Input.getCommands(1), Dt);
+        const combat::PlayerCommands Left = Controllers[0]->getCommands(Previous, Dt);
+        const combat::PlayerCommands Right = Controllers[1]->getCommands(Previous, Dt);
+        CurrentBattle->update(Left, Right, Dt);
     }
+    debug::setPanel("P2 control", std::format("{} (Tab toggles)", Controllers[1]->getName()));
     for (const combat::BattleEvent& Event : CurrentBattle->getEvents())
         BattleEvents.emit(Event, CurrentBattle->getSnapshot());
     if (StandRun) stepStand();
@@ -338,6 +347,7 @@ bool App::restartBattle() {
     // The battle reads the data files (rigs, poses) when it is created.
     std::unique_ptr<combat::Battle> Fresh;
     std::optional<combat::StandSetup> FreshStand;
+    ControllerPair FreshControllers;
     try {
         // The stand reads the move, its clip and the item again every run.
         if (Opts.StandMove) {
@@ -349,6 +359,7 @@ bool App::restartBattle() {
         const stats::BalanceTable Balance = stats::loadBalanceTable(Config.DataDir / "balance.json");
         Fresh = std::make_unique<combat::Battle>(Config);
         publishStatsPanel(Config, Balance);
+        FreshControllers = makeControllers(*Fresh, Opts.P2Ai);
     } catch (const std::exception& Error) {
         if (!CurrentBattle) throw;   // at startup there is nothing to fall back to
         // A typo in a JSON file during live tuning must not close the sandbox.
@@ -359,6 +370,7 @@ bool App::restartBattle() {
         return false;
     }
     CurrentBattle = std::move(Fresh);
+    Controllers = std::move(FreshControllers);
     if (FreshStand) {
         Stand = std::move(FreshStand);
         StandRun = std::make_unique<combat::MoveRun>(*Stand);
@@ -372,6 +384,36 @@ bool App::restartBattle() {
     Loop.reset();
     Input.reset();
     return true;
+}
+
+App::ControllerPair App::makeControllers(const combat::Battle& Fight, bool WithAi) const {
+    ControllerPair Pair;
+    Pair[0] = std::make_unique<ai::HumanController>([this] { return Input.getCommands(0); });
+    if (!WithAi) {
+        Pair[1] = std::make_unique<ai::HumanController>([this] { return Input.getCommands(1); });
+        return Pair;
+    }
+    // The AI reads the same data as the battle: its moves and ai.json.
+    const std::filesystem::path DataDir = Fight.getConfig().DataDir;
+    const ai::AiConfig Config = ai::loadAiConfig(DataDir / "ai.json");
+    const combat::MoveLibrary Library = combat::MoveLibrary::load(DataDir);
+    const combat::MoveSet& Set = ai::selectMoveSet(Library, Fight.getConfig().Right.Loadout);
+    Pair[1] = std::make_unique<ai::AiController>(1, Config, ai::buildRepertoire(Library, Set, Config));
+    return Pair;
+}
+
+void App::toggleP2Controller() {
+    if (!CurrentBattle) return;
+    try {
+        ControllerPair Fresh = makeControllers(*CurrentBattle, !Opts.P2Ai);
+        Controllers[1] = std::move(Fresh[1]);
+        Opts.P2Ai = !Opts.P2Ai;
+        Input.reset();
+        debug::logEvent(std::format("P2 is played by {}", Controllers[1]->getName()));
+    } catch (const std::exception& Error) {
+        log::error("cannot switch P2: {}", Error.what());
+        debug::logEvent(std::format("P2 switch failed: {}", Error.what()));
+    }
 }
 
 void App::publishFrameStats(double FrameSec) {

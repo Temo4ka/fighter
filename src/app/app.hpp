@@ -26,6 +26,7 @@
 #include <SFML/Graphics/RenderWindow.hpp>
 
 #include "app/demo_script.hpp"
+#include "ai/controller.hpp"
 #include "app/input.hpp"
 #include "combat/battle.hpp"
 #include "combat/move_measure.hpp"
@@ -51,6 +52,9 @@ struct Options {
     bool Showcase = false;                            ///< Samples of every debug category.
     std::optional<std::string> Style;                 ///< A style of data/visuals.json instead of its "style".
     std::optional<DemoScript> Demo;                   ///< Scripted input instead of the keyboard.
+    /// P2 is played by the AI (--p2 ai) instead of the keyboard; Tab toggles
+    /// it in a battle (data/ai.json).
+    bool P2Ai = false;
     /// Fighter sheets, data/fighters/<name>.json, for each side; nullopt: the
     /// built-in sandbox fighter.
     std::optional<std::string> LeftFighter;
@@ -101,6 +105,13 @@ private:
     /// that has not started, so the select screen shows them standing.
     void refreshMenuStage(ui::Screen Before);
     void loadUiConfig();
+    using ControllerPair = std::array<std::unique_ptr<ai::Controller>, 2>;
+    /// The controllers of both players for \p Fight: the keyboard for P1, and
+    /// the keyboard or the AI for P2 (\p WithAi). Throws if data/ai.json or
+    /// the moves are broken.
+    ControllerPair makeControllers(const combat::Battle& Fight, bool WithAi) const;
+    /// P2: human <-> AI (Tab). A broken data/ai.json keeps the old controller.
+    void toggleP2Controller();
 
 #if FIGHTER_DEBUG
     void applyDebugAction(render::DebugAction Action);
@@ -131,6 +142,8 @@ private:
     Connection FlowEvents;
     FixedStepLoop Loop;
     std::unique_ptr<combat::Battle> CurrentBattle;
+    /// Where the commands of each player come from (ai/controller.hpp).
+    ControllerPair Controllers;
     combat::RenderSnapshot Previous;
     bool ResultReported = false;
     /// The move stand (Opts.StandMove): what is being repeated, the current

@@ -20,6 +20,7 @@
 //   --showcase                  samples of every debug category (debug build)
 //   --style <name>              a style of data/visuals.json "styles" (smooth, pixel)
 //   --demo walk|fight|kick      scripted input instead of the keyboard
+//   --p2 human|ai               who plays P2: the keyboard (default) or the AI (data/ai.json); Tab toggles
 //   --left <fighter>            fighter sheet of P1 (data/fighters/<fighter>.json), default: built-in
 //   --right <fighter>           the same for P2
 //   --menu                      start in the main menu even with the flags above
@@ -95,6 +96,10 @@ int main(int Argc, char** Argv) {
         } else if (Arg == "--demo" && HasValue) {
             Opts.Demo = app::findDemoScript(Argv[++ArgIndex]);
             if (!Opts.Demo) log::warn("unknown demo script: {}", Argv[ArgIndex]);
+        } else if (Arg == "--p2" && HasValue) {
+            const std::string_view Who = Argv[++ArgIndex];
+            if (Who == "ai") Opts.P2Ai = true;
+            else if (Who != "human") log::warn("--p2 takes human or ai, not {}", Who);
         } else if (Arg == "--left" && HasValue) {
             Opts.LeftFighter = Argv[++ArgIndex];
         } else if (Arg == "--right" && HasValue) {
