@@ -11,6 +11,7 @@
 9. [`items/*.json`](#9-itemsjson--предметы) · 10. [`fighters/*.json`](#10-fightersjson--листы-бойцов) · 11. [`reactions.json`](#11-reactionsjson--попадание)
 12. [`balance.json`](#12-balancejson--статы-в-физику) · 13. [`visuals.json`](#13-visualsjson--картинки-эффекты-hud) · 14. [`ui.json`](#14-uijson--экраны-меню)
 15. [`stand.json`](#15-standjson--стенд-удара) · 16. [`editor.json`](#16-editorjson--пороги-редактора-поз)
+17. [`ai.json`](#17-aijson--простой-ии)
 
 ## 1. Общие правила
 
@@ -50,7 +51,7 @@
 
 | Что | Правило |
 |---|---|
-| `balance.json`, `combat.json`, `reactions.json`, `input.json`, `stand.json`, `editor.json`, `rigs/*.json` | файл читается без ошибок |
+| `balance.json`, `combat.json`, `reactions.json`, `input.json`, `stand.json`, `editor.json`, `ai.json`, `rigs/*.json` | файл читается без ошибок |
 | `moves/*.json` | `chain_to` называет существующие удары; `clip` и `close_clip` — существующие клипы, и они читаются; у клипа есть `active` и `strikers`; удар с `uses_weapon` бьёт предплечьем (оно среди `strikers`, правило `combat::findStrikeProblems`) |
 | `movesets/*.json` | каждый ввод называет существующий удар; `inherit` называет набор и не замыкается в кольцо; `pair` — два набора без пар, и других наборов на ту же пару нет; набор `unarmed` есть; клипы `block.clips` и `stance` существуют |
 | `poses/` | есть клипы, которые бой играет сам: `stance`, `walk`, `crouch`, `crouch_walk`, `block_high/mid/low`, `flinch`, `stagger`, `knockback`; у них и у клипов блока наборов нет `pelvisX` |
@@ -435,3 +436,21 @@ Id попадает в события (`StrikeStarted::MoveId`), в `FighterView
 | `limit_margin_deg` | градусы | 0…45 | то же |
 | `divergence_deg` | градусы | 1…180 | то же |
 | `trajectory_step_sec` | с | 0,004…0,25 | то же |
+
+## 17. `ai.json` — простой ИИ
+
+Параметры `ai::AiController` (`ai::parseAiConfig`, `ai::loadAiConfig`): как ИИ подходит, бьёт и блокирует.
+Бой этот файл не читает: его читает песочница при создании ИИ (`--p2 ai`, `Tab`) и `--check-data`; `F5` создаёт ИИ заново.
+Правила игры ИИ — [MECHANICS.md](MECHANICS.md), раздел 9; смысл и значения — [TUNING.md](TUNING.md), раздел 18.
+
+Все ключи необязательны; неизвестный ключ — ошибка, значение вне пределов — ошибка с именем ключа и значением.
+Какие удары у ИИ есть и на какой дистанции, берётся из набора движений бойца и блока `ai` в `moves/*.json`
+(раздел 6), а не из этого файла.
+
+| Поле | Тип | Пределы |
+|---|---|---|
+| `reactionDelaySec`, `blockHoldSec`, `decisionIntervalSec`, `pressSec`, `recoverSec` | с | 0 и больше |
+| `blockChance`, `attackChance`, `minStaminaFraction` | доля | 0…1 |
+| `blockRangeM`, `rangeMarginM` | м | 0 и больше |
+| `defaultRangeM` | `[мин, макс]`, м | 0 ≤ мин ≤ макс |
+| `seed` | целое | 0 и больше |

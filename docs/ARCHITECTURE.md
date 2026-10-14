@@ -29,10 +29,11 @@
 | `anim` | `Pose`, `Clip`, `sampleClip`, `layerPose`, слои ног и верха тела, зеркальные ноги и переставленные руки (`anim/layers.hpp`) | `core`; json |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка JSON | `core`; json |
 | `combat` | публичный API: `Battle`, `BattleConfig`, `BattleEvent`, `BattleResult`, `PlayerCommands`, `RenderSnapshot`; внутри — `Fighter`, `CombatTuning`, `MoveDef`, наборы движений, `checkData`, `measureMove` и `MoveRun` (стенд; `BattleConfig::ClipOverrides` — тексты клипов вместо файлов), `LegCycle`, `LegStep` | `core`, `stats`, `physics` (только `HitEvent`); `debug`, `rig`, `anim`, json |
+| `ai` | источники команд: `Controller` (`HumanController`, `ReplayController`, `RecordingController`) и простой ИИ `AiController`; `AiConfig` (`ai.json`), `Repertoire` (удары набора движений с дистанциями и высотами) | `core`, `stats`, `combat`; `debug`, json |
 | `editor` | логика редактора поз без окна: прямая кинематика (`poseBody`), призрак (`composeGhostPose`, `findStance`), правка ключей (`clip_edit.hpp`), IK (`arm_ik.hpp`, `pose_drag.hpp`), запись клипа (`clip_writer.hpp`), факт (`physics_preview.hpp`), списки Open (`catalog.hpp`), траектории, метрики, предупреждения (`clip_check.hpp`), пороги (`editor_config.hpp`), история (`clip_history.hpp`), копирование позы (`pose_ops.hpp`), новый клип (`new_clip.hpp`) | `core`, `anim`, `rig`, `stats`, `combat`; `debug`, json |
 | `render` | `Camera`, `Resources`, `Visuals`, `RenderList` и `drawRenderList`, `buildRenderList`, `BattleEffects`, `PixelLayout`, `BattleRenderer`, `DebugOverlay` | `core`, `debug`, `combat` (снимок и события), SFML; json |
 | `ui` | меню и экраны: машина экранов (без окна) и их отрисовка, `ui.json` | `core`, `combat`, `render`, `stats`, SFML; json |
-| `app` | `App`, `InputSystem`, `main`, проверка данных, демо-сценарии; окно редактора поз (`app/pose_editor.cpp`, только debug) | `core`, `debug`, `combat`, `editor`, `render`, `ui`, SFML; ImGui-SFML (debug) |
+| `app` | `App`, `InputSystem`, `main`, проверка данных, демо-сценарии; окно редактора поз (`app/pose_editor.cpp`, только debug) | `core`, `debug`, `combat`, `ai`, `editor`, `render`, `ui`, SFML; ImGui-SFML (debug) |
 
 `combat` и всё под ним не зависят от SFML: модуль боя встраивается во внешний проект без нашего рендера.
 `ui` и `app` собираются только с `FIGHTER_BUILD_APP`. `tools/placeholder_gen` — утилита плейсхолдеров ([ART.md](ART.md)).
