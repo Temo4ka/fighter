@@ -61,6 +61,11 @@ add_executable(fighter_tests
     combat/test_stride.cpp
     combat/test_lunge.cpp
     combat/test_wrist.cpp
+    ai/test_ai_config.cpp
+    ai/test_controller.cpp
+    ai/test_repertoire.cpp
+    ai/test_ai_controller.cpp
+    ai/test_ai_fight.cpp
     render/test_camera.cpp
     render/test_pixel_view.cpp
     render/test_visuals.cpp
@@ -87,6 +92,7 @@ target_link_libraries(fighter_tests PRIVATE
     fighter::editor
     fighter::stats
     fighter::combat
+    fighter::ai
     fighter::render
     fighter::app_lib
     fighter::ui

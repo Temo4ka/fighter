@@ -1,0 +1,14 @@
+{
+    "reactionDelaySec": 0.2,
+    "blockChance": 0.5,
+    "blockHoldSec": 0.3,
+    "blockRangeM": 1.6,
+    "decisionIntervalSec": 0.3,
+    "attackChance": 0.6,
+    "pressSec": 0.1,
+    "recoverSec": 0.35,
+    "minStaminaFraction": 0.15,
+    "defaultRangeM": [0.6, 1.0],
+    "rangeMarginM": 0.05,
+    "seed": 1
+}
