@@ -25,7 +25,7 @@
 | `core` | `Vec2`, `log`, `Signal`/`Connection`, `FixedStepLoop`, `BodyPart`, `PartTransform`, `readTextFile` | — |
 | `debug` | `debug::draw*` (API отрисовки), `DrawList`, категории, палитра | `core` |
 | `physics` | `World` (тела, формы, шарниры, шаг, попадания), `Body` (динамические и кинематические), `RevoluteJoint`, `SpringJoint` (хват двуручного), `HitEvent`; Box2D debug draw → `debug::` | `core`, `debug`; Box2D |
-| `rig` | `RigDef` (риг из JSON), `Rig` — гибридное тело: `PelvisController`, позы из клипов, стопы, моторы, жёсткость, отбрасывание, нокдаун, разворот, предметы в руках (`HeldItem`); `ContactResolver` (`rig/contact.hpp`) и расталкивание (`rig/spacing.hpp`) | `core`, `debug`, `physics`; json |
+| `rig` | `RigDef` (риг из JSON), `Rig` — гибридное тело: `PelvisController`, `PelvisReaction` (таз и колени поддаются удару), позы из клипов, стопы, моторы, жёсткость, отбрасывание, нокдаун, разворот, предметы в руках (`HeldItem`); `ContactResolver` (`rig/contact.hpp`) и расталкивание (`rig/spacing.hpp`) | `core`, `debug`, `physics`; json |
 | `anim` | `Pose`, `Clip`, `sampleClip`, `layerPose`, слои ног и верха тела, зеркальные ноги и переставленные руки (`anim/layers.hpp`) | `core`; json |
 | `stats` | `Stats`, `Loadout`, `PhysicalProfile`, `computeProfile`, `ItemCatalog`, `FighterSheet`, загрузка JSON | `core`; json |
 | `combat` | публичный API: `Battle`, `BattleConfig`, `BattleEvent`, `BattleResult`, `PlayerCommands`, `RenderSnapshot`; внутри — `Fighter`, `CombatTuning`, `MoveDef`, наборы движений, `checkData`, `measureMove` и `MoveRun` (стенд; `BattleConfig::ClipOverrides` — тексты клипов вместо файлов), `LegCycle`, `LegStep` | `core`, `stats`, `physics` (только `HitEvent`); `debug`, `rig`, `anim`, json |
