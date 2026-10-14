@@ -33,6 +33,11 @@ constexpr float MinDrawnSpeed = 0.05f;      ///< m/s.
 constexpr int CapsuleCapSegments = 6;
 constexpr float FootLockMarkSize = 0.06f;   ///< m.
 constexpr float WallMarkHeight = 1.8f;      ///< m.
+/// The pelvis tilt arc of a hit, m; the sink arrow, m per m of sink.
+constexpr float HitReactionArcRadius = 0.18f;
+constexpr float HitReactionSinkScale = 4.0f;
+/// Points of a foot this close to its lowest one are on the sole, m.
+constexpr float ToeHeightTolerance = 0.02f;
 /// @}
 
 /// \name Collision categories of body parts
@@ -92,6 +97,12 @@ void drawShape(debug::Cat Category, const PartDef& Shape, Vec2 Position, float A
 /// The mass of the weapon body of \p Item, kg: the item's, at least
 /// MinWeaponMassKg (taken off the holding forearm as well).
 float getWeaponMass(const HeldItem& Item);
+/// The PelvisReaction parameters of a rig's control parameters.
+PelvisReaction::Params getReactionParams(const ControlParams& Control);
+/// World point of the toes of a foot shape (in body coordinates) placed at
+/// \p Position and turned by \p Angle: its lowest point furthest along
+/// \p Facing.
+Vec2 getToePoint(const PartDef& Shape, Vec2 Position, float Angle, float Facing);
 
 } // namespace
 
@@ -128,6 +139,7 @@ Rig::Rig(physics::World& PhysWorld, const RigDef& Def, const RigSetup& Setup)
     setStrikeMasses(PhysWorld);
     findLimbs(Def);
     findLegs();
+    HitReaction = PelvisReaction(getReactionParams(Control), Legs.size());
     Controller = PelvisController(getPart(Root).Handle.getPosition().X,
                                   {.WalkAcceleration = Control.WalkAcceleration,
                                    .WalkDeceleration = Control.WalkDeceleration,
@@ -163,6 +175,7 @@ void Rig::setBaseStiffness(float Stiffness) { BaseStiffness = Stiffness; }
 
 void Rig::snapToTargets() {
     Controller.reset(Controller.getPositionX());
+    HitReaction.reset();
     releaseFeet();
     const PerBodyPart<Placement> Pose = computeTargetPose(getStandingRoot(Controller.getPositionX()));
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
@@ -198,6 +211,12 @@ void Rig::applyControl(float Dt) {
     HitFactor = std::min(1.0f, HitFactor + Control.StiffnessRecovery * Dt);
     PostureSec += Dt;
     advancePosture();
+    // The pelvis gives way to hits only while the fighter stands.
+    if (CurrentPosture == Posture::Standing) {
+        HitReaction.advance(Dt);
+    } else {
+        HitReaction.reset();
+    }
 
     // A turn waits until the fighter stands: a body getting up is blended
     // from where it lay.
@@ -270,6 +289,35 @@ void Rig::addPush(float Distance) {
     if (CurrentPosture == Posture::KnockedDown) return;
     // The knockback decays exponentially: its path is speed / decay.
     Controller.addPushOut(Distance * Control.KnockbackDecay);
+}
+
+PelvisReaction::Excitation Rig::excitePelvis(float Strength, Vec2 Direction, Vec2 Point) {
+    if (CurrentPosture != Posture::Standing || Direction.getLengthSquared() == 0.0f) return {};
+    // The leg with a posed part nearest to the hit buckles.
+    size_t NearLeg = 0;
+    float Nearest = std::numeric_limits<float>::max();
+    for (size_t Index = 0; Index < Legs.size(); ++Index) {
+        const Leg& Limb = Legs[Index];
+        for (const BodyPart Part : {Joints[Limb.Hip].Child, Joints[Limb.Knee].Child, Limb.Foot}) {
+            const float Distance = (getPartPosition(Part) - Point).getLengthSquared();
+            if (Distance >= Nearest) continue;
+            Nearest = Distance;
+            NearLeg = Index;
+        }
+    }
+    const Vec2 FromPelvis = Point - getPartPosition(Root);
+    const PelvisReaction::Excitation Kick = HitReaction.excite(Strength, Direction.getNormalized(), FromPelvis, NearLeg);
+    if constexpr (FIGHTER_DEBUG) {
+        const std::string Buckle =
+            Kick.Buckle > 0.0f && NearLeg < Legs.size()
+                ? std::format(", buckle {} {:.0f} deg", getBodyPartName(Legs[NearLeg].Foot), Kick.Buckle / RadiansPerDegree)
+                : std::string();
+        debug::logEvent(std::format("P{} pelvis gives way: tilt {:+.1f} deg, sink {:.3f} m{} (strength {:.2f} m/s, "
+                                    "{:+.2f} m from the pelvis height)",
+                                    FighterIndex + 1, Kick.Tilt / RadiansPerDegree, Kick.Sink, Buckle, Strength,
+                                    FromPelvis.Y));
+    }
+    return Kick;
 }
 
 void Rig::updateWallContact(float MinX, float MaxX, float WallX) {
@@ -603,6 +651,7 @@ void Rig::drawDebug() const {
         drawJointsAndMotors();
         drawTargetPose();
         drawController();
+        drawHitReaction();
         drawFeetAndLimbs();
         drawHeldItems();
         drawWrists();
@@ -920,12 +969,12 @@ PerBodyPart<Rig::Placement> Rig::computeTargetPose(Placement RootPlacement,
     return Pose;
 }
 
-Rig::Placement Rig::getStandingRoot(float RootX, const PerBodyPart<float>& Corrections) const {
+Rig::Placement Rig::getStandingRoot(float RootX, const PerBodyPart<float>& Corrections, float Tilt) const {
     // Pose the body with the root on the floor line, then lift it so that
     // the lowest kinematic part (a sole) just touches the floor. Bent knees
     // (a crouch) leave the feet higher, so the pelvis goes down.
     const Placement OnFloor{.Position = {RootX, 0.0f},
-                            .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
+                            .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing + Tilt};
     const PerBodyPart<Placement> Pose = computeTargetPose(OnFloor, Corrections);
     float Lowest = std::numeric_limits<float>::max();
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
@@ -967,17 +1016,27 @@ void Rig::moveKinematicParts(float Dt) {
 
 PerBodyPart<Rig::Placement> Rig::computePosedPose(float RootX, std::vector<Leg>& Limbs, float Dt,
                                                    float PostureTime, const PerBodyPart<float>& Corrections) const {
-    Placement RootPlacement = getStandingRoot(RootX, Corrections);
-    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement, Corrections);
-    if (CurrentPosture == Posture::Standing) {
+    const bool Standing = CurrentPosture == Posture::Standing;
+    // A hit tilts the pelvis alone: the hips turn back by as much, so the
+    // legs keep their angles to the floor (PelvisReaction).
+    const float Tilt = Standing ? HitReaction.getTilt() : 0.0f;
+    PerBodyPart<float> Posed = Corrections;
+    if (Tilt != 0.0f) {
+        for (const auto& Limb : Limbs) Posed[static_cast<size_t>(Joints[Limb.Hip].Child)] -= Tilt;
+    }
+    Placement RootPlacement = getStandingRoot(RootX, Posed, Tilt);
+    PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement, Posed);
+    if (Standing) {
         // A kept foot planted wider than the clip's pose reaches: the pelvis
-        // goes down so that the leg reaches it, instead of dragging it.
-        const float RootDrop = getReachDrop(Pose, Limbs);
+        // goes down so that the leg reaches it, instead of dragging it. A
+        // hit sinks it further; the planted feet stay on the floor the same
+        // way.
+        const float RootDrop = getReachDrop(Pose, Limbs) + HitReaction.getSink();
         if (RootDrop > 0.0f) {
             RootPlacement.Position.Y -= RootDrop;
-            Pose = computeTargetPose(RootPlacement, Corrections);
+            Pose = computeTargetPose(RootPlacement, Posed);
         }
-        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt, Corrections, RootDrop));
+        Pose = computeTargetPose(RootPlacement, plantFeet(Pose, Limbs, Dt, Posed, RootDrop));
     }
     if (CurrentPosture != Posture::GettingUp) return Pose;
     // Getting up blends from where the parts lay to the stance.
@@ -1149,18 +1208,30 @@ PerBodyPart<float> Rig::plantFeet(const PerBodyPart<Placement>& Pose, std::vecto
             // A step back to the stance lifts the foot off the floor.
             if (Limb.Stepping) Lift += std::abs(Limb.OffsetX) * Control.FootStepLift;
         }
-        if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f) {
+        Vec2 AnkleGoal{ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift};
+        // A buckling knee (PelvisReaction) lifts the heel of a planted foot
+        // over its toes: the ankle goes up and the knee bends forward.
+        const float Buckle =
+            Limb.Locked ? HitReaction.getBuckle(static_cast<size_t>(&Limb - Limbs.data())) : 0.0f;
+        const float FootTurn = -Facing * Buckle;
+        if (FootTurn != 0.0f) {
+            const Vec2 Toe =
+                getToePoint(Foot.Shape, FootPose.Position + Vec2{Limb.OffsetX, Lift}, FootPose.Angle, Facing);
+            AnkleGoal = Toe + rotate(AnkleGoal - Toe, FootTurn);
+        }
+        if (std::abs(Limb.OffsetX) > MinFootOffset || Lift > 0.0f || FootTurn != 0.0f) {
             // The knee bends at most KneeExtraBend deeper than the clip's.
             const JointState& Knee = Joints[Limb.Knee];
             const float MaxBend = std::abs(Knee.Target) + Control.KneeExtraBend;
-            reachAnkle(Limb, Pose, {ClipAnkle.X + Limb.OffsetX, ClipAnkle.Y + Lift}, Corrections, Knee.Target, MaxBend);
+            reachAnkle(Limb, Pose, AnkleGoal, Corrections, Knee.Target, MaxBend, FootTurn);
         }
     }
     return Corrections;
 }
 
 void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                     PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend) const {
+                     PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend,
+                     float FootTurn) const {
     const JointState& Hip = Joints[Limb.Hip];
     const JointState& Knee = Joints[Limb.Knee];
     const JointState& AnkleJoint = Joints[Limb.Ankle];
@@ -1212,7 +1283,7 @@ void Rig::reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 A
     };
     setCorrection(Hip, ThighAngle - Pelvis.Angle);
     setCorrection(Knee, KneeAngle);
-    setCorrection(AnkleJoint, Foot.Angle - ShinAngle);   // the foot keeps its angle to the floor
+    setCorrection(AnkleJoint, Foot.Angle + FootTurn - ShinAngle);   // the foot keeps its angle to the floor
 }
 
 PerBodyPart<float> Rig::getAngleCorrections(const PerBodyPart<float>& Angles) const {
@@ -1631,6 +1702,7 @@ void Rig::turnAround() {
     // the bodies' frames. Nothing moves relative to anything else, so the
     // solver has nothing to correct.
     const float AxisX = getPart(Root).Handle.getPosition().X;
+    HitReaction.mirror();
     for (auto& Part : Parts) {
         const Vec2 Position = Part.Handle.getPosition();
         const Vec2 Velocity = Part.Handle.getLinearVelocity();
@@ -1705,9 +1777,13 @@ void Rig::drawTargetPose() const {
     // the "ghost" shows where the motors are pulling the physical parts.
     // Standing, the kinematic parts match it except where a planted foot
     // bends the leg.
+    // A hit's tilt turns the pelvis alone (computePosedPose()).
+    const float Tilt = HitReaction.getTilt();
+    PerBodyPart<float> Corrections{};
+    for (const auto& Limb : Legs) Corrections[static_cast<size_t>(Joints[Limb.Hip].Child)] = -Tilt;
     const Placement RootPlacement{.Position = getPart(Root).Handle.getPosition(),
-                                  .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing};
-    const PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement);
+                                  .Angle = TargetAngles[static_cast<size_t>(Root)] * Facing + Tilt};
+    const PerBodyPart<Placement> Pose = computeTargetPose(RootPlacement, Corrections);
     for (auto&& [Part, Target] : std::views::zip(Parts, Pose)) {
         drawShape(debug::Cat::TargetPose, Part.Shape, Target.Position, Target.Angle);
         // A physical part away from its ghost: a line from where it is to
@@ -1763,6 +1839,30 @@ void Rig::drawController() const {
     if (std::abs(Clip) >= MinDrawnSpeed) {
         const Vec2 Lower = Base + Vec2{0.0f, -0.2f};
         debug::drawArrow(debug::Cat::Velocity, Lower, {Clip * ControllerScale, 0.0f}, std::format("clip {:+.2f}", Clip));
+    }
+}
+
+void Rig::drawHitReaction() const {
+    if (CurrentPosture != Posture::Standing || !HitReaction.isActive()) return;
+    // At the pelvis: an arc from the clip's lean to the tilt the hit added,
+    // and an arrow down by the sink.
+    const Vec2 Pelvis = getPartPosition(Root);
+    const float Lean = TargetAngles[static_cast<size_t>(Root)] * Facing + Pi / 2.0f;
+    const float Tilt = HitReaction.getTilt();
+    debug::drawArc(debug::Cat::Forces, Pelvis, HitReactionArcRadius, std::min(Lean, Lean + Tilt),
+                   std::max(Lean, Lean + Tilt));
+    debug::drawLine(debug::Cat::Forces, Pelvis, Pelvis + getDirection(Lean + Tilt) * HitReactionArcRadius);
+    const float Sink = HitReaction.getSink();
+    if (Sink > 0.0f) {
+        debug::drawArrow(debug::Cat::Forces, Pelvis + Vec2{HitReactionArcRadius, 0.0f},
+                         {0.0f, -Sink * HitReactionSinkScale}, std::format("sink {:.3f}", Sink));
+    }
+    // A buckling knee: its angle at the knee.
+    for (size_t Index = 0; Index < Legs.size(); ++Index) {
+        const float Buckle = HitReaction.getBuckle(Index);
+        if (Buckle <= 0.0f) continue;
+        debug::drawText(debug::Cat::Forces, getPartPosition(Joints[Legs[Index].Knee].Child),
+                        std::format("buckle {:.0f}", Buckle / RadiansPerDegree));
     }
 }
 
@@ -1898,6 +1998,16 @@ void Rig::fillPanel() const {
         if (Limb.KeptOffsetX != 0.0f) Feet += std::format(" (kept {:+.2f})", Limb.KeptOffsetX);
     }
     debug::setPanel(Name + " feet", Feet);
+
+    // What the last hits do to the pelvis and the knees (PelvisReaction).
+    std::string Buckles;
+    for (size_t Index = 0; Index < Legs.size(); ++Index) {
+        Buckles += std::format(", {} {:.0f} deg", getBodyPartName(Legs[Index].Foot),
+                               HitReaction.getBuckle(Index) / RadiansPerDegree);
+    }
+    debug::setPanel(Name + " hit sway", std::format("tilt {:+.1f} deg, sink {:.3f} m, buckle {}",
+                                                    HitReaction.getTilt() / RadiansPerDegree, HitReaction.getSink(),
+                                                    Buckles.empty() ? std::string("-") : Buckles.substr(2)));
 
     std::string Limbs;
     for (size_t Index = 0; Index < BodyPartCount; ++Index) {
@@ -2106,6 +2216,58 @@ void drawShape(debug::Cat Category, const PartDef& Shape, Vec2 Position, float A
 }
 
 float getWeaponMass(const HeldItem& Item) { return std::max(Item.WeaponMassKg, MinWeaponMassKg); }
+
+
+PelvisReaction::Params getReactionParams(const ControlParams& Control) {
+    return {.TiltPerStrength = Control.PelvisTiltPerStrength,
+            .MaxTilt = Control.PelvisMaxTilt,
+            .SinkPerStrength = Control.PelvisSinkPerStrength,
+            .SinkReach = Control.PelvisSinkReach,
+            .MaxSink = Control.PelvisMaxSink,
+            .PelvisHertz = Control.PelvisHitHertz,
+            .PelvisDampingRatio = Control.PelvisHitDampingRatio,
+            .BucklePerStrength = Control.KneeBucklePerStrength,
+            .BuckleReach = Control.KneeBuckleReach,
+            .MaxBuckle = Control.KneeMaxBuckle,
+            .BuckleHertz = Control.KneeBuckleHertz,
+            .BuckleDampingRatio = Control.KneeBuckleDampingRatio};
+}
+
+Vec2 getToePoint(const PartDef& Shape, Vec2 Position, float Angle, float Facing) {
+    // The lowest points of the shape; of those (within a tolerance), the
+    // one furthest along the facing.
+    std::array<Vec2, 4> Points{};
+    size_t Count = 0;
+    float Radius = 0.0f;
+    switch (Shape.Shape) {
+        case physics::ShapeKind::Circle:
+            Points[Count++] = Shape.Center;
+            Radius = Shape.Radius;
+            break;
+        case physics::ShapeKind::Capsule:
+            Points[Count++] = Shape.Begin;
+            Points[Count++] = Shape.End;
+            Radius = Shape.Radius;
+            break;
+        case physics::ShapeKind::Box:
+            for (const auto& Corner : getBoxCorners(Shape)) Points[Count++] = Corner;
+            break;
+    }
+    float Lowest = std::numeric_limits<float>::max();
+    for (size_t Index = 0; Index < Count; ++Index) {
+        Points[Index] = Position + rotate(Points[Index], Angle);
+        Lowest = std::min(Lowest, Points[Index].Y);
+    }
+    Vec2 Toe = Points[0];
+    bool Found = false;
+    for (size_t Index = 0; Index < Count; ++Index) {
+        const Vec2 Point = Points[Index];
+        if (Point.Y > Lowest + ToeHeightTolerance) continue;
+        if (!Found || Point.X * Facing > Toe.X * Facing) Toe = Point;
+        Found = true;
+    }
+    return Toe - Vec2{0.0f, Radius};
+}
 
 } // namespace
 

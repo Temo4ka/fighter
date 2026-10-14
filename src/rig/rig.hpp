@@ -81,6 +81,7 @@
 #include "physics/joint.hpp"
 #include "physics/world.hpp"
 #include "rig/pelvis_controller.hpp"
+#include "rig/pelvis_reaction.hpp"
 #include "rig/rig_def.hpp"
 
 namespace fighter::rig {
@@ -332,6 +333,14 @@ public:
     /// Adds knockback that moves the pelvis by about \p Distance (m, signed
     /// along X) in total: the push-out of rig::pushApartOnHit().
     void addPush(float Distance);
+    /// The pelvis and the legs give way to a hit of \p Strength (m/s, as
+    /// combat's reaction levels measure it) at \p Point, pushing along the
+    /// unit vector \p Direction: the pelvis tilts and sinks, the knee of the
+    /// leg nearest to a low hit buckles, on springs that settle back
+    /// (rig::PelvisReaction), added to the clip's pose. Only a standing
+    /// fighter; combat calls it after applyHit() for every landed strike.
+    PelvisReaction::Excitation excitePelvis(float Strength, Vec2 Direction, Vec2 Point);
+    const PelvisReaction& getPelvisReaction() const { return HitReaction; }
     /// Records which arena wall the fighter touches; rig::keepApart() (the
     /// contact stage before the physics step) calls
     /// it every step. The pelvis stops at [MinX, MaxX]; a ragdoll touches
@@ -643,8 +652,9 @@ private:
     PerBodyPart<Placement> computeTargetPose(Placement RootPlacement,
                                              const PerBodyPart<float>& Corrections = {}) const;
     /// Root placement at \p RootX, at the height where the lowest
-    /// kinematic part touches the floor.
-    Placement getStandingRoot(float RootX, const PerBodyPart<float>& Corrections = {}) const;
+    /// kinematic part touches the floor, turned \p Tilt (rad, world) past
+    /// the clip's lean.
+    Placement getStandingRoot(float RootX, const PerBodyPart<float>& Corrections = {}, float Tilt = 0.0f) const;
     float getPostureStiffness() const;
     void advancePosture();
     void moveKinematicParts(float Dt);
@@ -676,9 +686,11 @@ private:
     /// \p Ankle with the foot turned as in \p Pose.
     /// The knee takes the solution within its limits, else the one closer
     /// to \p KneeHint (rad, mirrored), and bends no deeper than \p MaxBend
-    /// (rad, along the way it bends), if given.
+    /// (rad, along the way it bends), if given. \p FootTurn (rad, world)
+    /// turns the foot past its angle in \p Pose.
     void reachAnkle(const Leg& Limb, const PerBodyPart<Placement>& Pose, Vec2 Ankle,
-                    PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend = {}) const;
+                    PerBodyPart<float>& Corrections, float KneeHint, std::optional<float> MaxBend = {},
+                    float FootTurn = 0.0f) const;
     /// The joint targets of the pose \p Angles (as for setTargetAngles(),
     /// clamped to the limits) as corrections to the current targets.
     PerBodyPart<float> getAngleCorrections(const PerBodyPart<float>& Angles) const;
@@ -725,6 +737,7 @@ private:
     void drawTargetPose() const;
     void drawJointsAndMotors() const;
     void drawController() const;
+    void drawHitReaction() const;
     void drawFeetAndLimbs() const;
     void drawHeldItems() const;
     void fillPanel() const;
@@ -750,6 +763,7 @@ private:
     std::bitset<BodyPartCount> UnjamParts;   ///< RigDef::Unjam.
 
     PelvisController Controller;
+    PelvisReaction HitReaction;       ///< excitePelvis(); indexed by Legs.
     float PoseTravel = 0.0f;          ///< setTravelPose(): the travel the target angles assume, m.
     std::optional<float> PelvisDropLimit; ///< setPelvisDropLimit().
     Posture CurrentPosture = Posture::Standing;

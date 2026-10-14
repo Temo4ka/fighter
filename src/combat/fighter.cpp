@@ -241,7 +241,7 @@ HitOutcome Fighter::takeHit(const physics::HitEvent& Hit, const MoveDef& Attack,
     Buildup += Outcome.BuildupAdded;
     if (Outcome.Blocked) spendStamina(Outcome.BlockStamina);
     LastHit = HitRecord{.MoveId = Attack.Id, .Part = Hit.Victim.Part, .Outcome = Outcome, .OnShield = OnShield};
-    react(Outcome.Reaction, Hit.Impulse, Direction, Hit.Point);
+    react(Outcome.Reaction, Hit.Impulse, Outcome.Strength, Direction, Hit.Point);
     return Outcome;
 }
 
@@ -1609,7 +1609,7 @@ void Fighter::spendStamina(float Amount) {
     ExhaustedNotice = true;
 }
 
-void Fighter::react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point) {
+void Fighter::react(ReactionLevel Level, float Impulse, float Strength, float Direction, Vec2 Point) {
     const Vec2 Push{Direction, 0.0f};
     if (Hp <= 0.0f) {
         // Knocked out: it falls and stays down.
@@ -1627,6 +1627,9 @@ void Fighter::react(ReactionLevel Level, float Impulse, float Direction, Vec2 Po
         setState(FighterState::KnockedDown);
         return;
     }
+    // The pelvis and the knees give way by the same strength that chose the
+    // level, a blocked hit too (a standing body only).
+    Body.excitePelvis(Strength, Push, Point);
     // Getting up is the rig's; a weaker hit does not interrupt it. Touch and
     // None interrupt nothing.
     if (State == FighterState::GettingUp || Level < ReactionLevel::Flinch) return;

@@ -429,7 +429,7 @@ private:
     void drawPelvisTrack() const;
     /// @}
     void spendStamina(float Amount);
-    void react(ReactionLevel Level, float Impulse, float Direction, Vec2 Point);
+    void react(ReactionLevel Level, float Impulse, float Strength, float Direction, Vec2 Point);
 
     rig::Rig Body;
     const BattleRules* Rules = nullptr;
