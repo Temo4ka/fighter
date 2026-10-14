@@ -98,6 +98,19 @@
     "gripHertz": 6.0,
     "gripDampingRatio": 0.7,
     "gripMaxStretch": 0.12,
-    "gripArmStiffness": 0.4
+    "gripArmStiffness": 0.4,
+
+    "pelvisTiltPerStrength": 0.7,
+    "pelvisMaxTilt": 0.2,
+    "pelvisSinkPerStrength": 0.08,
+    "pelvisSinkReach": 0.5,
+    "pelvisMaxSink": 0.06,
+    "pelvisHitHertz": 3.0,
+    "pelvisHitDampingRatio": 0.5,
+    "kneeBucklePerStrength": 0.8,
+    "kneeBuckleReach": 0.4,
+    "kneeMaxBuckle": 0.35,
+    "kneeBuckleHertz": 4.0,
+    "kneeBuckleDampingRatio": 0.7
   }
 }

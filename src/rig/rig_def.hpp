@@ -197,6 +197,31 @@ struct ControlParams {
     /// spring leads it rather than the clip's pose of that arm (0..1).
     float GripArmStiffness = 0.4f;
     /// @}
+
+    /// \name Pelvis and knees give way to a hit (rig::PelvisReaction)
+    /// @{
+    /// Pelvis tilt per m/s of hit strength and m of the hit's lever about
+    /// the pelvis, rad; and its limit, rad.
+    float PelvisTiltPerStrength = 0.7f;
+    float PelvisMaxTilt = 0.2f;
+    /// Pelvis sink per m/s of strength of a hit at the pelvis height, m; how
+    /// far above or below the pelvis a hit still sinks it, m; the limit, m.
+    float PelvisSinkPerStrength = 0.08f;
+    float PelvisSinkReach = 0.5f;
+    float PelvisMaxSink = 0.06f;
+    /// The spring of the tilt and the sink: Hz, damping ratio (0, 1].
+    float PelvisHitHertz = 3.0f;
+    float PelvisHitDampingRatio = 0.5f;
+    /// Knee buckle of the nearest leg (its heel lifts over the planted toes)
+    /// per m/s of strength of a hit below the pelvis, rad; how far below the
+    /// pelvis it is full, m; the limit, rad.
+    float KneeBucklePerStrength = 0.8f;
+    float KneeBuckleReach = 0.4f;
+    float KneeMaxBuckle = 0.35f;
+    /// The knee spring: Hz, damping ratio (0, 1].
+    float KneeBuckleHertz = 4.0f;
+    float KneeBuckleDampingRatio = 0.7f;
+    /// @}
 };
 
 /// How the items held in the hands are attached to the body (the "weapon"

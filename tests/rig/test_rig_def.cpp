@@ -247,3 +247,36 @@ TEST_CASE("parseRigDef: the other hand's part and the two-handed grip", "[rig]")
     CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "gripHertz": -1 })")), std::runtime_error);
     CHECK_THROWS_AS(parseRigDef(makeRigJson(R"(, "control": { "gripArmStiffness": 1.5 })")), std::runtime_error);
 }
+
+TEST_CASE("parseRigDef: the hit reaction of the pelvis and knees is read and checked", "[rig]") {
+    const RigDef Rig = parseRigDef(makeRigJson(
+        R"(, "control": { "pelvisTiltPerStrength": 0.5, "pelvisMaxSink": 0.04, "pelvisHitHertz": 2.5,)"
+        R"( "pelvisHitDampingRatio": 1, "kneeMaxBuckle": 0.3, "kneeBuckleReach": 0.35 })"));
+    CHECK(Rig.Control.PelvisTiltPerStrength == 0.5f);
+    CHECK(Rig.Control.PelvisMaxSink == 0.04f);
+    CHECK(Rig.Control.PelvisHitHertz == 2.5f);
+    CHECK(Rig.Control.PelvisHitDampingRatio == 1.0f);
+    CHECK(Rig.Control.KneeMaxBuckle == 0.3f);
+    CHECK(Rig.Control.KneeBuckleReach == 0.35f);
+    CHECK(loadRigDef(HumanoidPath).Control.PelvisMaxTilt > 0.0f);
+
+    // Amounts and limits are not negative; springs and reaches are positive;
+    // damping ratios are in (0, 1].
+    for (const auto* Key : {"pelvisTiltPerStrength", "pelvisMaxTilt", "pelvisSinkPerStrength", "pelvisMaxSink",
+                            "kneeBucklePerStrength", "kneeMaxBuckle"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": -0.1 })")),
+                        std::runtime_error);
+    }
+    for (const auto* Key : {"pelvisSinkReach", "kneeBuckleReach", "pelvisHitHertz", "kneeBuckleHertz",
+                            "pelvisHitDampingRatio", "kneeBuckleDampingRatio"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": 0 })")),
+                        std::runtime_error);
+    }
+    for (const auto* Key : {"pelvisHitDampingRatio", "kneeBuckleDampingRatio"}) {
+        CAPTURE(Key);
+        CHECK_THROWS_AS(parseRigDef(makeRigJson(std::string(R"(, "control": { ")") + Key + R"(": 1.5 })")),
+                        std::runtime_error);
+    }
+}

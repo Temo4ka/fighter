@@ -76,23 +76,40 @@ constexpr std::array ControlFields = {
     ControlField{"gripDampingRatio", &ControlParams::GripDampingRatio},
     ControlField{"gripMaxStretch", &ControlParams::GripMaxStretch},
     ControlField{"gripArmStiffness", &ControlParams::GripArmStiffness},
+    ControlField{"pelvisTiltPerStrength", &ControlParams::PelvisTiltPerStrength},
+    ControlField{"pelvisMaxTilt", &ControlParams::PelvisMaxTilt},
+    ControlField{"pelvisSinkPerStrength", &ControlParams::PelvisSinkPerStrength},
+    ControlField{"pelvisSinkReach", &ControlParams::PelvisSinkReach},
+    ControlField{"pelvisMaxSink", &ControlParams::PelvisMaxSink},
+    ControlField{"pelvisHitHertz", &ControlParams::PelvisHitHertz},
+    ControlField{"pelvisHitDampingRatio", &ControlParams::PelvisHitDampingRatio},
+    ControlField{"kneeBucklePerStrength", &ControlParams::KneeBucklePerStrength},
+    ControlField{"kneeBuckleReach", &ControlParams::KneeBuckleReach},
+    ControlField{"kneeMaxBuckle", &ControlParams::KneeMaxBuckle},
+    ControlField{"kneeBuckleHertz", &ControlParams::KneeBuckleHertz},
+    ControlField{"kneeBuckleDampingRatio", &ControlParams::KneeBuckleDampingRatio},
 };
 
 /// Parameters that must not be negative: distances and durations.
-constexpr std::array<std::string_view, 26> NonNegativeFields = {
+constexpr std::array<std::string_view, 33> NonNegativeFields = {
     "closeRange",      "lyingClearance",     "wallTouchDistance", "footPlantHeight",     "footLockSlip",
     "footLockRelease", "footRestepDistance", "footStepLift",      "jamAngle",            "jamSec",
     "knockdownSpin",   "knockoutStiffness",  "knockdownSec",      "knockbackDecay",      "minStiffness",
     "yieldStiffness",  "yieldSec",           "holdGravityMargin", "dampedErrorAngle",    "yieldReturnClearance",
-    "knockdownLegStiffness", "kneeExtraBend", "maxPelvisDrop", "gripHertz", "gripDampingRatio", "gripMaxStretch"};
+    "knockdownLegStiffness", "kneeExtraBend", "maxPelvisDrop", "gripHertz", "gripDampingRatio", "gripMaxStretch",
+    "pelvisTiltPerStrength", "pelvisMaxTilt", "pelvisSinkPerStrength", "pelvisSinkReach", "pelvisMaxSink",
+    "kneeBucklePerStrength", "kneeMaxBuckle"};
 
 /// Parameters that are shares: from 0 to 1.
-constexpr std::array<std::string_view, 5> ShareFields = {"carrierTransfer", "knockbackTransfer", "feedForward",
-                                                         "gravityCompensation", "gripArmStiffness"};
+constexpr std::array<std::string_view, 7> ShareFields = {
+    "carrierTransfer",  "knockbackTransfer", "feedForward", "gravityCompensation", "gripArmStiffness",
+    "pelvisHitDampingRatio", "kneeBuckleDampingRatio"};
 
 /// Parameters that must be positive: they divide or set a duration.
-constexpr std::array<std::string_view, 5> PositiveFields = {"walkSpeed", "walkAcceleration", "walkDeceleration",
-                                                            "knockdownSpeed", "getUpSec"};
+constexpr std::array<std::string_view, 11> PositiveFields = {
+    "walkSpeed",       "walkAcceleration", "walkDeceleration", "knockdownSpeed",        "getUpSec",
+    "pelvisSinkReach", "kneeBuckleReach",  "pelvisHitHertz",   "pelvisHitDampingRatio", "kneeBuckleHertz",
+    "kneeBuckleDampingRatio"};
 
 void checkKeys(const Json& Node, std::initializer_list<std::string_view> Known, std::string_view Where);
 PartDef parsePart(const Json& Node);
